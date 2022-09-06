@@ -2,8 +2,7 @@
 # Incremental Structure Learning (ISL)
 
 An open-source implementation of ISL [1], a circuit recompilation algorithm that finds an approximate representation of
-any circuit acting on the |0>|0>...|0> state. Created for the IBM Quantum Awards: Open Sciece Prize 2021. More details of ISL,
-alongside it's use in the Quantum Awards can be found [here](https://ibmquantumawards.bemyapp.com/#/projects).
+any circuit acting on the |0>|0>...|0> state. Created for the IBM Quantum Awards: Open Sciece Prize 2021. More details of ISL and its use in the Quantum Awards can be found by downloading the submission [here](https://github.com/qiskit-community/open-science-prize-2021/blob/main/qiskit-default-winning-submission.zip).
 
 [1] B Jaderberg, A Agarwal, K Leonhardt, M Kiffner, D Jaksch, 2020 Quantum Sci. Technol. 5 034015
 
