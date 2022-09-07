@@ -2,7 +2,7 @@ from setuptools import find_packages, setup
 
 setup(
     name="quantum-isl",
-    version="1.0.0",
+    version="1.0.1",
     author="Abhishek Agarwal",
     author_email="abhishek.agarwal@npl.co.uk",
     packages=find_packages(),
