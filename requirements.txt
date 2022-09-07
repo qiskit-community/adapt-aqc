@@ -1,9 +1,8 @@
-qiskit~=0.36.0
+qiskit=0.36.0
 matplotlib~=3.5.1
 pandas~=1.4.2
 setuptools~=62.1.0
 numpy~=1.21.4
 scipy~=1.8.0
-openfermion~=1.3.0
+openfermion~=1.5
 qulacs
-pre-commit
