@@ -189,7 +189,7 @@ def expectation_value_of_pauli_observable(counts, pauli):
     num_shots = sum(counts.values())
     p_z_or_x = np.logical_or(pauli.z, pauli.x)
     for key, value in counts.items():
-        bitstr = np.asarray(list(key))[::-1].astype(np.bool)
+        bitstr = np.asarray(list(key))[::-1].astype(bool)
         sign = (
             -1.0
             if functools.reduce(np.logical_xor, np.logical_and(bitstr, p_z_or_x))

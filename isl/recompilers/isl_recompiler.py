@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 class ISLConfig:
     def __init__(
         self,
-        max_layers: int = 100000,
+        max_layers: int = int(1e5),
         sufficient_cost=1e-4,
         max_2q_gates=1e4,
         cost_improvement_num_layers=10,

@@ -1,14 +1,16 @@
 import logging
 
-import qiskit.test.mock as fb
-from qiskit.providers.aer.backends import QasmSimulator
+import qiskit.providers.fake_provider as fb
+from qiskit_aer import QasmSimulator
 
 import isl.utils.circuit_operations as co
 from isl.recompilers import ISLConfig, ISLRecompiler
 
-logging.basicConfig(level=logging.INFO)
+
+logging.basicConfig(level=logging.DEBUG)
 logging.getLogger("qiskit").setLevel(logging.WARNING)
-logging.getLogger("variationalalgorithms").setLevel(logging.DEBUG)
+logging.getLogger("qiskit_experiments").setLevel(logging.WARNING)
+logging.getLogger("stevedore").setLevel(logging.WARNING)
 
 num_qubits = 4
 qc = co.create_random_initial_state_circuit(num_qubits)
@@ -20,7 +22,7 @@ backend = QasmSimulator.from_backend(fb)
 execute_kwargs = {"shots": 8192}
 coupling_map = backend.configuration().coupling_map
 isl_config = ISLConfig(
-    max_layers=100, cost_improvement_tol=1e-2, cost_improvement_num_layers=3
+    max_layers=10, cost_improvement_tol=1e-2, cost_improvement_num_layers=3
 )
 isl_recompiler = ISLRecompiler(
     qc,

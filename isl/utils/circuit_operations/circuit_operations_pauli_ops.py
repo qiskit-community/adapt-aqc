@@ -1,7 +1,7 @@
 import numpy as np
 from openfermion import QubitOperator
 from qiskit import ClassicalRegister, QuantumCircuit
-from qiskit.extensions import U1Gate, U3Gate
+from qiskit.extensions import U1Gate, UGate
 from qiskit.quantum_info import Pauli
 
 from isl.utils.circuit_operations.circuit_operations_full_circuit import (
@@ -31,9 +31,9 @@ def add_pauli_operators_to_circuit(
         if pauli_axis == "I":
             continue
         elif pauli_axis == "X":
-            U3Gate(np.pi, -0.5 * np.pi, 0.5 * np.pi)
+            UGate(np.pi, -0.5 * np.pi, 0.5 * np.pi)
         elif pauli_axis == "Y":
-            U3Gate(np.pi, 0, 0)
+            UGate(np.pi, 0, 0)
         elif pauli_axis == "Z":
             U1Gate(np.pi)
         else:
@@ -46,10 +46,10 @@ def add_pauli_operators_to_circuit(
             if pauli.z[qubit_idx]:
                 # Measure Y
                 pauli_circuit.u1(-np.pi / 2, qubit_idx)  # sdg
-                pauli_circuit.u3(np.pi / 2, 0.0, np.pi, qubit_idx)  # h
+                pauli_circuit.u(np.pi / 2, 0.0, np.pi, qubit_idx)  # h
             else:
                 # Measure X
-                pauli_circuit.u3(np.pi / 2, 0.0, np.pi, qubit_idx)  # h
+                pauli_circuit.u(np.pi / 2, 0.0, np.pi, qubit_idx)  # h
     add_to_circuit(
         circuit, pauli_circuit, location=location, transpile_before_adding=False
     )
@@ -73,7 +73,7 @@ def expectation_value_of_pauli_operator(
         if pauli_lbl == "I" * len(pauli_lbl):
             expectation_value += operator[pauli_lbl] * 1
             continue
-        pauli_obj = Pauli.from_label(pauli_lbl)
+        pauli_obj = Pauli(pauli_lbl)
         pauli_circuit_gate_range = add_pauli_operators_to_circuit(circuit, pauli_obj)
         if not is_statevector_backend(backend):
             [

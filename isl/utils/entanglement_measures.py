@@ -4,13 +4,10 @@ import itertools
 import logging
 
 import numpy as np
-from qiskit import ClassicalRegister, QuantumCircuit, QuantumRegister, execute
+from qiskit import ClassicalRegister, QuantumCircuit, QuantumRegister
 from qiskit import quantum_info as qi
-from qiskit.ignis.verification.tomography import (
-    TomographyFitter,
-    state_tomography_circuits,
-)
-from qiskit.providers.aer.backends.aerbackend import AerBackend
+from qiskit_aer.backends.aerbackend import AerBackend
+from qiskit_experiments.library import StateTomography
 from scipy import linalg
 from scipy.linalg import eig
 
@@ -26,13 +23,13 @@ EM_TOMOGRAPHY_NEGATIVITY = "EM_TOMOGRAPHY_NEGATIVITY"
 
 
 def calculate_entanglement_measure(
-    method,
-    circuit,
-    qubit_1,
-    qubit_2,
-    backend,
-    backend_options=None,
-    execute_kwargs=None,
+        method,
+        circuit,
+        qubit_1,
+        qubit_2,
+        backend,
+        backend_options=None,
+        execute_kwargs=None,
 ):
     """
     Measure quantum correlations between two qubits in a state resulting
@@ -76,12 +73,12 @@ def calculate_entanglement_measure(
 
 
 def perform_quantum_tomography(
-    circuit: QuantumCircuit,
-    qubit_1,
-    qubit_2,
-    backend,
-    backend_options=None,
-    execute_kwargs=None,
+        circuit: QuantumCircuit,
+        qubit_1,
+        qubit_2,
+        backend,
+        backend_options=None,
+        execute_kwargs=None,
 ):
     """
     Performs quantum state tomography on the reduced state of qubit_1 and
@@ -98,7 +95,7 @@ def perform_quantum_tomography(
     classical_gates = co.remove_classical_operations(circuit)
     old_cregs = circuit.cregs.copy()
     circuit.cregs = []
-    tomography_circuits = state_tomography_circuits(circuit, [qubit_1, qubit_2])
+    tomography_exp = StateTomography(circuit, measurement_indices=[qubit_1, qubit_2])
     circuit.cregs = old_cregs
     co.add_classical_operations(circuit, classical_gates)
 
@@ -106,22 +103,19 @@ def perform_quantum_tomography(
     if backend_options is None or not isinstance(backend, AerBackend):
         backend_options = {}
 
-    result = [
-        execute(qc, backend, **backend_options, **execute_kwargs).result()
-        for qc in tomography_circuits
-    ]
-    rho = TomographyFitter(result, tomography_circuits).fit()
+    tomography_data = tomography_exp.run(backend)
+    rho = tomography_data.analysis_results("state").value._data
     assert isinstance(rho, np.ndarray)
     return rho
 
 
 def measure_concurrence_lower_bound(
-    circuit: QuantumCircuit,
-    qubit_1,
-    qubit_2,
-    backend,
-    backend_options=None,
-    execute_kwargs=None,
+        circuit: QuantumCircuit,
+        qubit_1,
+        qubit_2,
+        backend,
+        backend_options=None,
+        execute_kwargs=None,
 ):
     """
     Measures the lower limit of the concurrence of the mixed, bipartite
@@ -252,7 +246,7 @@ def eof(rho):
     c = concurrence(rho)
     if c == 0:
         return 0
-    return h(0.5 * (1 + np.sqrt(1 - c**2)))
+    return h(0.5 * (1 + np.sqrt(1 - c ** 2)))
 
 
 def concurrence(rho):

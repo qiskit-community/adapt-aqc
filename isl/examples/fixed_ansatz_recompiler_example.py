@@ -4,8 +4,9 @@ import isl.utils.circuit_operations as co
 from isl.recompilers import FixedAnsatzRecompiler
 from isl.utils.fixed_ansatz_circuits import hardware_efficient_circuit
 
-logging.basicConfig(level=logging.DEBUG)
-logging.getLogger("qiskit").setLevel(logging.WARNING)
+logging.basicConfig()
+logger = logging.getLogger('isl')
+logger.setLevel(logging.DEBUG)
 
 num_qubits = 5
 qc = co.create_random_initial_state_circuit(num_qubits)

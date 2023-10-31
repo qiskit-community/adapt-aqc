@@ -3,8 +3,8 @@ import logging
 import numpy as np
 from qiskit import Aer, QuantumCircuit, transpile
 from qiskit.circuit.library import CXGate
-from qiskit.providers.aer.backends.aerbackend import AerBackend
-from qiskit.providers.aer.noise import NoiseModel, thermal_relaxation_error
+from qiskit_aer.backends.aerbackend import AerBackend
+from qiskit_aer.noise import thermal_relaxation_error, NoiseModel
 from scipy.optimize import curve_fit
 
 from isl.utils.circuit_operations.circuit_operations_alternate_emulators import (

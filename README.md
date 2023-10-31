@@ -50,10 +50,10 @@ building `ISLRecompiler()`. Many of the configuration options are bundled into t
 from isl.recompilers import ISLRecompiler, ISLConfig
 from qiskit.circuit.random import random_circuit
 
-qc = random_circuit(5, 5, seed=2)
+qc = random_circuit(5, 5, seed=1)
 
 # Recompile
-config = ISLConfig(sufficient_cost=1e-3, max_2q_gates=25)
+config = ISLConfig(sufficient_cost=1e-2, max_2q_gates=25)
 recompiler = ISLRecompiler(qc, entanglement_measure='EM_TOMOGRAPHY_CONCURRENCE', isl_config=config)
 result = recompiler.recompile()
 recompiled_circuit = result['circuit']
@@ -66,7 +66,7 @@ print(recompiled_circuit)
 ```
 
 Here we have specified a number of things
-* `sufficient_cost=1e-3`: The state produced by the recompiled solution will have an overlap of at least 99.9% with respect to the state produced by the original circuit.
+* `sufficient_cost=1e-2`: The state produced by the recompiled solution will have an overlap of at least 99% with respect to the state produced by the original circuit.
 * `max_2q_gates=25`: If our solution contains more than 25 CNOT gates, return early. Setting this to the number of 2-qubit gates in the original circuit provides a useful upper limit.
 * `entanglement_measure`: This argument on the recompiler itself specifies the type of entanglement measure used when deciding which qubits to add the next layer to.
 

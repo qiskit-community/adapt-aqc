@@ -191,6 +191,9 @@ class ApproximateRecompiler(ABC):
         all_subcircuits = co.vertically_divide_circuit(
             self.circuit_to_recompile.copy(), max_depth_per_block
         )
+
+        logging.debug(f"Circuit was split into {len(all_subcircuits)} parts to compile sequentially")
+
         last_recompiled_subcircuit = None
         individual_results = []
         for subcircuit in all_subcircuits:
