@@ -91,16 +91,6 @@ In the above example, the original circuit contains 25 CNOT gates and
 prepares the same state to 99.9% overlap with on average 6 CNOT gates and
 8 two-qubit gates with a depth of 9 (average tested over 10 runs).
 
-## Troubleshooting
-
-Note: ISL depends on `qiskit-ignis`, which was deprecated in Qiskit 0.37.0. Until migration to Qiskit Experiments is completed, you may see the following error:
-
-```
-ModuleNotFoundError: No module named 'qiskit.ignis'
-```
-
-To fix this, simply downagrade your version of Qiskit to < 0.37.0.
-
 ## Citing usage
 
 We respectfully ask any publication, project or whitepaper using ISL to cite the original literature:
