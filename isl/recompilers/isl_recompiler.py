@@ -26,16 +26,18 @@ logger = logging.getLogger(__name__)
 
 class ISLConfig:
     def __init__(
-        self,
-        max_layers: int = int(1e5),
-        sufficient_cost=1e-4,
-        max_2q_gates=1e4,
-        cost_improvement_num_layers=10,
-        cost_improvement_tol=1e-2,
-        max_layers_to_modify=100,
-        method="ISL",
-        bad_qubit_pair_memory=10,
-        rotosolve_frequency=1,
+            self,
+            max_layers: int = int(1e5),
+            sufficient_cost=1e-4,
+            max_2q_gates=1e4,
+            cost_improvement_num_layers=10,
+            cost_improvement_tol=1e-2,
+            max_layers_to_modify=100,
+            method="ISL",
+            bad_qubit_pair_memory=10,
+            rotosolve_frequency=1,
+            rotoselect_tol=1e-5,
+            rotosolve_tol=1e-3
     ):
         """
         Termination criteria:
@@ -71,6 +73,8 @@ class ISLConfig:
         self.max_layers_to_modify = max_layers_to_modify
         self.method = method
         self.rotosolve_frequency = rotosolve_frequency
+        self.rotoselect_tol = rotoselect_tol
+        self.rotosolve_tol = rotosolve_tol
 
     def __repr__(self):
         representation_str = f"{self.__class__.__name__}("
@@ -88,19 +92,19 @@ class ISLRecompiler(ApproximateRecompiler):
     """
 
     def __init__(
-        self,
-        circuit_to_recompile,
-        entanglement_measure=EM_TOMOGRAPHY_CONCURRENCE,
-        backend=co.SV_SIM,
-        execute_kwargs=None,
-        coupling_map=None,
-        isl_config: ISLConfig = None,
-        general_initial_state=False,
-        custom_layer_2q_gate=None,
-        starting_circuit=None,
-        use_rotosolve=True,
-        perform_final_minimisation=False,
-        local_measurements_only=False,
+            self,
+            circuit_to_recompile,
+            entanglement_measure=EM_TOMOGRAPHY_CONCURRENCE,
+            backend=co.SV_SIM,
+            execute_kwargs=None,
+            coupling_map=None,
+            isl_config: ISLConfig = None,
+            general_initial_state=False,
+            custom_layer_2q_gate=None,
+            starting_circuit=None,
+            use_rotosolve=True,
+            perform_final_minimisation=False,
+            local_measurements_only=False,
     ):
         """
         :param circuit_to_recompile: Circuit that is to be recompiled
@@ -161,7 +165,7 @@ class ISLRecompiler(ApproximateRecompiler):
             (q1, q2)
             for (q1, q2) in self.coupling_map
             if q1 in self.qubit_subset_to_recompile
-            and q2 in self.qubit_subset_to_recompile
+               and q2 in self.qubit_subset_to_recompile
         ]
         # Used to avoid adding thinly dressed CNOTs to the same qubit pair
         self.qubit_pair_history = []
@@ -190,7 +194,7 @@ class ISLRecompiler(ApproximateRecompiler):
         return qc
 
     def recompile_using_initial_ansatz(
-        self, ansatz: QuantumCircuit, modify_ansatz=True
+            self, ansatz: QuantumCircuit, modify_ansatz=True
     ):
         """
         Use the provided ansatz as a starting point for the recompilation
@@ -298,7 +302,7 @@ class ISLRecompiler(ApproximateRecompiler):
             cinl = self.isl_config.cost_improvement_num_layers
             cit = self.isl_config.cost_improvement_tol
             if len(cost_history) >= cinl and has_stopped_improving(
-                cost_history[-1 * cinl :], cit
+                    cost_history[-1 * cinl:], cit
             ):
                 logger.debug("ISL stopped improving")
                 break
@@ -367,7 +371,9 @@ class ISLRecompiler(ApproximateRecompiler):
         (computational basis).
         :return: New cost
         """
+        logger.debug("Finding best qubit pair")
         control, target = self._find_appropriate_qubit_pair()
+        logger.debug("Best qubit pair found")
         co.add_to_circuit(
             self.full_circuit,
             self.get_layer_2q_gate(index),
@@ -395,14 +401,14 @@ class ISLRecompiler(ApproximateRecompiler):
         if self.use_rotosolve:
             cost = self.minimizer.minimize_cost(
                 algorithm_kind=vconstants.ALG_ROTOSELECT,
-                tol=1e-5,
+                tol=self.isl_config.rotoselect_tol,
                 stop_val=self.isl_config.sufficient_cost,
                 indexes_to_modify=entangling_gate_indexes,
             )
             if index % self.isl_config.rotosolve_frequency == 0:
                 cost = self.minimizer.minimize_cost(
                     algorithm_kind=vconstants.ALG_ROTOSOLVE,
-                    tol=1e-3,
+                    tol=self.isl_config.rotosolve_tol,
                     stop_val=self.isl_config.sufficient_cost,
                     indexes_to_modify=rotosolve_gate_indexes,
                 )
@@ -414,33 +420,35 @@ class ISLRecompiler(ApproximateRecompiler):
         return cost
 
     def _find_appropriate_qubit_pair(self):
-        e_vals = self._measure_qubit_expectation_values()
-        self.e_val_history.append(e_vals)
-        ems = self._get_all_qubit_pair_entanglement_measures()
-        self.entanglement_measures_history.append(ems)
-        priorities = self._get_all_qubit_pair_priorities()
-        e_val_sums = self._get_all_qubit_pair_e_val_sums(e_vals)
-
-        if self.isl_config.method == "ISL":
-            return self._find_highest_entanglement_qubit_pair(
-                ems, e_val_sums, priorities
-            )
-        elif self.isl_config.method == "heuristic":
-            return self._find_best_heuristic_qubit_pair(e_val_sums, priorities)
-        elif self.isl_config.method == "basic":
-            return self._find_best_priority_qubit_pair(priorities)
-        elif self.isl_config.method == "random":
+        if self.isl_config.method == "random":
             rand_index = np.random.randint(len(self.coupling_map))
             self.pair_selection_method_history.append(f"random")
             return self.coupling_map[rand_index]
-        else:
-            raise ValueError(
-                f"Invalid ISL method {self.isl_config.method}. "
-                f"Method must be one of ISL,heuristic,random"
+
+        priorities = self._get_all_qubit_pair_priorities()
+
+        if self.isl_config.method == "basic":
+            return self._find_best_priority_qubit_pair(priorities)
+
+        e_vals = self._measure_qubit_expectation_values()
+        self.e_val_history.append(e_vals)
+
+        e_val_sums = self._get_all_qubit_pair_e_val_sums(e_vals)
+
+        if self.isl_config.method == "heuristic":
+            return self._find_best_heuristic_qubit_pair(e_val_sums, priorities)
+
+        if self.isl_config.method == "ISL":
+            ems = self._get_all_qubit_pair_entanglement_measures()
+            self.entanglement_measures_history.append(ems)
+            return self._find_highest_entanglement_qubit_pair(
+                ems, e_val_sums, priorities
             )
 
+        raise ValueError(f"Invalid ISL method {self.isl_config.method}. "f"Method must be one of ISL,heuristic,random")
+
     def _find_highest_entanglement_qubit_pair(
-        self, entanglement_measures, e_val_sums, priorities
+            self, entanglement_measures, e_val_sums, priorities
     ):
 
         # First check if the previous qubit pair was 'bad'
@@ -462,8 +470,8 @@ class ISLRecompiler(ApproximateRecompiler):
                 [
                     x
                     for x in self.qubit_pair_history[
-                        -1 * self.isl_config.bad_qubit_pair_memory :
-                    ]
+                             -1 * self.isl_config.bad_qubit_pair_memory:
+                             ]
                     if x == qp
                 ]
             )
@@ -523,6 +531,8 @@ class ISLRecompiler(ApproximateRecompiler):
         return e_val_sums
 
     def _get_all_qubit_pair_priorities(self):
+        if not len(self.qubit_pair_history):
+            return [1 for _ in range(len(self.coupling_map))]
         priorities = []
         for qp in self.coupling_map:
             priorities.append(self._get_priority_of_qubit_pair(qp))
@@ -554,7 +564,7 @@ class ISLRecompiler(ApproximateRecompiler):
                 for i in range(len(self.full_circuit.data) - 1, orig_circ_len - 1, -1):
                     del self.full_circuit.data[i]
                 del self.full_circuit.cregs[-1]
-            rel_counts = {k[0 : self.total_num_qubits]: v for k, v in counts.items()}
+            rel_counts = {k[0: self.total_num_qubits]: v for k, v in counts.items()}
             return expectation_value_of_qubits(rel_counts)
         else:
             counts = self._run_full_circuit()

@@ -3,6 +3,7 @@ import logging
 import numpy as np
 from qiskit import Aer, QuantumCircuit, transpile
 from qiskit.circuit.library import CXGate
+from qiskit_aer import AerSimulator
 from qiskit_aer.backends.aerbackend import AerBackend
 from qiskit_aer.noise import thermal_relaxation_error, NoiseModel
 from scipy.optimize import curve_fit
@@ -15,20 +16,20 @@ from isl.utils.circuit_operations.circuit_operations_full_circuit import (
 )
 from isl.utils.utilityfunctions import (
     counts_data_from_statevector,
-    expectation_value_of_pauli_observable,
     is_statevector_backend,
 )
 
 QASM_SIM = Aer.get_backend("qasm_simulator")
 SV_SIM = Aer.get_backend("statevector_simulator")
+MPS_SIM = AerSimulator(method="matrix_product_state", matrix_product_state_truncation_threshold=1e-16)
 
 
 def run_circuit_with_transpilation(
-    circuit: QuantumCircuit,
-    backend=QASM_SIM,
-    backend_options=None,
-    execute_kwargs=None,
-    return_statevector=False,
+        circuit: QuantumCircuit,
+        backend=QASM_SIM,
+        backend_options=None,
+        execute_kwargs=None,
+        return_statevector=False,
 ):
     if backend == "qulacs":
         transpiled_circuit = unroll_to_basis_gates(circuit)
@@ -40,11 +41,11 @@ def run_circuit_with_transpilation(
 
 
 def run_circuit_without_transpilation(
-    circuit: QuantumCircuit,
-    backend=QASM_SIM,
-    backend_options=None,
-    execute_kwargs=None,
-    return_statevector=False,
+        circuit: QuantumCircuit,
+        backend=QASM_SIM,
+        backend_options=None,
+        execute_kwargs=None,
+        return_statevector=False,
 ):
     if execute_kwargs is None:
         execute_kwargs = {}
@@ -52,8 +53,8 @@ def run_circuit_without_transpilation(
     if backend == "qulacs":
         sv = run_on_qulacs_noiseless(circuit, False)
         if (
-            "noise_model" in execute_kwargs
-            and execute_kwargs["noise_model"] is not None
+                "noise_model" in execute_kwargs
+                and execute_kwargs["noise_model"] is not None
         ):
             raise ValueError(f"Noisy emulations on qulacs are not supported yet")
         if return_statevector:
@@ -126,7 +127,7 @@ def create_noisemodel(t1, t2, log_fidelities=True):
 
 
 def zero_noise_extrapolate(
-    circuit: QuantumCircuit, measurement_function, num_points=10
+        circuit: QuantumCircuit, measurement_function, num_points=10
 ):
     calculated_values = []
     probabilities = np.linspace(0, 1, num_points)

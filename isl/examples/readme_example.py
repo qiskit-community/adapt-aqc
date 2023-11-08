@@ -26,6 +26,10 @@ print(recompiled_circuit)
 
 qc = random_circuit(5, 5, seed=1)
 
+for i, (instr, _, _) in enumerate(qc.data):
+    if instr.name == "id":
+        qc.data.__delitem__(i)
+
 # Recompile
 config = ISLConfig(sufficient_cost=1e-2)
 recompiler = ISLRecompiler(qc, entanglement_measure=EM_TOMOGRAPHY_CONCURRENCE, isl_config=config)

@@ -1,7 +1,7 @@
 import numpy as np
 from openfermion import QubitOperator
 from qiskit import ClassicalRegister, QuantumCircuit
-from qiskit.extensions import U1Gate, UGate
+from qiskit.extensions import PhaseGate, UGate
 from qiskit.quantum_info import Pauli
 
 from isl.utils.circuit_operations.circuit_operations_full_circuit import (
@@ -35,7 +35,7 @@ def add_pauli_operators_to_circuit(
         elif pauli_axis == "Y":
             UGate(np.pi, 0, 0)
         elif pauli_axis == "Z":
-            U1Gate(np.pi)
+            PhaseGate(np.pi)
         else:
             raise ValueError(f"Unexpected pauli axis {pauli_axis}")
 
@@ -45,7 +45,7 @@ def add_pauli_operators_to_circuit(
         if pauli.x[qubit_idx]:
             if pauli.z[qubit_idx]:
                 # Measure Y
-                pauli_circuit.u1(-np.pi / 2, qubit_idx)  # sdg
+                pauli_circuit.p(-np.pi / 2, qubit_idx)  # sdg
                 pauli_circuit.u(np.pi / 2, 0.0, np.pi, qubit_idx)  # h
             else:
                 # Measure X

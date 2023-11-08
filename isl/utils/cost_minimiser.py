@@ -63,24 +63,26 @@ class CostMinimiser:
             algorithm_kind == vconstants.ALG_ROTOSOLVE
             or algorithm_kind == vconstants.ALG_ROTOSELECT
         ):
-            cost_history = []
-            cost = self.cost_finder()
-            cycles = 0
-            while cost > stop_val and cycles < max_cycles:
-                cost = self._reduce_cost(
-                    algorithm_kind == vconstants.ALG_ROTOSELECT, indexes_to_modify
-                )
-                cycles += 1
-                cost_history.append(cost)
-                if len(cost_history) > 3 and has_stopped_improving(
-                    cost_history[-3:], tol
-                ):
-                    break
             if algorithm_kind == vconstants.ALG_ROTOSOLVE:
                 alg_name = "ROTOSOLVE"
             else:
                 alg_name = "ROTOSELECT"
 
+            cost_history = []
+            cost = self.cost_finder()
+            cycles = 0
+            logger.debug(f"Starting {alg_name}")
+            while cost > stop_val and cycles < max_cycles:
+                cost = self._reduce_cost(
+                    algorithm_kind == vconstants.ALG_ROTOSELECT, indexes_to_modify
+                )
+                cycles += 1
+                logger.debug(f"{alg_name} cycle: {cycles}")
+                cost_history.append(cost)
+                if len(cost_history) > 3 and has_stopped_improving(
+                    cost_history[-3:], tol
+                ):
+                    break
             logger.debug(f"{alg_name} finished with cost {cost}")
             return cost
 
