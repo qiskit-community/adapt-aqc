@@ -292,6 +292,7 @@ class CostMinimiser:
         co.replace_1q_gate(self.full_circuit, gate_index, "rx", 0)
         cost_identity = self.cost_finder()
         best_gate_name, best_gate_angle, best_gate_cost = None, None, 1
+        # TODO Could this loop be parallelised?
         for gate_name in SUPPORTED_1Q_GATES:
             min_angle, cost = self.find_best_angle(gate_index, gate_name, cost_identity)
             if cost < best_gate_cost:

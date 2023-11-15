@@ -5,6 +5,7 @@ import timeit
 
 import numpy as np
 from qiskit import QuantumCircuit
+from qiskit.quantum_info import Pauli
 
 import isl.utils.circuit_operations as co
 import isl.utils.constants as vconstants
@@ -28,7 +29,7 @@ class ISLConfig:
     def __init__(
             self,
             max_layers: int = int(1e5),
-            sufficient_cost=1e-4,
+            sufficient_cost=1e-2,
             max_2q_gates=1e4,
             cost_improvement_num_layers=10,
             cost_improvement_tol=1e-2,
@@ -340,9 +341,11 @@ class ISLRecompiler(ApproximateRecompiler):
         end_time = timeit.default_timer()
 
         recompiled_circuit = self.get_recompiled_circuit()
-        exact_overlap = co.calculate_overlap_between_circuits(
-            self.circuit_to_recompile, co.make_quantum_only_circuit(recompiled_circuit)
-        )
+        exact_overlap = "Not computable without SV backend"
+        if is_statevector_backend(self.backend):
+            exact_overlap = co.calculate_overlap_between_circuits(
+                self.circuit_to_recompile, co.make_quantum_only_circuit(recompiled_circuit)
+            )
         result_dict = {
             "circuit": recompiled_circuit,
             "overlap": 1 - final_cost,
@@ -373,7 +376,7 @@ class ISLRecompiler(ApproximateRecompiler):
         """
         logger.debug("Finding best qubit pair")
         control, target = self._find_appropriate_qubit_pair()
-        logger.debug("Best qubit pair found")
+        logger.debug(f"Best qubit pair found {(control, target)}")
         co.add_to_circuit(
             self.full_circuit,
             self.get_layer_2q_gate(index),
@@ -439,6 +442,7 @@ class ISLRecompiler(ApproximateRecompiler):
             return self._find_best_heuristic_qubit_pair(e_val_sums, priorities)
 
         if self.isl_config.method == "ISL":
+            logger.debug("Computing entanglement of pairs")
             ems = self._get_all_qubit_pair_entanglement_measures()
             self.entanglement_measures_history.append(ems)
             return self._find_highest_entanglement_qubit_pair(
@@ -483,9 +487,11 @@ class ISLRecompiler(ApproximateRecompiler):
         if max(filtered_ems) <= 0:
             # No local entanglement detected in non-bad qubit pairs;
             # defer to using 'basic' method
+            logger.debug("No local entanglement detected in non-bad qubit pairs")
             return self._find_best_heuristic_qubit_pair(e_val_sums, priorities)
         else:
             self.pair_selection_method_history.append(f"ISL")
+            #TODO What if the entanglement is negative? Like for negativity
             return self.coupling_map[np.argmax(filtered_ems)]
 
     def _find_best_heuristic_qubit_pair(self, e_val_sums, priorities):
@@ -512,6 +518,8 @@ class ISLRecompiler(ApproximateRecompiler):
     def _get_all_qubit_pair_entanglement_measures(self):
         entanglement_measures = []
         for control, target in self.coupling_map:
+            if not is_statevector_backend(self.backend):
+                logger.debug(f"Computing entanglement for pair {(control, target)}")
             this_entanglement_measure = calculate_entanglement_measure(
                 self.entanglement_measure_method,
                 self.full_circuit,
@@ -567,5 +575,5 @@ class ISLRecompiler(ApproximateRecompiler):
             rel_counts = {k[0: self.total_num_qubits]: v for k, v in counts.items()}
             return expectation_value_of_qubits(rel_counts)
         else:
-            counts = self._run_full_circuit()
+            counts = self._run_full_circuit(return_statevector=False)
             return expectation_value_of_qubits(counts)

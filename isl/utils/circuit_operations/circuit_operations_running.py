@@ -22,7 +22,7 @@ from isl.utils.utilityfunctions import (
 QASM_SIM = Aer.get_backend("qasm_simulator")
 SV_SIM = Aer.get_backend("statevector_simulator")
 MPS_SIM = AerSimulator(method="matrix_product_state", matrix_product_state_truncation_threshold=1e-16)
-
+QULACS = "qulacs"
 
 def run_circuit_with_transpilation(
         circuit: QuantumCircuit,
@@ -61,12 +61,12 @@ def run_circuit_without_transpilation(
             return sv
         else:
             if execute_kwargs is not None and "shots" in execute_kwargs:
-                counts = counts_data_from_statevector(
+                output = counts_data_from_statevector(
                     sv, num_shots=execute_kwargs["shots"]
                 )
             else:
-                counts = counts_data_from_statevector(sv)
-            return counts
+                output = counts_data_from_statevector(sv)
+            return output
 
     # Backend options only supported for simulators
     if backend_options is None or not isinstance(backend, AerBackend):
@@ -77,13 +77,13 @@ def run_circuit_without_transpilation(
     result = job.result()
     if is_statevector_backend(backend):
         if return_statevector:
-            counts = result.get_statevector()
+            output = result.get_statevector()
         else:
-            counts = counts_data_from_statevector(result.get_statevector())
+            output = counts_data_from_statevector(result.get_statevector())
     else:
-        counts = result.get_counts()
+        output = result.get_counts()
 
-    return counts
+    return output
 
 
 def create_noisemodel(t1, t2, log_fidelities=True):

@@ -27,6 +27,7 @@ class ApproximateRecompiler(ABC):
     has the same result when acting on the given input state as the given
     circuit.
     """
+    full_circuit: QuantumCircuit
 
     def __init__(
         self,
@@ -355,10 +356,15 @@ class ApproximateRecompiler(ABC):
         :return: Cost (float)
         """
         self.cost_evaluation_counter += 1
+        if is_statevector_backend(self.backend):
+            return self._evaluate_cost_sv()
         if self.local_measurements_only:
             return self._evaluate_cost_measure_local()
         else:
             return self._evaluate_cost_measure_all()
+
+    def _evaluate_cost_sv(self):
+        return 1-co.calculate_overlap_between_circuits(self.full_circuit, QuantumCircuit(self.total_num_qubits))
 
     def _evaluate_cost_measure_all(self):
         counts = self._run_full_circuit()
@@ -441,11 +447,11 @@ class ApproximateRecompiler(ABC):
         cost = np.mean(qubit_costs)
         return cost
 
-    def _run_full_circuit(self):
+    def _run_full_circuit(self, return_statevector=None):
         """
         Run the full circuit
         :rtype: dict
-        :return: counts_data or [counts_data] (e.g. counts_data = ['000':10,
+        :return: statevector or counts_data or [counts_data] (e.g. counts_data = ['000':10,
         '010':31,'011':20,'110':40])
         """
 
@@ -453,8 +459,10 @@ class ApproximateRecompiler(ABC):
         already_in_parallel = os.environ["QISKIT_IN_PARALLEL"] == "TRUE"
         backend_options = None if already_in_parallel else self.backend_options
 
-        counts = co.run_circuit_without_transpilation(
-            self.full_circuit, self.backend, backend_options, self.execute_kwargs
+        return_sv = return_statevector if not None else is_statevector_backend(self.backend)
+
+        output = co.run_circuit_without_transpilation(
+            self.full_circuit, self.backend, backend_options, self.execute_kwargs, return_sv
         )
 
-        return counts
+        return output

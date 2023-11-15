@@ -103,7 +103,10 @@ def is_statevector_backend(backend):
     """
     if backend == "qulacs":
         return True
-    return backend.name().startswith("statevector")
+    try:
+        return backend.name().startswith("statevector")
+    except TypeError:
+        return backend.name.startswith("statevector")
 
 
 def counts_data_from_statevector(

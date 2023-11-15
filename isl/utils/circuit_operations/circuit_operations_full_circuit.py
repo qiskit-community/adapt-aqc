@@ -365,7 +365,7 @@ def circuit_by_inverting_circuit(circuit: QuantumCircuit):
         else:
             inverted_gate = gate.copy()
             inverted_gate.params[0] *= -1
-        inverted_gate.label = gate.label
+        inverted_gate.to_mutable().label = gate.label
         new_circuit.data.append((inverted_gate, qargs, cargs))
     return new_circuit
 

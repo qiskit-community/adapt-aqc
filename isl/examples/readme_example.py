@@ -1,9 +1,15 @@
+import logging
+
 from qiskit.circuit.random import random_circuit
 
 from isl.recompilers import ISLRecompiler, ISLConfig
 from qiskit import QuantumCircuit, transpile
 
 from isl.utils.entanglement_measures import EM_TOMOGRAPHY_CONCURRENCE
+
+logging.basicConfig()
+logger = logging.getLogger('isl')
+logger.setLevel(logging.DEBUG)
 
 # Setup the circuit
 qc = QuantumCircuit(3)
