@@ -55,7 +55,7 @@ class ISLConfig:
 
         Add layer criteria:
         :param max_layers_to_modify: Only the last max_layers_to_modify
-        layers will be modified using Rotoselect
+        layers will be modified when Rotosolve is called
         :param method: Method to choose qubit pair for 2-qubit gates.
             One of 'ISL', 'random', 'heuristic','basic'
 
@@ -103,7 +103,7 @@ class ISLRecompiler(ApproximateRecompiler):
             general_initial_state=False,
             custom_layer_2q_gate=None,
             starting_circuit=None,
-            use_rotosolve=True,
+            use_roto_algos=True,
             perform_final_minimisation=False,
             local_measurements_only=False,
     ):
@@ -122,8 +122,8 @@ class ISLRecompiler(ApproximateRecompiler):
         circuit. WARNING: Using an entangled circuit
             will lead to worse ISL performance because it disrupts the
             measurement of local entanglement between qubits
-        :param use_rotosolve: Whether to use rotosolve, rotoselect for cost
-        minimisation.
+        :param use_roto_algos: Whether to use rotoselect and rotosolve
+        for cost minimisation.
             Disable if custom_layer_2q_gate does not support rotosolve
         :param perform_final_minimisation: Perform a final cost minimisation
         once ISL has ended
@@ -155,7 +155,7 @@ class ISLRecompiler(ApproximateRecompiler):
         # because individual gates
         # might depend on each other.
         self.remove_unnecessary_gates = custom_layer_2q_gate is None
-        self.use_rotosolve = use_rotosolve
+        self.use_roto_algos = use_roto_algos
         self.perform_final_minimisation = perform_final_minimisation
         self.layer_2q_gate = self.construct_layer_2q_gate(custom_layer_2q_gate)
 
@@ -266,7 +266,7 @@ class ISLRecompiler(ApproximateRecompiler):
                 g_range()[1],
                 transpile_before_adding=True,
             )
-            if self.use_rotosolve:
+            if self.use_roto_algos:
                 cost = self.minimizer.minimize_cost(
                     algorithm_kind=vconstants.ALG_ROTOSOLVE,
                     tol=1e-3,
@@ -401,7 +401,7 @@ class ISLRecompiler(ApproximateRecompiler):
             self.variational_circuit_range()[1],
         )
 
-        if self.use_rotosolve:
+        if self.use_roto_algos:
             cost = self.minimizer.minimize_cost(
                 algorithm_kind=vconstants.ALG_ROTOSELECT,
                 tol=self.isl_config.rotoselect_tol,
@@ -471,13 +471,7 @@ class ISLRecompiler(ApproximateRecompiler):
         for qp in set(self.bad_qubit_pairs):
             # Find the number of times this qubit pair has occurred recently
             reps = len(
-                [
-                    x
-                    for x in self.qubit_pair_history[
-                             -1 * self.isl_config.bad_qubit_pair_memory:
-                             ]
-                    if x == qp
-                ]
+                [x for x in self.qubit_pair_history[-1 * self.isl_config.bad_qubit_pair_memory:] if x == qp]
             )
             if reps >= 1:
                 filtered_ems[self.coupling_map.index(qp)] = -1
