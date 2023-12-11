@@ -3,8 +3,9 @@ import logging
 import isl.utils.circuit_operations as co
 from isl.recompilers import ISLRecompiler
 
-logging.basicConfig(level=logging.DEBUG)
-logging.getLogger("qiskit").setLevel(logging.WARNING)
+logging.basicConfig()
+logger = logging.getLogger('isl')
+logger.setLevel(logging.DEBUG)
 
 # Create circuit creating a random initial state
 qc = co.create_random_initial_state_circuit(4)

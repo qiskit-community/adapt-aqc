@@ -12,6 +12,7 @@ CMAP_FULL = "CMAP_FULL"
 CMAP_LINEAR = "CMAP_LINEAR"
 CMAP_LADDER = "CMAP_LADDER"
 
+DEFAULT_SUFFICIENT_COST = 1e-2
 
 def generate_coupling_map(num_qubits, map_kind, both_dir=False, loop=False):
     if map_kind == CMAP_FULL:
