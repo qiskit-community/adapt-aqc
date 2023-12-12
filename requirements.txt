@@ -5,6 +5,6 @@ qiskit_aer~=0.13.1
 qiskit_experiments~=0.5.4
 qiskit_ibmq_provider~=0.20.2
 qiskit_terra~=0.45.1
-scipy~=1.11.4
+scipy~=1.9.3
 setuptools~=68.0.0
 sympy~=1.12
