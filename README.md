@@ -9,10 +9,17 @@ an ansatz, often resulting in shallower solutions than fixed-ansatz compilers.
 
 ## Installing ISL
 
-The best way of installing ISL is through `pip`:
+Whilst a public version of ISL exists through `pip install quantum-isl`, this is an old version before the QDUC project.
+To use this internally developed version (for now) you have two options.
 
+Use a stable version based on the last commit to `master`
 ```
-pip install quantum-isl
+pip install git+ssh://git@github.com/bjader/mps-isl.git
+```
+
+Use an editable local version (after already cloning this repository)
+```
+pip install -e PATH_TO_LOCAL_CLONE
 ```
 
 ## Using ISL
