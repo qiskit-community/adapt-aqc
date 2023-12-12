@@ -98,8 +98,8 @@ prepares the same state to 99.9% overlap with on average 6 CNOT gates and
 
 ## Contributing to ISL
 
-To develop within the ISL repository, including running the scripts in `/isl/examples/`, first create a Python
-environment. Then install the required dependencies
+To develop within the ISL repository, including running the scripts in `/isl/examples/`, first clone the repository.
+Then navigate to your local copy, create a Python environment and install the required dependencies
 
 ```
 pip install -r requirements.txt
