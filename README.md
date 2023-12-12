@@ -1,8 +1,9 @@
 
 # Incremental Structure Learning (ISL)
 
-An open-source implementation of ISL [1], a circuit recompilation algorithm that finds an approximate representation of
-any circuit acting on the |0>|0>...|0> state. Created for the IBM Quantum Awards: Open Sciece Prize 2021. More details of ISL and its use in the Quantum Awards can be found by downloading the submission [here](https://github.com/qiskit-community/open-science-prize-2021/blob/main/qiskit-default-winning-submission.zip).
+An open-source implementation of ISL [1], an approximate quantum compiling (AQC) algorithm  for any circuit acting
+starting from the |0>|0>...|0> state. ISL uses the entanglement structure of the target state to adaptively build
+an ansatz, often resulting in shallower solutions than fixed-ansatz compilers.
 
 [1] B Jaderberg, A Agarwal, K Leonhardt, M Kiffner, D Jaksch, 2020 Quantum Sci. Technol. 5 034015
 
@@ -94,6 +95,17 @@ In the above example, the original circuit contains 25 CNOT gates and
 32 single-qubit gates with a depth of 33. By comparison, the recompiled solution
 prepares the same state to 99.9% overlap with on average 6 CNOT gates and
 8 two-qubit gates with a depth of 9 (average tested over 10 runs).
+
+## Contributing to ISL
+
+To develop within the ISL repository, including running the scripts in `/isl/examples/`, first create a Python
+environment. Then install the required dependencies
+
+```
+pip install -r requirements.txt
+```
+
+Certain features of ISL also require additional dependencies, namely `qulacs` and `nlopt`.
 
 ## Citing usage
 
