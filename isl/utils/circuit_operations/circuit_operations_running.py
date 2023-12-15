@@ -21,7 +21,9 @@ from isl.utils.utilityfunctions import (
 
 QASM_SIM = Aer.get_backend("qasm_simulator")
 SV_SIM = Aer.get_backend("statevector_simulator")
-MPS_SIM = AerSimulator(method="matrix_product_state", matrix_product_state_truncation_threshold=1e-16, mps_log_data=True)
+# TODO can we get mps_log_data=True working without it causing an error?
+MPS_SIM = AerSimulator(method="matrix_product_state", matrix_product_state_truncation_threshold=1e-16,
+                       mps_log_data=False)
 QULACS = "qulacs"
 
 def run_circuit_with_transpilation(
