@@ -7,10 +7,23 @@ an ansatz, often resulting in shallower solutions than fixed-ansatz compilers.
 
 [1] B Jaderberg, A Agarwal, K Leonhardt, M Kiffner, D Jaksch, 2020 Quantum Sci. Technol. 5 034015
 
-## Installing ISL
+## Contributing to ISL
 
-Whilst a public version of ISL exists through `pip install quantum-isl`, this is an old version before the QDUC project.
-To use this internally developed version (for now) you have two options.
+To make changes to ISL, first clone the repository.
+Then navigate to your local copy, create a Python environment and install the required dependencies
+
+```
+pip install -r requirements.txt
+```
+
+Certain features of ISL also require additional dependencies, namely `qulacs` and `nlopt`.
+
+You can check your development environment is ready by successfully running the scripts in `/isl/examples/`.
+
+## Installing ISL for another project
+
+Whilst a public version of ISL exists through `pip install quantum-isl`, this does not (yet) include the changes made
+in this repository. To use this internally developed version you have two options.
 
 Use a stable version based on the last commit to `master`
 ```
@@ -102,17 +115,6 @@ In the above example, the original circuit contains 25 CNOT gates and
 32 single-qubit gates with a depth of 33. By comparison, the recompiled solution
 prepares the same state to 99.9% overlap with on average 6 CNOT gates and
 8 two-qubit gates with a depth of 9 (average tested over 10 runs).
-
-## Contributing to ISL
-
-To develop within the ISL repository, including running the scripts in `/isl/examples/`, first clone the repository.
-Then navigate to your local copy, create a Python environment and install the required dependencies
-
-```
-pip install -r requirements.txt
-```
-
-Certain features of ISL also require additional dependencies, namely `qulacs` and `nlopt`.
 
 ## Citing usage
 
