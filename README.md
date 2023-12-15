@@ -13,7 +13,7 @@ To make changes to ISL, first clone the repository.
 Then navigate to your local copy, create a Python environment and install the required dependencies
 
 ```
-pip install -r requirements.txt
+pip install .
 ```
 
 Certain features of ISL also require additional dependencies, namely `qulacs` and `nlopt`.
