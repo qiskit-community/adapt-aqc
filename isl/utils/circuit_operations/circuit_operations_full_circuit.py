@@ -15,7 +15,7 @@ from isl.utils.circuit_operations import (
     SUPPORTED_1Q_GATES,
     SUPPORTED_2Q_GATES,
 )
-from isl.utils.circuit_operations.circuit_operations_alternate_emulators import (
+from isl.utils.circuit_operations.circuit_operations_qulacs import (
     QULACS_BASIS_GATES,
 )
 from isl.utils.circuit_operations.circuit_operations_basic import (
@@ -431,11 +431,12 @@ def calculate_overlap_between_circuits(
         .result()
         .get_statevector()
     )
-    return np.absolute(np.vdot(sv1, sv2))
+    return np.absolute(np.vdot(sv1, sv2))**2
 
 
-def create_random_initial_state_circuit(num_qubits, return_statevector=False):
-    rand_state = random_statevector(2**num_qubits, seed()).data
+def create_random_initial_state_circuit(num_qubits, return_statevector=False, seed=None):
+    seed = seed() if None else seed
+    rand_state = random_statevector(2**num_qubits, seed).data
     qc = QuantumCircuit(num_qubits)
     qc.initialize(rand_state, qc.qubits)
     qc = unroll_to_basis_gates(qc)

@@ -1,6 +1,5 @@
 import numpy as np
 from qiskit import QuantumCircuit, transpile
-from qiskit.providers.aer.noise import NoiseModel
 
 QULACS_BASIS_GATES = ["cx", "rx", "ry", "rz", "u1", "u2", "u3", "h", "x"]
 
@@ -34,6 +33,10 @@ def run_on_qulacs_noiseless(circuit: QuantumCircuit, transpile_circuit=False):
         elif gate.name == "u2":
             circuit_qulacs.add_U2_gate(qargs[0].index, gate.params[0], gate.params[1])
         elif gate.name == "u3":
+            circuit_qulacs.add_U3_gate(
+                qargs[0].index, gate.params[0], gate.params[1], gate.params[2]
+            )
+        elif gate.name == "u":
             circuit_qulacs.add_U3_gate(
                 qargs[0].index, gate.params[0], gate.params[1], gate.params[2]
             )

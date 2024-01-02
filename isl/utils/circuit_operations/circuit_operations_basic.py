@@ -3,6 +3,7 @@ import random
 import numpy as np
 from qiskit import QuantumCircuit
 from qiskit.circuit import Gate
+from qiskit.circuit.library import UGate, RXGate, RYGate, RZGate
 from qiskit.extensions import CXGate, CZGate, U1Gate, U3Gate
 from sympy import parse_expr
 
@@ -15,11 +16,11 @@ def create_1q_gate(gate_name, angle):
     :return: New gate
     """
     if gate_name == "rx":
-        return U3Gate(angle, -0.5 * np.pi, 0.5 * np.pi, label="rx")
+        return RXGate(angle, label="rx")
     elif gate_name == "ry":
-        return U3Gate(angle, 0, 0, label="ry")
+        return RYGate(angle, label="ry")
     elif gate_name == "rz":
-        return U1Gate(angle, label="rz")
+        return RZGate(angle, label="rz")
     else:
         raise ValueError(f"Unsupported gate {gate_name}")
 

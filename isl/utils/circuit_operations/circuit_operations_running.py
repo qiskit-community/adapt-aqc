@@ -8,7 +8,7 @@ from qiskit_aer.backends.aerbackend import AerBackend
 from qiskit_aer.noise import thermal_relaxation_error, NoiseModel
 from scipy.optimize import curve_fit
 
-from isl.utils.circuit_operations.circuit_operations_alternate_emulators import (
+from isl.utils.circuit_operations.circuit_operations_qulacs import (
     run_on_qulacs_noiseless,
 )
 from isl.utils.circuit_operations.circuit_operations_full_circuit import (

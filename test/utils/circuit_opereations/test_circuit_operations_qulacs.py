@@ -7,22 +7,26 @@ import isl.utils.circuit_operations as co
 
 try:
     import qulacs
+    module_failed = False
 except ImportError:
-    SkipTest(f"Skipping as qulacs is not installed")
+    module_failed = True
 
 
 class TestQulacs(TestCase):
+    def setUp(self):
+        if module_failed:
+            self.skipTest('Skipping as qulacs is not installed')
     def test_simple_circuit_u1_u2_u3_cx_gives_same_result_as_qiskit(self):
         qc = QuantumCircuit(2)
-        qc.u2(1.9, 2.1, 0)
-        qc.u1(0.7, 0)
-        qc.u2(-0.5, -1.1, 1)
-        qc.u3(-0.5, -1.1, 2.3, 1)
+        qc.u(np.pi/2, 1.9, 2.1, 0)
+        qc.u(0, 0, 0.7, 0)
+        qc.u(np.pi/2, -0.5, -1.1, 1)
+        qc.u(-0.5, -1.1, 2.3, 1)
         qc.cx(0, 1)
-        qc.u1(2.7, 0)
-        qc.u3(-0.5, -1.1, -1.94, 1)
-        qc.u2(-0.15, -2.1, 1)
-        qc.u1(-1.2, 1)
+        qc.u(0, 0, 2.7, 0)
+        qc.u(-0.5, -1.1, -1.94, 1)
+        qc.u(np.pi/2, -0.15, -2.1, 1)
+        qc.u(0, 0, -1.2, 1)
         sv_qulacs = co.run_circuit_without_transpilation(
             qc, "qulacs", return_statevector=True
         )

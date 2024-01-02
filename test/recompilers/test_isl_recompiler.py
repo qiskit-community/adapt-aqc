@@ -1,31 +1,47 @@
+import logging
 from unittest import TestCase
 
-from qiskit import Aer, ClassicalRegister, QuantumCircuit, QuantumRegister, transpile
+from qiskit import ClassicalRegister, QuantumCircuit, QuantumRegister
 
 import isl.utils.circuit_operations as co
 from isl.recompilers import ISLConfig, ISLRecompiler
-from isl.utils.circuit_operations import QASM_SIM, SV_SIM
+from isl.utils.circuit_operations import QASM_SIM, SV_SIM, MPS_SIM
 from isl.utils.constants import DEFAULT_SUFFICIENT_COST
 
+logging.basicConfig()
+logger = logging.getLogger('isl')
+logger.setLevel(logging.DEBUG)
 
 class TestISL(TestCase):
     def test_basic_sv(self):
-        qc = co.create_random_initial_state_circuit(3)
+        qc = co.create_random_initial_state_circuit(3, seed=1)
         qc = co.unroll_to_basis_gates(qc)
 
-        isl_recompiler = ISLRecompiler(qc, backend=SV_SIM)
+        isl_recompiler = ISLRecompiler(qc, backend=SV_SIM, isl_config=ISLConfig(sufficient_cost=1e-2))
 
         result = isl_recompiler.recompile()
         approx_circuit = result["circuit"]
 
+
         overlap = co.calculate_overlap_between_circuits(approx_circuit, qc)
-        assert overlap > 1-DEFAULT_SUFFICIENT_COST
+        assert overlap > 1 - DEFAULT_SUFFICIENT_COST
 
     def test_basic_qasm(self):
-        qc = co.create_random_initial_state_circuit(2)
+        qc = co.create_random_initial_state_circuit(3 ,seed=1)
         qc = co.unroll_to_basis_gates(qc)
 
-        isl_recompiler_qasm = ISLRecompiler(qc, backend=QASM_SIM)
+        isl_recompiler_qasm = ISLRecompiler(qc, backend=QASM_SIM, execute_kwargs={'shots':1e4})
+
+        result_qasm = isl_recompiler_qasm.recompile()
+        approx_circuit_qasm = result_qasm["circuit"]
+        overlap = co.calculate_overlap_between_circuits(approx_circuit_qasm, qc)
+        assert overlap > 1-DEFAULT_SUFFICIENT_COST
+
+    def test_basic_mps(self):
+        qc = co.create_random_initial_state_circuit(3, seed=1)
+        qc = co.unroll_to_basis_gates(qc)
+
+        isl_recompiler_qasm = ISLRecompiler(qc, backend=MPS_SIM)
 
         result_qasm = isl_recompiler_qasm.recompile()
         approx_circuit_qasm = result_qasm["circuit"]
@@ -34,7 +50,7 @@ class TestISL(TestCase):
         assert overlap > 1-DEFAULT_SUFFICIENT_COST
 
     def test_exact_overlap_close_to_approx_overlap(self):
-        qc = co.create_random_initial_state_circuit(2)
+        qc = co.create_random_initial_state_circuit(3)
         qc = co.unroll_to_basis_gates(qc)
 
         isl_recompiler = ISLRecompiler(qc)
@@ -46,7 +62,7 @@ class TestISL(TestCase):
         self.assertAlmostEquals(approx_overlap, exact_overlap, delta=1e-2)
 
     def test_exact_overlap_calculated_correctly(self):
-        qc = co.create_random_initial_state_circuit(2)
+        qc = co.create_random_initial_state_circuit(3)
         qc = co.unroll_to_basis_gates(qc)
 
         isl_recompiler = ISLRecompiler(qc)
@@ -58,7 +74,7 @@ class TestISL(TestCase):
         self.assertAlmostEquals(exact_overlap1, exact_overlap2, delta=1e-2)
 
     def test_local_measurements(self):
-        qc = co.create_random_initial_state_circuit(2)
+        qc = co.create_random_initial_state_circuit(3)
         qc = co.unroll_to_basis_gates(qc)
         isl_config = ISLConfig(cost_improvement_num_layers=10)
 
@@ -121,7 +137,7 @@ class TestISL(TestCase):
         approx_circuit = result["circuit"]
 
         overlap = co.calculate_overlap_between_circuits(approx_circuit, qc_mod)
-        assert overlap > 0.99
+        assert overlap > 1-DEFAULT_SUFFICIENT_COST
 
     def test_heuristic_methods(self):
         qc = co.create_random_initial_state_circuit(3)
@@ -191,8 +207,7 @@ class TestISL(TestCase):
         qc = QuantumCircuit(qreg, creg)
 
         recompiler = ISLRecompiler(qc)
-        result = recompiler.recompile()
-        print(result)
+        recompiler.recompile()
 
     def test_given_circuit_with_cregs_when_recompiling_then_register_names_preserved(
         self,
@@ -213,10 +228,7 @@ class TestISL(TestCase):
         qc.cx(0, 1)
         qc.measure(0, 0)
         recompiler = ISLRecompiler(qc)
-        result = recompiler.recompile()
-        print(result["circuit"])
-        # assert False
-
+        recompiler.recompile()
     def test_given_circuit_with_one_measurement_when_recompiling_then_preserve_measurement(
         self,
     ):
@@ -245,16 +257,37 @@ class TestISL(TestCase):
         assert result["circuit"].data[-num_measurements:] == qc.data[-num_measurements:]
         print(result["circuit"])
 
+
+try:
+    import qulacs
+    module_failed = False
+except ImportError:
+    module_failed = True
+
+
+class TestISLQulacs(TestCase):
+
+    def setUp(self):
+        if module_failed:
+            self.skipTest('Skipping as qulacs is not installed')
     def test_qulacs_recompiler(self):
+        logging.basicConfig()
+        logger = logging.getLogger('isl')
+        logger.setLevel(logging.DEBUG)
+
         qc = co.create_random_initial_state_circuit(3)
         qc = co.unroll_to_basis_gates(qc)
 
-        isl_recompiler = ISLRecompiler(qc, backend="qulacs")
+        config = ISLConfig(cost_improvement_num_layers=1e3)
+        isl_recompiler = ISLRecompiler(qc, backend="qulacs", isl_config=config)
 
         result = isl_recompiler.recompile()
         approx_circuit = result["circuit"]
 
+        print(result["overlap"])
+        print(result["exact_overlap"])
         overlap = co.calculate_overlap_between_circuits(approx_circuit, qc)
+        print(overlap)
         assert overlap > 1-DEFAULT_SUFFICIENT_COST
 
     def test_qulacs_recompiler_noise_give_error(self):
@@ -265,7 +298,7 @@ class TestISL(TestCase):
             qc, backend="qulacs", execute_kwargs={"noise_model": nm}
         )
         with self.assertRaises(ValueError):
-            result = isl_recompiler.recompile()
+            isl_recompiler.recompile()
 
     def test_with_initial_ansatz(self):
         qc = co.create_random_initial_state_circuit(3)

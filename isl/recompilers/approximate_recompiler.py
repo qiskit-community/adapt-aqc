@@ -364,7 +364,9 @@ class ApproximateRecompiler(ABC):
             return self._evaluate_cost_measure_all()
 
     def _evaluate_cost_sv(self):
-        return 1-co.calculate_overlap_between_circuits(self.full_circuit, QuantumCircuit(self.total_num_qubits))
+        sv1 = self._run_full_circuit(return_statevector=True)
+        cost = 1-(np.absolute(sv1[0]))**2
+        return cost
 
     def _evaluate_cost_measure_all(self):
         counts = self._run_full_circuit()
@@ -459,7 +461,7 @@ class ApproximateRecompiler(ABC):
         already_in_parallel = os.environ["QISKIT_IN_PARALLEL"] == "TRUE"
         backend_options = None if already_in_parallel else self.backend_options
 
-        return_sv = return_statevector if not None else is_statevector_backend(self.backend)
+        return_sv = is_statevector_backend(self.backend) if None else return_statevector
 
         output = co.run_circuit_without_transpilation(
             self.full_circuit, self.backend, backend_options, self.execute_kwargs, return_sv

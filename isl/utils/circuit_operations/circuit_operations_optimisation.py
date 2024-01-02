@@ -107,7 +107,7 @@ def remove_unnecessary_1q_gates_from_circuit(
         # theta) * Rz(lambda)
         # RXGate, RYGate, RZGate do not implement to_matrix() but their
         # definitions (U3Gate or U1Gate) do
-        matrix = circuit.data[gate_index][0].definition[0][0].to_matrix()
+        matrix = circuit.data[gate_index][0].to_matrix()
         prev_gate_indexes = [gate_index]
         prev_gate, prev_gate_index = find_previous_gate_on_qubit(circuit, gate_index)
 
@@ -130,7 +130,7 @@ def remove_unnecessary_1q_gates_from_circuit(
             else:
                 prev_gate_indexes += [prev_gate_index]
                 prev_gate_matrix = (
-                    circuit.data[prev_gate_index][0].definition[0][0].to_matrix()
+                    circuit.data[prev_gate_index][0].to_matrix()
                 )
                 matrix = np.matmul(matrix, prev_gate_matrix)
             prev_gate, prev_gate_index = find_previous_gate_on_qubit(

@@ -12,21 +12,17 @@ class TestBasicCircuitOperations(TestCase):
         ry_gate = create_1q_gate("ry", -0.5)
         rz_gate = create_1q_gate("rz", 0.23)
         assert (
-            rx_gate.name == "u3"
+            rx_gate.name == "rx"
             and rx_gate.params[0] == 0.5
-            and rx_gate.params[1] == -np.pi / 2
-            and rx_gate.params[2] == np.pi / 2
             and rx_gate.label == "rx"
         )
         assert (
-            ry_gate.name == "u3"
+            ry_gate.name == "ry"
             and ry_gate.params[0] == -0.5
-            and ry_gate.params[1] == 0
-            and ry_gate.params[2] == 0
             and ry_gate.label == "ry"
         )
         assert (
-            rz_gate.name == "u1" and rz_gate.params[0] == 0.23 and rz_gate.label == "rz"
+            rz_gate.name == "rz" and rz_gate.params[0] == 0.23 and rz_gate.label == "rz"
         )
 
     def test_create_2q_gate(self):
