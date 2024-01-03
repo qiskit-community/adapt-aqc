@@ -7,10 +7,9 @@ import isl.utils.circuit_operations as co
 from isl.recompilers import ISLConfig, ISLRecompiler
 
 
-logging.basicConfig(level=logging.DEBUG)
-logging.getLogger("qiskit").setLevel(logging.WARNING)
-logging.getLogger("qiskit_experiments").setLevel(logging.WARNING)
-logging.getLogger("stevedore").setLevel(logging.WARNING)
+logging.basicConfig()
+logger = logging.getLogger('isl')
+logger.setLevel(logging.DEBUG)
 
 num_qubits = 4
 qc = co.create_random_initial_state_circuit(num_qubits)

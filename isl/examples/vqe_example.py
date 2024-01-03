@@ -5,8 +5,9 @@ from isl.utils.constants import ALG_ROTOSOLVE
 from isl.utils.fixed_ansatz_circuits import hardware_efficient_circuit
 from isl.vqe import FixedAnsatzVQE
 
-logging.basicConfig(level=logging.DEBUG)
-logging.getLogger("qiskit").setLevel(logging.WARNING)
+logging.basicConfig()
+logger = logging.getLogger('isl')
+logger.setLevel(logging.DEBUG)
 
 num_qubits = 4
 qc = co.create_random_initial_state_circuit(num_qubits)
