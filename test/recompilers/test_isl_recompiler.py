@@ -32,7 +32,7 @@ class TestISL(TestCase):
         result_qasm = isl_recompiler_qasm.recompile()
         approx_circuit_qasm = result_qasm["circuit"]
         overlap = co.calculate_overlap_between_circuits(approx_circuit_qasm, qc)
-        assert overlap > 1 - DEFAULT_SUFFICIENT_COST - 5/np.sqrt(shots)
+        assert overlap > 1 - DEFAULT_SUFFICIENT_COST - 5 / np.sqrt(shots)
 
     def test_basic_mps(self):
         qc = co.create_random_initial_state_circuit(3, seed=1)
@@ -45,7 +45,7 @@ class TestISL(TestCase):
         approx_circuit_qasm = result_qasm["circuit"]
 
         overlap = co.calculate_overlap_between_circuits(approx_circuit_qasm, qc)
-        assert overlap > 1 - DEFAULT_SUFFICIENT_COST - 5/np.sqrt(shots)
+        assert overlap > 1 - DEFAULT_SUFFICIENT_COST - 5 / np.sqrt(shots)
 
     def test_exact_overlap_close_to_approx_overlap(self):
         qc = co.create_random_initial_state_circuit(3)
@@ -71,19 +71,27 @@ class TestISL(TestCase):
         exact_overlap2 = co.calculate_overlap_between_circuits(approx_circuit, qc)
         self.assertAlmostEquals(exact_overlap1, exact_overlap2, delta=1e-2)
 
-    def test_local_measurements(self):
+    def test_local_measurements_sv(self):
         qc = co.create_random_initial_state_circuit(3)
         qc = co.unroll_to_basis_gates(qc)
         isl_config = ISLConfig(cost_improvement_num_layers=10)
 
-        for backend in [SV_SIM, QASM_SIM]:
-            isl_recompiler = ISLRecompiler(
-                qc, local_measurements_only=True, backend=backend, isl_config=isl_config
-            )
-            result = isl_recompiler.recompile()
-            approx_circuit = result["circuit"]
-            overlap = co.calculate_overlap_between_circuits(approx_circuit, qc)
-            assert overlap > 1 - DEFAULT_SUFFICIENT_COST
+        isl_recompiler = ISLRecompiler(
+            qc, local_measurements_only=True, backend=SV_SIM, isl_config=isl_config
+        )
+        result = isl_recompiler.recompile()
+        approx_circuit = result["circuit"]
+        overlap = co.calculate_overlap_between_circuits(approx_circuit, qc)
+        assert overlap > 1 - DEFAULT_SUFFICIENT_COST
+
+    def test_local_measurements_not_supported_for_qasm_and_mps(self):
+        qc = co.create_random_initial_state_circuit(3)
+        qc = co.unroll_to_basis_gates(qc)
+        isl_config = ISLConfig(cost_improvement_num_layers=10)
+
+        for backend in [QASM_SIM, MPS_SIM]:
+            with self.assertRaises(NotImplementedError):
+                ISLRecompiler(qc, local_measurements_only=True, backend=backend, isl_config=isl_config)
 
     def test_custom_layer_gate(self):
         from qiskit import QuantumCircuit

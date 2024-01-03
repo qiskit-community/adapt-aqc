@@ -30,15 +30,15 @@ class ApproximateRecompiler(ABC):
     full_circuit: QuantumCircuit
 
     def __init__(
-        self,
-        circuit_to_recompile: QuantumCircuit,
-        backend,
-        execute_kwargs=None,
-        initial_state=None,
-        qubit_subset=None,
-        general_initial_state=False,
-        starting_circuit=None,
-        local_measurements_only=False,
+            self,
+            circuit_to_recompile: QuantumCircuit,
+            backend,
+            execute_kwargs=None,
+            initial_state=None,
+            qubit_subset=None,
+            general_initial_state=False,
+            starting_circuit=None,
+            local_measurements_only=False,
     ):
         """
         :param circuit_to_recompile: Circuit that is to be recompiled
@@ -72,6 +72,9 @@ class ApproximateRecompiler(ABC):
         self.general_initial_state = general_initial_state
         self.starting_circuit = starting_circuit
         self.local_measurements_only = local_measurements_only
+        if (not is_statevector_backend(self.backend)) and (self.local_measurements_only):
+            raise NotImplementedError(
+                "Local Hilbert Schmidt Test cost function is only supported for statevector simulators currently")
         if initial_state is not None and general_initial_state:
             raise ValueError(
                 "Can't recompile for general initial state when specific "
@@ -110,7 +113,7 @@ class ApproximateRecompiler(ABC):
         kwargs = {} if execute_kwargs is None else dict(execute_kwargs)
         if "shots" not in kwargs:
             if self.backend == "qulacs":
-                kwargs["shots"] = 2**30
+                kwargs["shots"] = 2 ** 30
             elif not is_statevector_backend(self.backend):
                 kwargs["shots"] = 8192
             else:
@@ -122,8 +125,8 @@ class ApproximateRecompiler(ABC):
     def parse_default_backend_options(self):
         backend_options = {}
         if (
-            "noise_model" in self.execute_kwargs
-            and self.execute_kwargs["noise_model"] is not None
+                "noise_model" in self.execute_kwargs
+                and self.execute_kwargs["noise_model"] is not None
         ):
             backend_options["method"] = "automatic"
         else:
@@ -217,7 +220,7 @@ class ApproximateRecompiler(ABC):
             del partial_recompilation_result["circuit"]
             individual_results.append(partial_recompilation_result)
             percentage = (
-                100 * (1 + all_subcircuits.index(subcircuit)) / len(all_subcircuits)
+                    100 * (1 + all_subcircuits.index(subcircuit)) / len(all_subcircuits)
             )
             logger.debug(f"Completed {percentage}%  of recompilation")
 
@@ -365,7 +368,7 @@ class ApproximateRecompiler(ABC):
 
     def _evaluate_cost_sv(self):
         sv1 = self._run_full_circuit(return_statevector=True)
-        cost = 1-(np.absolute(sv1[0]))**2
+        cost = 1 - (np.absolute(sv1[0])) ** 2
         return cost
 
     def _evaluate_cost_measure_all(self):
@@ -394,27 +397,27 @@ class ApproximateRecompiler(ABC):
             for i in range(self.total_num_qubits):
                 if self.general_initial_state:
                     overlap = (
-                        sum(
-                            [
-                                count
-                                for bit_str, count in counts.items()
-                                if bit_str[-1 * (1 + i)] == "0"
-                                and bit_str[-1 * (1 + i + self.total_num_qubits)] == "0"
-                            ]
-                        )
-                        / total_shots
+                            sum(
+                                [
+                                    count
+                                    for bit_str, count in counts.items()
+                                    if bit_str[-1 * (1 + i)] == "0"
+                                       and bit_str[-1 * (1 + i + self.total_num_qubits)] == "0"
+                                ]
+                            )
+                            / total_shots
                     )
                     qubit_costs[i] = 1 - overlap
                 else:
                     overlap = (
-                        sum(
-                            [
-                                count
-                                for bit_str, count in counts.items()
-                                if bit_str[-1 * (1 + i)] == "0"
-                            ]
-                        )
-                        / total_shots
+                            sum(
+                                [
+                                    count
+                                    for bit_str, count in counts.items()
+                                    if bit_str[-1 * (1 + i)] == "0"
+                                ]
+                            )
+                            / total_shots
                     )
                     qubit_costs[i] = 1 - overlap
             cost = np.mean(qubit_costs)
