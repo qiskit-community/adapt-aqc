@@ -4,8 +4,6 @@ import isl.utils.circuit_operations as co
 from isl.recompilers import RotoselectRecompiler
 from isl.utils.constants import DEFAULT_SUFFICIENT_COST
 
-import logging
-
 class TestRotoselectRecompiler(TestCase):
     def test_no_initial_state(self):
         qc = co.create_random_initial_state_circuit(3)
@@ -53,11 +51,9 @@ class TestRotoselectRecompiler(TestCase):
         result = roto_recompiler.recompile()
         approx_circuit = result["circuit"]
         rand_initial_state = co.create_random_initial_state_circuit(num_qubits)
-        print(f'Recompilation final overlap: {result["overlap"]}')
         overlap = co.calculate_overlap_between_circuits(
             approx_circuit, qc, rand_initial_state
         )
-        print(overlap)
         assert overlap > 1 - DEFAULT_SUFFICIENT_COST
 
     def test_no_initial_state_qulacs(self):

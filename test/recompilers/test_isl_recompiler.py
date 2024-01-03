@@ -193,7 +193,6 @@ class TestISL(TestCase):
         qc = QuantumCircuit(qr1, qr2)
         recompiler = ISLRecompiler(qc)
         result = recompiler.recompile()
-        print(result.get("circuit"))
 
     def test_given_two_registers_when_recompiling_then_register_names_preserved(self):
         qr1 = QuantumRegister(2, "reg1")
@@ -243,7 +242,6 @@ class TestISL(TestCase):
         recompiler = ISLRecompiler(qc)
         result = recompiler.recompile()
         assert result["circuit"].data[-1] == qc.data[-1]
-        print(result["circuit"])
 
     def test_given_circuit_with_multi_measurement_when_recompiling_then_preserve_measurement(self):
         num_measurements = 3
@@ -256,7 +254,6 @@ class TestISL(TestCase):
         recompiler = ISLRecompiler(qc)
         result = recompiler.recompile()
         assert result["circuit"].data[-num_measurements:] == qc.data[-num_measurements:]
-        print(result["circuit"])
 
 
 try:
@@ -283,10 +280,7 @@ class TestISLQulacs(TestCase):
         result = isl_recompiler.recompile()
         approx_circuit = result["circuit"]
 
-        print(result["overlap"])
-        print(result["exact_overlap"])
         overlap = co.calculate_overlap_between_circuits(approx_circuit, qc)
-        print(overlap)
         assert overlap > 1 - DEFAULT_SUFFICIENT_COST
 
     def test_qulacs_recompiler_noise_give_error(self):
