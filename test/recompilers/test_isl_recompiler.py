@@ -41,7 +41,7 @@ class TestISL(TestCase):
         qc = co.create_random_initial_state_circuit(3, seed=1)
         qc = co.unroll_to_basis_gates(qc)
 
-        isl_recompiler_qasm = ISLRecompiler(qc, backend=MPS_SIM)
+        isl_recompiler_qasm = ISLRecompiler(qc, backend=MPS_SIM, execute_kwargs={'shots':1e4})
 
         result_qasm = isl_recompiler_qasm.recompile()
         approx_circuit_qasm = result_qasm["circuit"]
