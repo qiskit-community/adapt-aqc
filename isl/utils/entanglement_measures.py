@@ -92,12 +92,10 @@ def perform_quantum_tomography(
     :return:
     """
     execute_kwargs = {} if execute_kwargs is None else execute_kwargs
-    classical_gates = co.remove_classical_operations(circuit)
     old_cregs = circuit.cregs.copy()
     circuit.cregs = []
     tomography_exp = StateTomography(circuit, measurement_indices=[qubit_1, qubit_2])
     circuit.cregs = old_cregs
-    co.add_classical_operations(circuit, classical_gates)
 
     # Backend options only supported for simulators
     if backend_options is None or not isinstance(backend, AerBackend):
