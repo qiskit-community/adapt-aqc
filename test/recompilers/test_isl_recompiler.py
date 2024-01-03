@@ -1,4 +1,3 @@
-import logging
 from unittest import TestCase
 
 from qiskit import ClassicalRegister, QuantumCircuit, QuantumRegister
@@ -7,10 +6,6 @@ import isl.utils.circuit_operations as co
 from isl.recompilers import ISLConfig, ISLRecompiler
 from isl.utils.circuit_operations import QASM_SIM, SV_SIM, MPS_SIM
 from isl.utils.constants import DEFAULT_SUFFICIENT_COST
-
-logging.basicConfig()
-logger = logging.getLogger('isl')
-logger.setLevel(logging.DEBUG)
 
 
 class TestISL(TestCase):
@@ -268,10 +263,6 @@ class TestISLQulacs(TestCase):
             self.skipTest('Skipping as qulacs is not installed')
 
     def test_qulacs_recompiler(self):
-        logging.basicConfig()
-        logger = logging.getLogger('isl')
-        logger.setLevel(logging.DEBUG)
-
         qc = co.create_random_initial_state_circuit(3)
         qc = co.unroll_to_basis_gates(qc)
 
