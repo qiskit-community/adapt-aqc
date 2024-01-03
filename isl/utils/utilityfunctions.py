@@ -130,7 +130,6 @@ def counts_data_from_statevector(
     return counts
 
 
-# TODO: Add test
 def statevector_from_counts_data(counts):
     """
     Get statevector from counts (works only for real, positive states)

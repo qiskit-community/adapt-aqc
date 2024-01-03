@@ -485,7 +485,6 @@ class ISLRecompiler(ApproximateRecompiler):
             return self._find_best_heuristic_qubit_pair(e_val_sums, priorities)
         else:
             self.pair_selection_method_history.append(f"ISL")
-            #TODO What if the entanglement is negative? Like for negativity
             return self.coupling_map[np.argmax(filtered_ems)]
 
     def _find_best_heuristic_qubit_pair(self, e_val_sums, priorities):
