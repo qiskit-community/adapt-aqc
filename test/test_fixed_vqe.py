@@ -9,10 +9,10 @@ from isl.utils.fixed_ansatz_circuits import hardware_efficient_circuit
 from isl.vqe import FixedAnsatzVQE
 
 TEST_QO = (
-    QubitOperator("", 0.2)
-    - QubitOperator("Y0 X1", 1.1)
-    + QubitOperator("Z1 X1", 0.9)
-    - QubitOperator("X1", -0.2)
+        QubitOperator("", 0.2)
+        - QubitOperator("Y0 X1", 1.1)
+        + QubitOperator("Z1 X1", 0.9)
+        - QubitOperator("X1", -0.2)
 )
 TEST_QO = TEST_QO + hermitian_conjugated(TEST_QO)
 

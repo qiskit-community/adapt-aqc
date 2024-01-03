@@ -16,7 +16,7 @@ class TestRotoselectRecompiler(TestCase):
         approx_circuit = result["circuit"]
 
         overlap = co.calculate_overlap_between_circuits(approx_circuit, qc)
-        assert overlap > 1-DEFAULT_SUFFICIENT_COST
+        assert overlap > 1 - DEFAULT_SUFFICIENT_COST
 
     def test_with_initial_state_and_qubit_subset(self):
         # 3 qubit initial state
@@ -38,7 +38,7 @@ class TestRotoselectRecompiler(TestCase):
         overlap = co.calculate_overlap_between_circuits(
             approx_circuit, qc, rand_initial_state, qubit_subset
         )
-        assert overlap > 1-DEFAULT_SUFFICIENT_COST
+        assert overlap > 1 - DEFAULT_SUFFICIENT_COST
 
     def test_general_initial_state(self):
         num_qubits = 2
@@ -57,7 +57,7 @@ class TestRotoselectRecompiler(TestCase):
             approx_circuit, qc, rand_initial_state
         )
         print(overlap)
-        assert overlap > 1-DEFAULT_SUFFICIENT_COST
+        assert overlap > 1 - DEFAULT_SUFFICIENT_COST
 
     def test_no_initial_state_qulacs(self):
         qc = co.create_random_initial_state_circuit(3)
@@ -69,4 +69,4 @@ class TestRotoselectRecompiler(TestCase):
         approx_circuit = result["circuit"]
 
         overlap = co.calculate_overlap_between_circuits(approx_circuit, qc)
-        assert overlap > 1-DEFAULT_SUFFICIENT_COST
+        assert overlap > 1 - DEFAULT_SUFFICIENT_COST

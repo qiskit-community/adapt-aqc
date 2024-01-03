@@ -12,17 +12,17 @@ class TestBasicCircuitOperations(TestCase):
         ry_gate = create_1q_gate("ry", -0.5)
         rz_gate = create_1q_gate("rz", 0.23)
         assert (
-            rx_gate.name == "rx"
-            and rx_gate.params[0] == 0.5
-            and rx_gate.label == "rx"
+                rx_gate.name == "rx"
+                and rx_gate.params[0] == 0.5
+                and rx_gate.label == "rx"
         )
         assert (
-            ry_gate.name == "ry"
-            and ry_gate.params[0] == -0.5
-            and ry_gate.label == "ry"
+                ry_gate.name == "ry"
+                and ry_gate.params[0] == -0.5
+                and ry_gate.label == "ry"
         )
         assert (
-            rz_gate.name == "rz" and rz_gate.params[0] == 0.23 and rz_gate.label == "rz"
+                rz_gate.name == "rz" and rz_gate.params[0] == 0.23 and rz_gate.label == "rz"
         )
 
     def test_create_2q_gate(self):
@@ -60,9 +60,9 @@ class TestBasicCircuitOperations(TestCase):
         # qc.data has form [(gate,qargs,cargs)] where qargs,cargs have form
         # [Qubit]
         assert (
-            qc.data[1][0].name == "cz"
-            and qc.data[1][1][0].index == 1
-            and qc.data[1][1][1].index == 2
+                qc.data[1][0].name == "cz"
+                and qc.data[1][1][0].index == 1
+                and qc.data[1][1][1].index == 2
         )
 
     def test_is_supported_1q_gate(self):
@@ -310,7 +310,7 @@ class TestMiscCircuitOperations(TestCase):
 
         # Test Vector
         qubits = 3
-        x = np.random.RandomState().standard_normal(2**qubits)
+        x = np.random.RandomState().standard_normal(2 ** qubits)
         rand_state = x / np.linalg.norm(x)
 
         qc = QuantumCircuit(qubits)
