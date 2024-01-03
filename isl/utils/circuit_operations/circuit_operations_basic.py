@@ -180,7 +180,7 @@ def random_1q_gate():
 SUPPORTED_1Q_GATES = ["rx", "ry", "rz"]
 SUPPORTED_2Q_GATES = ["cx", "cz"]
 BASIS_GATES = ["u3", "cx", "cz", "rx", "ry", "rz", "x", "y", "z", "XY", "ZZ", "h"]
-DEFAULT_GATES = ["u1", "u2", "u3", "cx", "id", "measure", "reset"]
+DEFAULT_GATES = ["rz", "rx", "ry", "u1", "u2", "u3", "cx", "id", "measure", "reset"]
 
 
 def create_independent_parameterised_gate(gate_type, variable_name, angle=0):
