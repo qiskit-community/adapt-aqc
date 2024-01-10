@@ -20,6 +20,7 @@ EM_OBSERVABLE_CONCURRENCE_LOWER_BOUND = "EM_OBSERVABLE_CONCURRENCE_LOWER_BOUND"
 EM_TOMOGRAPHY_EOF = "EM_TOMOGRAPHY_EOF"
 EM_TOMOGRAPHY_CONCURRENCE = "EM_TOMOGRAPHY_CONCURRENCE"
 EM_TOMOGRAPHY_NEGATIVITY = "EM_TOMOGRAPHY_NEGATIVITY"
+EM_TOMOGRAPHY_LOG_NEGATIVITY = "EM_TOMOGRAPHY_LOG_NEGATIVITY"
 
 
 def calculate_entanglement_measure(
@@ -68,6 +69,8 @@ def calculate_entanglement_measure(
             return concurrence(rho)
         elif method == EM_TOMOGRAPHY_NEGATIVITY:
             return negativity(rho)
+        elif method == EM_TOMOGRAPHY_LOG_NEGATIVITY:
+            return log_negativity(rho)
         else:
             raise ValueError("Invalid entanglement measure method")
 
@@ -272,6 +275,12 @@ def negativity(rho):
     transposed = partial_transpose(rho)
     t_norm = trace_norm(transposed)
     return (t_norm - 1) / 2
+
+
+def log_negativity(rho):
+    transposed = partial_transpose(rho)
+    t_norm = trace_norm(transposed)
+    return np.log2(t_norm)
 
 
 # Helper functions
