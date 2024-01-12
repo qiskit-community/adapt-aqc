@@ -250,6 +250,7 @@ class ISLRecompiler(ApproximateRecompiler):
         'circuit_qasm': QASM string of the resulting circuit
         """
         logger.info("ISL started")
+        logger.debug(f"ISL coupling map {self.coupling_map}")
         start_time = timeit.default_timer()
         self.cost_evaluation_counter = 0
         cost, num_1q_gates, num_2q_gates = None, None, None
@@ -289,7 +290,7 @@ class ISLRecompiler(ApproximateRecompiler):
             if already_successful:
                 break
 
-            logger.debug(f"Cost before adding layer: {cost}")
+            logger.info(f"Cost before adding layer: {cost}")
             cost = self._add_layer(layer_count)
             cost_history.append(cost)
             if self.remove_unnecessary_gates:
@@ -305,14 +306,14 @@ class ISLRecompiler(ApproximateRecompiler):
             if len(cost_history) >= cinl and has_stopped_improving(
                     cost_history[-1 * cinl:], cit
             ):
-                logger.debug("ISL stopped improving")
+                logger.warning("ISL stopped improving")
                 break
 
             if cost < self.isl_config.sufficient_cost:
-                logger.debug("ISL successfully found approximate circuit")
+                logger.info("ISL successfully found approximate circuit")
                 break
             elif num_2q_gates >= self.isl_config.max_2q_gates:
-                logger.debug("ISL MAX_2Q_GATES reached. Using ROTOSOLVE one last time")
+                logger.warning("ISL MAX_2Q_GATES reached. Using ROTOSOLVE one last time")
                 self.minimizer.minimize_cost(
                     algorithm_kind=vconstants.ALG_ROTOSOLVE,
                     max_cycles=10,
@@ -461,10 +462,12 @@ class ISLRecompiler(ApproximateRecompiler):
             pre_em = self.entanglement_measures_history[-2][prev_qp_index]
             post_em = self.entanglement_measures_history[-1][prev_qp_index]
             if post_em >= pre_em:
-                # Previous qubit pair was bad. Add to bad_qubit_pairs list
+                logger.debug(f"Entanglement did not reduce for previous pair {self.coupling_map[prev_qp_index]}. "
+                             f"Adding to bad qubit pairs list.")
                 self.bad_qubit_pairs.append(self.coupling_map[prev_qp_index])
             if len(self.bad_qubit_pairs) > self.isl_config.bad_qubit_pair_memory:
                 # Maintain max size of bad_qubit_pairs
+                logger.debug(f"Max size of bad qubit pairs reached. Removing {self.bad_qubit_pairs[0]} from list.")
                 del self.bad_qubit_pairs[0]
 
         filtered_ems = entanglement_measures.copy()
@@ -478,28 +481,28 @@ class ISLRecompiler(ApproximateRecompiler):
         if len(self.qubit_pair_history) > 0:
             # Avoid using same qubit pair as the one used immediately before
             filtered_ems[self.coupling_map.index(self.qubit_pair_history[-1])] = -1
+        logger.debug(f"Entanglement of all pairs: {filtered_ems}")
         if max(filtered_ems) <= 0:
             # No local entanglement detected in non-bad qubit pairs;
             # defer to using 'basic' method
-            logger.debug("No local entanglement detected in non-bad qubit pairs")
+            logger.info("No local entanglement detected in non-bad qubit pairs")
             return self._find_best_heuristic_qubit_pair(e_val_sums, priorities)
         else:
             self.pair_selection_method_history.append(f"ISL")
             return self.coupling_map[np.argmax(filtered_ems)]
 
     def _find_best_heuristic_qubit_pair(self, e_val_sums, priorities):
-        # Choose the qubit pair to be the
-        # one with the highest sum of expectation
-        # values multiplied by the 'priority' of that pair. The priority
-        # of a pair depends on how long ago a CNOT
-        # was added to that qubit pair such that the priority is 0 for
-        # the previous qubit pair.
-        # This is to avoid the circuit falling into loops which don't
-        # lead to improvements
+        # Choose the qubit pair to be the one with the highest sum of expectation values multiplied by the 'priority'
+        # of that pair. The priority of a pair depends on how long ago a CNOT was added to that qubit pair such that
+        # the priority is 0 for the previous qubit pair. This is to avoid the circuit falling into loops which don't
+        # lead to improvements.
+        logger.debug(f"Summed σ_z expectation values of pairs {e_val_sums}")
+        logger.debug(f"Priority of pairs {priorities}")
         combined_priorities = [
             e_val_sum * priority
             for (e_val_sum, priority) in zip(e_val_sums, priorities)
         ]
+        logger.debug(f"Combined priority of pairs {combined_priorities}")
         self.pair_selection_method_history.append(f"heuristic")
         return self.coupling_map[np.argmax(combined_priorities)]
 

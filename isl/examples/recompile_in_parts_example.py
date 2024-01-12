@@ -5,7 +5,7 @@ from isl.recompilers import ISLRecompiler
 
 logging.basicConfig()
 logger = logging.getLogger('isl')
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
 qc = co.create_random_initial_state_circuit(4)
 qc = co.unroll_to_basis_gates(qc)

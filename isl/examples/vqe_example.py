@@ -7,7 +7,7 @@ from isl.vqe import FixedAnsatzVQE
 
 logging.basicConfig()
 logger = logging.getLogger('isl')
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
 num_qubits = 4
 qc = co.create_random_initial_state_circuit(num_qubits)

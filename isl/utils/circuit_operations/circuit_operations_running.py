@@ -19,6 +19,8 @@ from isl.utils.utilityfunctions import (
     is_statevector_backend,
 )
 
+logger = logging.getLogger(__name__)
+
 QASM_SIM = Aer.get_backend("qasm_simulator")
 SV_SIM = Aer.get_backend("statevector_simulator")
 # TODO can we get mps_log_data=True working without it causing an error?
@@ -120,7 +122,7 @@ def create_noisemodel(t1, t2, log_fidelities=True):
     noise_thermal.add_all_qubit_quantum_error(error_cx, "cx")
 
     if log_fidelities:
-        logging.info("Noise model fidelities:")
+        logger.info("Noise model fidelities:")
         for qubit_error in noise_thermal.to_dict()["errors"]:
             logging.info(
                 f"{qubit_error['operations']}: " f"{max(qubit_error['probabilities'])}"
@@ -154,5 +156,5 @@ def zero_noise_extrapolate(
         zne_val = exp_decay(-0.5, *popt)
         return zne_val
     except RuntimeError as e:
-        logging.warning(f"Failed to zero-noise-extrapolate. Error was {e}")
+        logger.warning(f"Failed to zero-noise-extrapolate. Error was {e}")
         return measurement_function()

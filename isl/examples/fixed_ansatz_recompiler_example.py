@@ -6,7 +6,7 @@ from isl.utils.fixed_ansatz_circuits import hardware_efficient_circuit
 
 logging.basicConfig()
 logger = logging.getLogger('isl')
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
 num_qubits = 5
 qc = co.create_random_initial_state_circuit(num_qubits)

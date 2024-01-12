@@ -71,19 +71,19 @@ class CostMinimiser:
             cost_history = []
             cost = self.cost_finder()
             cycles = 0
-            logger.debug(f"Starting {alg_name}")
+            logger.info(f"Starting {alg_name}")
             while cost > stop_val and cycles < max_cycles:
                 cost = self._reduce_cost(
                     algorithm_kind == vconstants.ALG_ROTOSELECT, indexes_to_modify
                 )
                 cycles += 1
-                logger.debug(f"{alg_name} cycle: {cycles}")
+                logger.info(f"{alg_name} cycle: {cycles}")
                 cost_history.append(cost)
                 if len(cost_history) > 3 and has_stopped_improving(
                     cost_history[-3:], tol
                 ):
                     break
-            logger.debug(f"{alg_name} finished with cost {cost}")
+            logger.info(f"{alg_name} finished with cost {cost}")
             return cost
 
         elif algorithm_kind == vconstants.ALG_NLOPT:
@@ -167,7 +167,7 @@ class CostMinimiser:
                 )
                 return result.f
             except Exception as e:
-                logger.debug(f"BOBYQA failed with exception: {e}")
+                logger.error(f"BOBYQA failed with exception: {e}")
                 co.update_angles_in_circuit(
                     self.full_circuit, initial_angles, self.variational_circuit_range()
                 )

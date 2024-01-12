@@ -9,7 +9,7 @@ from isl.utils.entanglement_measures import EM_TOMOGRAPHY_CONCURRENCE
 
 logging.basicConfig()
 logger = logging.getLogger('isl')
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
 # Setup the circuit
 qc = QuantumCircuit(3)

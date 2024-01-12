@@ -139,14 +139,14 @@ class ApproximateRecompiler(ABC):
             else:
                 num_threads = multiprocessing.cpu_count()
                 backend_options["max_parallel_experiments"] = num_threads
-                logging.debug(
+                logger.debug(
                     "Circuits will be evaluated with {} experiments in "
                     "parallel".format(num_threads)
                 )
                 os.environ["KMP_WARNINGS"] = "0"
 
         except KeyError:
-            logging.debug(
+            logger.debug(
                 "No OMP number of threads defined. Qiskit will autodiscover "
                 "the number of parallel shots to run"
             )
@@ -196,7 +196,7 @@ class ApproximateRecompiler(ABC):
             self.circuit_to_recompile.copy(), max_depth_per_block
         )
 
-        logging.debug(f"Circuit was split into {len(all_subcircuits)} parts to compile sequentially")
+        logger.info(f"Circuit was split into {len(all_subcircuits)} parts to compile sequentially")
 
         last_recompiled_subcircuit = None
         individual_results = []
@@ -222,7 +222,7 @@ class ApproximateRecompiler(ABC):
             percentage = (
                     100 * (1 + all_subcircuits.index(subcircuit)) / len(all_subcircuits)
             )
-            logger.debug(f"Completed {percentage}%  of recompilation")
+            logger.info(f"Completed {percentage}%  of recompilation")
 
         end_time = timeit.default_timer()
         result_dict = {
