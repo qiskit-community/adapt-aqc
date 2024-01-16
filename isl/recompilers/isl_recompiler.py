@@ -439,15 +439,19 @@ class ISLRecompiler(ApproximateRecompiler):
 
         e_val_sums = self._get_all_qubit_pair_e_val_sums(e_vals)
 
+        # Mapping from the Pauli eigenvalues {1, -1} to the range {0, 1}. After multiplying by priority, this ensures
+        # the argmax of the list favours qubits close to the |1> state (eigenvalue -1) to apply the next layer to.
+        rescaled_e_val_sums = [2 - e_val for e_val in e_val_sums]
+
         if self.isl_config.method == "heuristic":
-            return self._find_best_heuristic_qubit_pair(e_val_sums, priorities)
+            return self._find_best_heuristic_qubit_pair(rescaled_e_val_sums, priorities)
 
         if self.isl_config.method == "ISL":
             logger.debug("Computing entanglement of pairs")
             ems = self._get_all_qubit_pair_entanglement_measures()
             self.entanglement_measures_history.append(ems)
             return self._find_highest_entanglement_qubit_pair(
-                ems, e_val_sums, priorities
+                ems, rescaled_e_val_sums, priorities
             )
 
         raise ValueError(f"Invalid ISL method {self.isl_config.method}. "f"Method must be one of ISL,heuristic,random")

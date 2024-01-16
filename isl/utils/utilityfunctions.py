@@ -3,6 +3,8 @@ import functools
 from collections.abc import Iterable
 
 import numpy as np
+from qiskit.result import Counts
+
 
 # ------------------Trigonometric functions------------------ #
 
@@ -26,7 +28,7 @@ def minimum_of_sinusoidal(value_0, value_pi_by_2, value_minus_pi_by_2):
     intercept_c = 0.5 * (value_pi_by_2 + value_minus_pi_by_2)
     value_pi = (value_pi_by_2 + value_minus_pi_by_2) - value_0
     amplitude_a = 0.5 * (
-        ((value_0 - value_pi) ** 2 + (value_pi_by_2 - value_minus_pi_by_2) ** 2) ** 0.5
+            ((value_0 - value_pi) ** 2 + (value_pi_by_2 - value_minus_pi_by_2) ** 2) ** 0.5
     )
     value_theta_min = intercept_c - amplitude_a
 
@@ -45,7 +47,7 @@ def amplitude_of_sinusoidal(value_0, value_pi_by_2, value_minus_pi_by_2):
 
     value_pi = (value_pi_by_2 + value_minus_pi_by_2) - value_0
     amplitude_a = 0.5 * (
-        ((value_0 - value_pi) ** 2 + (value_pi_by_2 - value_minus_pi_by_2) ** 2) ** 0.5
+            ((value_0 - value_pi) ** 2 + (value_pi_by_2 - value_minus_pi_by_2) ** 2) ** 0.5
     )
 
     return amplitude_a
@@ -63,7 +65,7 @@ def derivative_of_sinusoidal(theta, value_0, value_pi_by_2, value_minus_pi_by_2)
     """
     value_pi = (value_pi_by_2 + value_minus_pi_by_2) - value_0
     amplitude_a = 0.5 * (
-        ((value_0 - value_pi) ** 2 + (value_pi_by_2 - value_minus_pi_by_2) ** 2) ** 0.5
+            ((value_0 - value_pi) ** 2 + (value_pi_by_2 - value_minus_pi_by_2) ** 2) ** 0.5
     )
     phase_b = np.arctan2(value_0 - value_pi, value_pi_by_2 - value_minus_pi_by_2)
 
@@ -110,8 +112,8 @@ def is_statevector_backend(backend):
 
 
 def counts_data_from_statevector(
-    statevector,
-    num_shots=2**40,
+        statevector,
+        num_shots=2 ** 40,
 ):
     """
     Get counts data from statevector by multiplying amplitude squares with num_shots.
@@ -124,7 +126,7 @@ def counts_data_from_statevector(
     num_qubits = int(np.log2(len(statevector)))
     counts = {}
     probs = np.absolute(statevector) ** 2
-    bit_str_array = [bin(i)[2:].zfill(num_qubits) for i in range(2**num_qubits)]
+    bit_str_array = [bin(i)[2:].zfill(num_qubits) for i in range(2 ** num_qubits)]
     counts = dict(zip(bit_str_array, np.asarray(probs * num_shots, int)))
     # counts = dict(zip(*np.unique(np.random.choice(bit_str_array, num_shots,p=probs),return_counts=True)))
     return counts
@@ -137,8 +139,8 @@ def statevector_from_counts_data(counts):
     :return statevector: Statevector (list/array)
     """
     num_qubits = len(list(counts.keys())[0])
-    sv = np.zeros(2**num_qubits)
-    for i in range(2**num_qubits):
+    sv = np.zeros(2 ** num_qubits)
+    for i in range(2 ** num_qubits):
         bitstr = bin(i)[2:].zfill(num_qubits)
         if bitstr in counts:
             sv[i] = counts[bitstr] ** 0.5
@@ -159,7 +161,7 @@ def expectation_value_of_qubits(counts):
     return expectation_values
 
 
-def expectation_value_of_qubit(qubit_index, counts):
+def expectation_value_of_qubit(qubit_index, counts: Counts):
     """
     Expectation value of qubit (in computational basis) at given index
     :param qubit_index: Index of qubit (int)
@@ -168,10 +170,12 @@ def expectation_value_of_qubit(qubit_index, counts):
     """
     exp_val = 0
     total_counts = 0
+    if qubit_index >= len(list(counts)[0]):
+        raise ValueError("qubit_index outside of register range")
     reverse_index = len(list(counts)[0]) - (qubit_index + 1)
-    for state in list(counts):
-        exp_val += int(state[reverse_index]) * counts[state]
-        total_counts += counts[state]
+    for bitstring in list(counts):
+        exp_val += (1 if bitstring[reverse_index] == '0' else -1) * counts[bitstring]
+        total_counts += counts[bitstring]
 
     return exp_val / total_counts
 

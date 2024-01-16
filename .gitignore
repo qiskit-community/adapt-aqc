@@ -1,6 +1,5 @@
-<<<<<<< Updated upstream
 /**/__pycache__/*
-.vscode/*
+.vscode/
 .idea*
 *.egg-info/
 =======
@@ -363,4 +362,3 @@ pyrightconfig.json
 .ionide
 
 # End of https://www.toptal.com/developers/gitignore/api/python,pycharm,visualstudiocode,osx,macos
->>>>>>> Stashed changes
