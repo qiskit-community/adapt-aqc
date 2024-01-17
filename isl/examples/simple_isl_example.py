@@ -1,5 +1,3 @@
-import os
-print(os.environ.get("PYTHONPATH"))
 import logging
 
 import isl.utils.circuit_operations as co
