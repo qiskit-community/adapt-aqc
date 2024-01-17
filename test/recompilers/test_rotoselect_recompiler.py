@@ -57,6 +57,11 @@ class TestRotoselectRecompiler(TestCase):
         assert overlap > 1 - DEFAULT_SUFFICIENT_COST
 
     def test_no_initial_state_qulacs(self):
+        try:
+            import qulacs
+        except ImportError:
+            self.skipTest('Skipping as qulacs is not installed')
+
         qc = co.create_random_initial_state_circuit(3)
         qc = co.unroll_to_basis_gates(qc)
 
