@@ -5,7 +5,6 @@ import timeit
 
 import numpy as np
 from qiskit import QuantumCircuit
-from qiskit.quantum_info import Pauli
 
 import isl.utils.circuit_operations as co
 import isl.utils.constants as vconstants
@@ -439,8 +438,6 @@ class ISLRecompiler(ApproximateRecompiler):
 
         e_val_sums = self._get_all_qubit_pair_e_val_sums(e_vals)
 
-        # Mapping from the Pauli eigenvalues {1, -1} to the range {0, 1}. After multiplying by priority, this ensures
-        # the argmax of the list favours qubits close to the |1> state (eigenvalue -1) to apply the next layer to.
         rescaled_e_val_sums = [2 - e_val for e_val in e_val_sums]
 
         if self.isl_config.method == "heuristic":
@@ -564,16 +561,12 @@ class ISLRecompiler(ApproximateRecompiler):
 
     def _measure_qubit_expectation_values(self):
         if self.local_measurements_only:
-            orig_circ_len = len(self.full_circuit.data)
-            if not is_statevector_backend(self.backend):
-                self.full_circuit.measure_all()
-            counts = self._run_full_circuit()
-            if not is_statevector_backend(self.backend):
-                for i in range(len(self.full_circuit.data) - 1, orig_circ_len - 1, -1):
-                    del self.full_circuit.data[i]
-                del self.full_circuit.cregs[-1]
-            rel_counts = {k[0: self.total_num_qubits]: v for k, v in counts.items()}
+
+            output = self._run_full_circuit(add_measurements=not is_statevector_backend(self.backend))
+
+            rel_counts = {k[0: self.total_num_qubits]: v for k, v in output.items()}
+
             return expectation_value_of_qubits(rel_counts)
         else:
-            counts = self._run_full_circuit(return_statevector=False)
-            return expectation_value_of_qubits(counts)
+            output = self._run_full_circuit(return_statevector=is_statevector_backend(self.backend))
+            return expectation_value_of_qubits(output)

@@ -10,7 +10,8 @@ from isl.utils.constants import DEFAULT_SUFFICIENT_COST
 
 
 class TestISL(TestCase):
-    def test_basic_sv(self):
+
+    def test_isl_procedure_sv(self):
         qc = co.create_random_initial_state_circuit(3, seed=1)
         qc = co.unroll_to_basis_gates(qc)
 
@@ -22,7 +23,7 @@ class TestISL(TestCase):
         overlap = co.calculate_overlap_between_circuits(approx_circuit, qc)
         assert overlap > 1 - DEFAULT_SUFFICIENT_COST
 
-    def test_basic_qasm(self):
+    def test_isl_procedure_qasm(self):
         qc = co.create_random_initial_state_circuit(3, seed=1)
         qc = co.unroll_to_basis_gates(qc)
 
@@ -34,7 +35,7 @@ class TestISL(TestCase):
         overlap = co.calculate_overlap_between_circuits(approx_circuit_qasm, qc)
         assert overlap > 1 - DEFAULT_SUFFICIENT_COST - 5 / np.sqrt(shots)
 
-    def test_basic_mps(self):
+    def test_isl_procedure_mps(self):
         qc = co.create_random_initial_state_circuit(3, seed=1)
         qc = co.unroll_to_basis_gates(qc)
 

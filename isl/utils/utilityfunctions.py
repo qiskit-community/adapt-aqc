@@ -1,9 +1,11 @@
 """Contains functions """
 import functools
 from collections.abc import Iterable
+from typing import Union, Dict
 
 import numpy as np
 from qiskit.result import Counts
+from qiskit_aer.backends.compatibility import Statevector
 
 
 # ------------------Trigonometric functions------------------ #
@@ -148,36 +150,46 @@ def statevector_from_counts_data(counts):
     return sv
 
 
-def expectation_value_of_qubits(counts):
+def expectation_value_of_qubits(data: Union[Counts, Dict, Statevector]):
     """
     Expectation value of qubits (in computational basis)
     :param counts: Counts data (e.g. {'00':13, '10':7})
     :return: [expectation_value(float)]
     """
-    num_qubits = len(list(counts)[0])
+    data = Statevector(data) if isinstance(data, np.ndarray) else data
+
+    num_qubits = data.num_qubits if isinstance(data, Statevector) else len(list(data)[0])
+
     expectation_values = []
     for i in range(num_qubits):
-        expectation_values.append(expectation_value_of_qubit(i, counts))
+        expectation_values.append(_expectation_value_of_qubit(i, data, num_qubits))
     return expectation_values
 
 
-def expectation_value_of_qubit(qubit_index, counts: Counts):
+def _expectation_value_of_qubit(qubit_index, data: Union[Counts, Statevector], num_qubits):
     """
     Expectation value of qubit (in computational basis) at given index
     :param qubit_index: Index of qubit (int)
-    :param counts: Counts data (e.g. {'00':13, '10':7})
+    :param data: Counts data (e.g. {'00':13, '10':7}) or Statevector
     :return: [expectation_value(float)]
     """
-    exp_val = 0
-    total_counts = 0
-    if qubit_index >= len(list(counts)[0]):
+    if qubit_index >= num_qubits:
         raise ValueError("qubit_index outside of register range")
-    reverse_index = len(list(counts)[0]) - (qubit_index + 1)
-    for bitstring in list(counts):
-        exp_val += (1 if bitstring[reverse_index] == '0' else -1) * counts[bitstring]
-        total_counts += counts[bitstring]
 
-    return exp_val / total_counts
+    reverse_index = num_qubits - (qubit_index + 1)
+
+    if type(data) is Statevector:
+        [p0, p1] = data.probabilities([qubit_index])
+        exp_val = p0 - p1
+        return exp_val
+
+    else:
+        exp_val = 0
+        total_counts = 0
+        for bitstring in list(data):
+            exp_val += (1 if bitstring[reverse_index] == '0' else -1) * data[bitstring]
+            total_counts += data[bitstring]
+        return exp_val / total_counts
 
 
 def expectation_value_of_pauli_observable(counts, pauli):

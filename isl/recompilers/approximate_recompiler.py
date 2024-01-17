@@ -6,9 +6,13 @@ import multiprocessing
 import os
 import timeit
 from abc import ABC, abstractmethod
+from copy import copy
+from typing import Union
 
 import numpy as np
 from qiskit import Aer, ClassicalRegister, QuantumCircuit, QuantumRegister
+from qiskit.result import Counts
+from qiskit_aer.backends.compatibility import Statevector
 
 import isl.utils.circuit_operations as co
 from isl.utils.circuit_operations.circuit_operations_full_circuit import (
@@ -452,10 +456,10 @@ class ApproximateRecompiler(ABC):
         cost = np.mean(qubit_costs)
         return cost
 
-    def _run_full_circuit(self, return_statevector=None):
+    def _run_full_circuit(self, return_statevector=None, add_measurements=False) -> Union[Counts, Statevector]:
         """
         Run the full circuit
-        :rtype: dict
+        :rtype: dict or Statevector
         :return: statevector or counts_data or [counts_data] (e.g. counts_data = ['000':10,
         '010':31,'011':20,'110':40])
         """
@@ -466,8 +470,16 @@ class ApproximateRecompiler(ABC):
 
         return_sv = is_statevector_backend(self.backend) if None else return_statevector
 
-        output = co.run_circuit_without_transpilation(
-            self.full_circuit, self.backend, backend_options, self.execute_kwargs, return_sv
-        )
+        if add_measurements:
+            full_circ_with_meas = copy(self.full_circuit)
+            full_circ_with_meas.measure_all()
+            output = co.run_circuit_without_transpilation(
+                full_circ_with_meas, self.backend, backend_options, self.execute_kwargs, return_sv
+            )
+
+        else:
+            output = co.run_circuit_without_transpilation(
+                self.full_circuit, self.backend, backend_options, self.execute_kwargs, return_sv
+            )
 
         return output
