@@ -47,6 +47,23 @@ class TestISL(TestCase):
         overlap = co.calculate_overlap_between_circuits(approx_circuit_qasm, qc)
         assert overlap > 1 - DEFAULT_SUFFICIENT_COST - 5 / np.sqrt(shots)
 
+    def test_GHZ(self):
+        qc = QuantumCircuit(5)
+
+        qc.h(0)
+        for i in range(4):
+            qc.cx(i,i+1)
+
+        qc = co.unroll_to_basis_gates(qc)
+
+        isl_recompiler = ISLRecompiler(qc, backend=SV_SIM, isl_config=ISLConfig(sufficient_cost=1e-2))
+
+        result = isl_recompiler.recompile()
+        approx_circuit = result["circuit"]
+
+        overlap = co.calculate_overlap_between_circuits(approx_circuit, qc)
+        assert overlap > 1 - DEFAULT_SUFFICIENT_COST
+
     def test_exact_overlap_close_to_approx_overlap(self):
         qc = co.create_random_initial_state_circuit(3)
         qc = co.unroll_to_basis_gates(qc)
