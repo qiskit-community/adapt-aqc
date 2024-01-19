@@ -6,10 +6,10 @@ import multiprocessing
 import os
 import timeit
 from abc import ABC, abstractmethod
-from copy import copy
 from typing import Union
 
 import numpy as np
+from aqc_research.mps_operations import mps_from_circuit, mps_dot
 from qiskit import Aer, ClassicalRegister, QuantumCircuit, QuantumRegister
 from qiskit.result import Counts
 from qiskit_aer.backends.compatibility import Statevector
@@ -66,6 +66,11 @@ class ApproximateRecompiler(ABC):
         self.backend = (
             backend if backend is not None else Aer.get_backend("qasm_simulator")
         )
+        self.is_statevector_backend = is_statevector_backend(self.backend)
+        try:
+            self.is_mps_backend = (self.backend.options.method == "matrix_product_state")
+        except AttributeError:
+            self.is_mps_backend = False
         self.execute_kwargs = self.parse_default_execute_kwargs(execute_kwargs)
         self.backend_options = self.parse_default_backend_options()
         self.initial_state_circuit = co.initial_state_to_circuit(initial_state)
@@ -75,8 +80,9 @@ class ApproximateRecompiler(ABC):
         )
         self.general_initial_state = general_initial_state
         self.starting_circuit = starting_circuit
+        self.zero_mps = None
         self.local_measurements_only = local_measurements_only
-        if (not is_statevector_backend(self.backend)) and (self.local_measurements_only):
+        if (not self.is_statevector_backend) and (self.local_measurements_only):
             raise NotImplementedError(
                 "Local Hilbert Schmidt Test cost function is only supported for statevector simulators currently")
         if initial_state is not None and general_initial_state:
@@ -118,7 +124,7 @@ class ApproximateRecompiler(ABC):
         if "shots" not in kwargs:
             if self.backend == "qulacs":
                 kwargs["shots"] = 2 ** 30
-            elif not is_statevector_backend(self.backend):
+            elif not self.is_statevector_backend:
                 kwargs["shots"] = 8192
             else:
                 kwargs["shots"] = 1
@@ -341,7 +347,7 @@ class ApproximateRecompiler(ABC):
                 qc.cx(qubit, qubit + self.total_num_qubits)
                 qc.h(qubit)
 
-        if not is_statevector_backend(self.backend):
+        if not self.is_statevector_backend:
             if self.local_measurements_only:
                 register_size = 2 if self.general_initial_state else 1
                 qc.add_register(
@@ -363,8 +369,11 @@ class ApproximateRecompiler(ABC):
         :return: Cost (float)
         """
         self.cost_evaluation_counter += 1
-        if is_statevector_backend(self.backend):
+        if self.is_statevector_backend:
             return self._evaluate_cost_sv()
+
+        if self.is_mps_backend:
+            return self._evaluate_cost_mps()
         if self.local_measurements_only:
             return self._evaluate_cost_measure_local()
         else:
@@ -373,6 +382,19 @@ class ApproximateRecompiler(ABC):
     def _evaluate_cost_sv(self):
         sv1 = self._run_full_circuit(return_statevector=True)
         cost = 1 - (np.absolute(sv1[0])) ** 2
+        return cost
+
+    def _evaluate_cost_mps(self):
+        circ = self.full_circuit.copy()
+        # TODO Remove measurements from _prepare_full_circuit() for MPS when expectation val and 2-qubit RDM are all
+        # TODO computed directly from MPS and don't need measurements.
+        remove_classical_operations(circ)
+        circ_mps = mps_from_circuit(circ, print_log_data=False)
+        if self.zero_mps is None:
+            logger.debug("Evaluating cost function directly from MPS without sampling")
+            self.zero_mps = mps_from_circuit(QuantumCircuit(self.total_num_qubits), print_log_data=False)
+
+        cost = 1 - np.absolute(mps_dot(circ_mps, self.zero_mps)) ** 2
         return cost
 
     def _evaluate_cost_measure_all(self):
@@ -395,7 +417,7 @@ class ApproximateRecompiler(ABC):
 
     def _evaluate_cost_measure_local(self):
         qubit_costs = np.zeros(self.total_num_qubits)
-        if is_statevector_backend(self.backend):
+        if self.is_statevector_backend:
             counts = self._run_full_circuit()
             total_shots = sum([each_count for _, each_count in counts.items()])
             for i in range(self.total_num_qubits):
@@ -468,18 +490,10 @@ class ApproximateRecompiler(ABC):
         already_in_parallel = os.environ["QISKIT_IN_PARALLEL"] == "TRUE"
         backend_options = None if already_in_parallel else self.backend_options
 
-        return_sv = is_statevector_backend(self.backend) if None else return_statevector
+        return_sv = self.is_statevector_backend if None else return_statevector
 
-        if add_measurements:
-            full_circ_with_meas = copy(self.full_circuit)
-            full_circ_with_meas.measure_all()
-            output = co.run_circuit_without_transpilation(
-                full_circ_with_meas, self.backend, backend_options, self.execute_kwargs, return_sv
-            )
-
-        else:
-            output = co.run_circuit_without_transpilation(
-                self.full_circuit, self.backend, backend_options, self.execute_kwargs, return_sv
-            )
+        output = co.run_circuit_without_transpilation(
+            self.full_circuit, self.backend, backend_options, self.execute_kwargs, return_sv
+        )
 
         return output

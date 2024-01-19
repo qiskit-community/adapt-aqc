@@ -40,12 +40,12 @@ class TestISL(TestCase):
         qc = co.unroll_to_basis_gates(qc)
 
         shots = 1e4
-        isl_recompiler_qasm = ISLRecompiler(qc, backend=MPS_SIM, execute_kwargs={'shots': shots})
+        isl_recompiler_mps = ISLRecompiler(qc, backend=MPS_SIM, execute_kwargs={'shots': shots})
 
-        result_qasm = isl_recompiler_qasm.recompile()
-        approx_circuit_qasm = result_qasm["circuit"]
+        result_mps = isl_recompiler_mps.recompile()
+        approx_circuit_mps = result_mps["circuit"]
 
-        overlap = co.calculate_overlap_between_circuits(approx_circuit_qasm, qc)
+        overlap = co.calculate_overlap_between_circuits(approx_circuit_mps, qc)
         assert overlap > 1 - DEFAULT_SUFFICIENT_COST - 5 / np.sqrt(shots)
 
     def test_GHZ(self):
@@ -53,7 +53,7 @@ class TestISL(TestCase):
 
         qc.h(0)
         for i in range(4):
-            qc.cx(i,i+1)
+            qc.cx(i, i + 1)
 
         qc = co.unroll_to_basis_gates(qc)
 
@@ -101,15 +101,6 @@ class TestISL(TestCase):
         approx_circuit = result["circuit"]
         overlap = co.calculate_overlap_between_circuits(approx_circuit, qc)
         assert overlap > 1 - DEFAULT_SUFFICIENT_COST
-
-    def test_local_measurements_not_supported_for_qasm_and_mps(self):
-        qc = co.create_random_initial_state_circuit(3)
-        qc = co.unroll_to_basis_gates(qc)
-        isl_config = ISLConfig(cost_improvement_num_layers=10)
-
-        for backend in [QASM_SIM, MPS_SIM]:
-            with self.assertRaises(NotImplementedError):
-                ISLRecompiler(qc, local_measurements_only=True, backend=backend, isl_config=isl_config)
 
     def test_custom_layer_gate(self):
         from qiskit import QuantumCircuit

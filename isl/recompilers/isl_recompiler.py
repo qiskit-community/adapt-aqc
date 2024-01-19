@@ -342,7 +342,7 @@ class ISLRecompiler(ApproximateRecompiler):
 
         recompiled_circuit = self.get_recompiled_circuit()
         exact_overlap = "Not computable without SV backend"
-        if is_statevector_backend(self.backend):
+        if self.is_statevector_backend:
             exact_overlap = co.calculate_overlap_between_circuits(
                 self.circuit_to_recompile, co.make_quantum_only_circuit(recompiled_circuit)
             )
@@ -521,7 +521,7 @@ class ISLRecompiler(ApproximateRecompiler):
     def _get_all_qubit_pair_entanglement_measures(self):
         entanglement_measures = []
         for control, target in self.coupling_map:
-            if not is_statevector_backend(self.backend):
+            if not self.is_statevector_backend:
                 logger.debug(f"Computing entanglement for pair {(control, target)}")
             this_entanglement_measure = calculate_entanglement_measure(
                 self.entanglement_measure_method,
@@ -568,11 +568,11 @@ class ISLRecompiler(ApproximateRecompiler):
     def _measure_qubit_expectation_values(self):
         if self.local_measurements_only:
 
-            output = self._run_full_circuit(add_measurements=not is_statevector_backend(self.backend))
+            output = self._run_full_circuit(add_measurements=not self.is_statevector_backend)
 
             rel_counts = {k[0: self.total_num_qubits]: v for k, v in output.items()}
 
             return expectation_value_of_qubits(rel_counts)
         else:
-            output = self._run_full_circuit(return_statevector=is_statevector_backend(self.backend))
+            output = self._run_full_circuit(return_statevector=self.is_statevector_backend)
             return expectation_value_of_qubits(output)

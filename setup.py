@@ -23,6 +23,8 @@ setup(
         "numpy",
         "scipy",
         "openfermion~=1.6",
-        "sympy"
+        "sympy",
+        "aqc_research @ git+ssh://git@github.com/bjader/aqc-research-qduc.git",
+        "qulacs",
     ],
 )
