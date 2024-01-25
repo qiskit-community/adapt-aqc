@@ -301,7 +301,7 @@ class ISLRecompiler(ApproximateRecompiler):
             if logger.getEffectiveLevel() == 10:
                 ansatz = self.full_circuit.copy()
                 del ansatz.data[:len(self.circuit_to_recompile.data)]
-                logger.debug(f'Optimised ansatz after ROTOSOLVE finished: \n{ansatz}')
+                logger.debug(f'Optimised ansatz after layer added: \n{ansatz}')
 
             num_2q_gates, num_1q_gates = co.find_num_gates(
                 self.full_circuit, gate_range=g_range()
