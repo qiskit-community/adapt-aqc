@@ -297,6 +297,12 @@ class ISLRecompiler(ApproximateRecompiler):
                     self.full_circuit, False, False, gate_range=g_range()
                 )
 
+            # Log ansatz part of the circuit if logger is in DEBUG (10)
+            if logger.getEffectiveLevel() == 10:
+                ansatz = self.full_circuit.copy()
+                del ansatz.data[:len(self.circuit_to_recompile.data)]
+                logger.debug(f'Optimised ansatz after layer added: \n{ansatz}')
+
             num_2q_gates, num_1q_gates = co.find_num_gates(
                 self.full_circuit, gate_range=g_range()
             )
