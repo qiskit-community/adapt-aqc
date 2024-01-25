@@ -300,8 +300,7 @@ class ISLRecompiler(ApproximateRecompiler):
             # Log ansatz part of the circuit if logger is in DEBUG (10)
             if logger.getEffectiveLevel() == 10:
                 ansatz = self.full_circuit.copy()
-                for i in range(len(self.circuit_to_recompile.data)):
-                    del ansatz.data[0]
+                del ansatz.data[:len(self.circuit_to_recompile.data)]
                 logger.debug(f'Optimised ansatz after ROTOSOLVE finished: \n{ansatz}')
 
             num_2q_gates, num_1q_gates = co.find_num_gates(
