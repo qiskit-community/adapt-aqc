@@ -12,7 +12,10 @@ from scipy import linalg
 from scipy.linalg import eig
 
 import isl.utils.circuit_operations as co
+from isl.utils.circuit_operations import remove_classical_operations
 from isl.utils.utilityfunctions import is_statevector_backend
+
+import aqc_research.mps_operations as mpsops
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +62,8 @@ def calculate_entanglement_measure(
                 circuit, backend, return_statevector=True
             )
             rho = partial_trace(statevector, qubit_1, qubit_2)
+        elif backend.options.method == "matrix_product_state":
+            rho = mps_partial_trace(circuit, [qubit_1, qubit_2])
         else:
             rho = perform_quantum_tomography(
                 circuit, qubit_1, qubit_2, backend, backend_options, execute_kwargs
@@ -73,6 +78,13 @@ def calculate_entanglement_measure(
             return log_negativity(rho)
         else:
             raise ValueError("Invalid entanglement measure method")
+
+
+def mps_partial_trace(circuit, qubits_to_keep):
+    circ = circuit.copy()
+    remove_classical_operations(circ)
+    circ_mps = mpsops.mps_from_circuit(circ, print_log_data=False)
+    return mpsops.partial_trace(circ_mps, qubits_to_keep)
 
 
 def perform_quantum_tomography(
@@ -97,14 +109,14 @@ def perform_quantum_tomography(
     execute_kwargs = {} if execute_kwargs is None else execute_kwargs
     old_cregs = circuit.cregs.copy()
     circuit.cregs = []
-    tomography_exp = StateTomography(circuit, measurement_indices=[qubit_1, qubit_2])
+    tomography_exp = StateTomography(circuit, measurement_indices=sorted([qubit_1, qubit_2]))
     circuit.cregs = old_cregs
 
     # Backend options only supported for simulators
     if backend_options is None or not isinstance(backend, AerBackend):
         backend_options = {}
 
-    tomography_data = tomography_exp.run(backend)
+    tomography_data = tomography_exp.run(backend, **execute_kwargs)
     rho = tomography_data.analysis_results("state").value._data
     assert isinstance(rho, np.ndarray)
     return rho

@@ -444,6 +444,7 @@ class ISLRecompiler(ApproximateRecompiler):
         e_vals = self._measure_qubit_expectation_values()
         self.e_val_history.append(e_vals)
 
+        # TODO move this logic inside _find_best_heuristic_qubit_pair() so we don't compute evals if not needed
         e_val_sums = self._get_all_qubit_pair_e_val_sums(e_vals)
         logger.debug(f"Summed σ_z expectation values of pairs {e_val_sums}")
 
