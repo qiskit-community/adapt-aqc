@@ -15,6 +15,7 @@ from qiskit.result import Counts
 from qiskit_aer.backends.compatibility import Statevector
 
 import isl.utils.circuit_operations as co
+from isl.utils.circuit_operations import QASM_SIM
 from isl.utils.circuit_operations.circuit_operations_full_circuit import (
     remove_classical_operations,
 )
@@ -91,14 +92,8 @@ class ApproximateRecompiler(ABC):
                 "initial state is provided"
             )
 
-        (
-            self.full_circuit,
-            self.lhs_gate_count,
-            self.rhs_gate_count,
-        ) = self._prepare_full_circuit()
-        self.minimizer = CostMinimiser(
-            self.evaluate_cost, self.variational_circuit_range, self.full_circuit
-        )
+        self.full_circuit, self.lhs_gate_count, self.rhs_gate_count, = self._prepare_full_circuit()
+        self.minimizer = CostMinimiser(self.evaluate_cost, self.variational_circuit_range, self.full_circuit)
 
         # Count number of cost evaluations
         self.cost_evaluation_counter = 0
@@ -347,7 +342,7 @@ class ApproximateRecompiler(ABC):
                 qc.cx(qubit, qubit + self.total_num_qubits)
                 qc.h(qubit)
 
-        if not self.is_statevector_backend:
+        if self.backend == QASM_SIM:
             if self.local_measurements_only:
                 register_size = 2 if self.general_initial_state else 1
                 qc.add_register(
@@ -386,9 +381,6 @@ class ApproximateRecompiler(ABC):
 
     def _evaluate_cost_mps(self):
         circ = self.full_circuit.copy()
-        # TODO Remove measurements from _prepare_full_circuit() for MPS when expectation val and 2-qubit RDM are all
-        # TODO computed directly from MPS and don't need measurements.
-        remove_classical_operations(circ)
         circ_mps = mps_from_circuit(circ, print_log_data=False)
         if self.zero_mps is None:
             logger.debug("Evaluating cost function directly from MPS without sampling")

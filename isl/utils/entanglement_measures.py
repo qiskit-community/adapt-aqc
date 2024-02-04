@@ -3,6 +3,7 @@ import copy
 import itertools
 import logging
 
+import aqc_research.mps_operations as mpsops
 import numpy as np
 from qiskit import ClassicalRegister, QuantumCircuit, QuantumRegister
 from qiskit import quantum_info as qi
@@ -12,10 +13,7 @@ from scipy import linalg
 from scipy.linalg import eig
 
 import isl.utils.circuit_operations as co
-from isl.utils.circuit_operations import remove_classical_operations
 from isl.utils.utilityfunctions import is_statevector_backend
-
-import aqc_research.mps_operations as mpsops
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +80,6 @@ def calculate_entanglement_measure(
 
 def mps_partial_trace(circuit, qubits_to_keep):
     circ = circuit.copy()
-    remove_classical_operations(circ)
     circ_mps = mpsops.mps_from_circuit(circ, print_log_data=False)
     return mpsops.partial_trace(circ_mps, qubits_to_keep)
 

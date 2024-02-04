@@ -51,7 +51,6 @@ class TestEntanglementMeasures(TestCase):
 
         qc = co.create_random_initial_state_circuit(3)
         qubits = random.sample(range(3), 2)
-        print(qubits)
         mps_rho = em.mps_partial_trace(qc, qubits)
         sampling_rho = perform_quantum_tomography(qc, qubits[0], qubits[1], Aer.get_backend("qasm_simulator"),
                                                   execute_kwargs={"shots": int(1e6)})
@@ -62,7 +61,6 @@ class TestEntanglementMeasures(TestCase):
 
         qc = co.create_random_initial_state_circuit(3)
         qubits = random.sample(range(3), 2)
-        print(qubits)
         mps_rho = em.mps_partial_trace(qc, qubits)
         sampling_rho = perform_quantum_tomography(qc, qubits[0], qubits[1], Aer.get_backend("qasm_simulator"),
                                                   execute_kwargs={"shots": int(1e6)})

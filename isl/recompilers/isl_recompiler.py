@@ -16,6 +16,7 @@ from isl.utils.entanglement_measures import (
 )
 from isl.utils.utilityfunctions import (
     expectation_value_of_qubits,
+    expectation_value_of_qubits_mps,
     has_stopped_improving,
     is_statevector_backend,
     remove_permutations_from_coupling_map,
@@ -573,7 +574,9 @@ class ISLRecompiler(ApproximateRecompiler):
             return 1
 
     def _measure_qubit_expectation_values(self):
-        if self.local_measurements_only:
+        if self.is_mps_backend:
+            return expectation_value_of_qubits_mps(self.full_circuit)
+        elif self.local_measurements_only:
 
             output = self._run_full_circuit(add_measurements=not self.is_statevector_backend)
 

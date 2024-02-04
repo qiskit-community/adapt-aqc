@@ -3,7 +3,9 @@ import functools
 from collections.abc import Iterable
 from typing import Union, Dict
 
+import aqc_research.mps_operations as mpsop
 import numpy as np
+from qiskit import QuantumCircuit
 from qiskit.result import Counts
 from qiskit_aer.backends.compatibility import Statevector
 
@@ -163,6 +165,22 @@ def expectation_value_of_qubits(data: Union[Counts, Dict, Statevector]):
     expectation_values = []
     for i in range(num_qubits):
         expectation_values.append(_expectation_value_of_qubit(i, data, num_qubits))
+    return expectation_values
+
+
+def expectation_value_of_qubits_mps(circuit: QuantumCircuit):
+    """
+    Expectation value of qubits (in computational basis) using mps
+    :param circuit: Circuit corresponding to state
+    :return: [expectation_value(float)]
+    """
+    # Get mps from circuit
+    circ = circuit.copy()
+    mps = mpsop.mps_from_circuit(circ, print_log_data=False)
+
+    num_qubits = circuit.num_qubits
+
+    expectation_values = [(mpsop.mps_expectation(mps, 'Z', i)) for i in range(num_qubits)]
     return expectation_values
 
 
