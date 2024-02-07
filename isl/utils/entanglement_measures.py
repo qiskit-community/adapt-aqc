@@ -32,6 +32,7 @@ def calculate_entanglement_measure(
         backend,
         backend_options=None,
         execute_kwargs=None,
+        mps=None
 ):
     """
     Measure quantum correlations between two qubits in a state resulting
@@ -61,7 +62,7 @@ def calculate_entanglement_measure(
             )
             rho = partial_trace(statevector, qubit_1, qubit_2)
         elif backend.options.method == "matrix_product_state":
-            rho = mps_partial_trace(circuit, [qubit_1, qubit_2])
+            rho = mpsops.partial_trace(mps, [qubit_1, qubit_2])
         else:
             rho = perform_quantum_tomography(
                 circuit, qubit_1, qubit_2, backend, backend_options, execute_kwargs
@@ -76,12 +77,6 @@ def calculate_entanglement_measure(
             return log_negativity(rho)
         else:
             raise ValueError("Invalid entanglement measure method")
-
-
-def mps_partial_trace(circuit, qubits_to_keep):
-    circ = circuit.copy()
-    circ_mps = mpsops.mps_from_circuit(circ, print_log_data=False)
-    return mpsops.partial_trace(circ_mps, qubits_to_keep)
 
 
 def perform_quantum_tomography(

@@ -1,14 +1,17 @@
-import random
+from unittest import TestCase
 from unittest import TestCase
 from unittest.mock import patch
 
+import aqc_research.mps_operations as mpsops
 import numpy as np
-from qiskit import Aer
+from qiskit import Aer, QuantumCircuit
 
 import isl.utils.circuit_operations as co
 import isl.utils.entanglement_measures as em
-from isl.utils.circuit_operations import MPS_SIM
-from isl.utils.entanglement_measures import perform_quantum_tomography
+from isl.recompilers import ISLRecompiler
+from isl.utils.circuit_operations import MPS_SIM, SV_SIM
+from isl.utils.entanglement_measures import perform_quantum_tomography, EM_TOMOGRAPHY_CONCURRENCE, \
+    EM_TOMOGRAPHY_NEGATIVITY, EM_TOMOGRAPHY_EOF
 
 
 class TestEntanglementMeasures(TestCase):
@@ -36,35 +39,44 @@ class TestEntanglementMeasures(TestCase):
         qc = co.create_random_initial_state_circuit(3)
         em.measure_concurrence_lower_bound(qc, 0, 1, Aer.get_backend("qasm_simulator"))
 
-    @patch('isl.utils.entanglement_measures.mps_partial_trace')
-    def test_given_mps_backend_when_calculate_em_measure_then_mps_partial_trace_called(self, mock_mps_partial_trace):
+    @patch('aqc_research.mps_operations.partial_trace')
+    def test_given_mps_backend_when_calculate_em_measure_then_mps_operations_partial_trace_called(
+            self, mock_mps_partial_trace):
 
         mock_mps_partial_trace.return_value = np.ones((4, 4))
 
         backend = MPS_SIM
         qc = co.create_random_initial_state_circuit(3)
-        em.calculate_entanglement_measure(em.EM_TOMOGRAPHY_CONCURRENCE, qc, 0, 1, backend)
+        qc_mps = mpsops.mps_from_circuit(qc, print_log_data=False)
+        em.calculate_entanglement_measure(em.EM_TOMOGRAPHY_CONCURRENCE, qc, 0, 1, backend, mps=qc_mps)
 
-        mock_mps_partial_trace.assert_called_once_with(qc, [0, 1])
+        mock_mps_partial_trace.assert_called_once_with(qc_mps, [0, 1])
 
-    def test_given_random_state_when_partial_trace_with_mps_or_sampling_then_rdms_equal(self):
+    @patch('aqc_research.mps_operations.mps_from_circuit')
+    def test_given_mps_backend_when_get_all_qubit_pair_em_measure_then_mps_from_circuit_called_exactly_once(
+            self, mock_mps_from_circuit):
 
+        from numpy import array
+        qc = QuantumCircuit(2)
+        circ_mps = ([(array([[1. + 0.j]]), array([[0. + 0.j]])),
+                     (array([[1. + 0.j]]), array([[0. + 0.j]]))],
+                    [array([1.])])
+        mock_mps_from_circuit.return_value = circ_mps
+        recompiler = ISLRecompiler(qc, backend=co.MPS_SIM)
+        recompiler.circ_mps = circ_mps
+        recompiler._get_all_qubit_pair_entanglement_measures()
+        mock_mps_from_circuit.assert_called_once()
+
+    def test_given_random_state_when_backend_mps_or_statevector_then_ent_measures_equal(self):
         qc = co.create_random_initial_state_circuit(3)
-        qubits = random.sample(range(3), 2)
-        mps_rho = em.mps_partial_trace(qc, qubits)
-        sampling_rho = perform_quantum_tomography(qc, qubits[0], qubits[1], Aer.get_backend("qasm_simulator"),
-                                                  execute_kwargs={"shots": int(1e6)})
 
-        np.testing.assert_array_almost_equal(mps_rho, sampling_rho, decimal=2)
+        entanglement_measures = [EM_TOMOGRAPHY_CONCURRENCE, EM_TOMOGRAPHY_NEGATIVITY, EM_TOMOGRAPHY_EOF]
 
-    def test_given_random_state_when_partial_trace_with_mps_or_sampling_then_ent_measures_equal(self):
+        for i in entanglement_measures:
+            sv_recompiler = ISLRecompiler(qc, entanglement_measure=i, backend=SV_SIM)
+            mps_recompiler = ISLRecompiler(qc, entanglement_measure=i, backend=MPS_SIM)
 
-        qc = co.create_random_initial_state_circuit(3)
-        qubits = random.sample(range(3), 2)
-        mps_rho = em.mps_partial_trace(qc, qubits)
-        sampling_rho = perform_quantum_tomography(qc, qubits[0], qubits[1], Aer.get_backend("qasm_simulator"),
-                                                  execute_kwargs={"shots": int(1e6)})
-
-        self.assertAlmostEqual(em.concurrence(mps_rho), em.concurrence(sampling_rho), delta=1e-2)
-        self.assertAlmostEqual(em.negativity(mps_rho), em.negativity(sampling_rho), delta=1e-2)
-        self.assertAlmostEqual(em.eof(mps_rho), em.eof(sampling_rho), delta=1e-2)
+            np.testing.assert_allclose(
+                sv_recompiler._get_all_qubit_pair_entanglement_measures(),
+                mps_recompiler._get_all_qubit_pair_entanglement_measures(),
+                atol=1e-06)
