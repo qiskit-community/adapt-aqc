@@ -1,4 +1,6 @@
+import logging
 from unittest import TestCase
+from unittest.mock import patch
 
 import numpy as np
 from qiskit import ClassicalRegister, QuantumCircuit, QuantumRegister
@@ -264,6 +266,26 @@ class TestISL(TestCase):
         result = recompiler.recompile()
         assert result["circuit"].data[-num_measurements:] == qc.data[-num_measurements:]
 
+    def test_given_recompiler_when_float_cost_improvement_num_layers_then_no_error(self):
+        qc = co.create_random_initial_state_circuit(5)
+        config = ISLConfig(cost_improvement_num_layers=4.0, cost_improvement_tol=1)
+        recompiler = ISLRecompiler(qc, isl_config=config)
+        recompiler.recompile()
+
+    @patch.object(ISLRecompiler, '_measure_qubit_expectation_values')
+    def test_given_entanglement_when_find_highest_entanglement_pair_then_evals_not_evaluated(self, mock_get_evals):
+        recompiler = ISLRecompiler(QuantumCircuit(2))
+        recompiler._find_highest_entanglement_qubit_pair([0.5], [1.0])
+        mock_get_evals.assert_not_called()
+
+    @patch.object(ISLRecompiler, '_measure_qubit_expectation_values')
+    def test_given_entanglement_when_find_appropriate_pair_then_evals_not_evaluated(self, mock_get_evals):
+        qc = QuantumCircuit(2)
+        qc.h(0)
+        qc.cx(0, 1)
+        recompiler = ISLRecompiler(qc)
+        recompiler._find_appropriate_qubit_pair()
+        mock_get_evals.assert_not_called()
 
 try:
     import qulacs

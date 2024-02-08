@@ -71,7 +71,7 @@ class ISLConfig:
         self.sufficient_cost = sufficient_cost
         self.max_2q_gates = max_2q_gates
         self.cost_improvement_tol = cost_improvement_tol
-        self.cost_improvement_num_layers = cost_improvement_num_layers
+        self.cost_improvement_num_layers = int(cost_improvement_num_layers)
         self.max_layers_to_modify = max_layers_to_modify
         self.method = method
         self.rotosolve_frequency = rotosolve_frequency
@@ -443,34 +443,18 @@ class ISLRecompiler(ApproximateRecompiler):
             self.pair_selection_method_history.append(f"basic")
             return self.coupling_map[np.argmax(reuse_priorities)]
 
-        e_vals = self._measure_qubit_expectation_values()
-        self.e_val_history.append(e_vals)
-
-        # TODO move this logic inside _find_best_heuristic_qubit_pair() so we don't compute evals if not needed
-        e_val_sums = self._get_all_qubit_pair_e_val_sums(e_vals)
-        logger.debug(f"Summed σ_z expectation values of pairs {e_val_sums}")
-
-        # Mapping from the σz expectation values {1, -1} to the range {0, 1} to make an expectation value based
-        # priority. This ensures that the argmax of the list favours qubits close to the |1> state (eigenvalue -1)
-        # to apply the next layer to.
-        e_val_priorities = [2 - e_val for e_val in e_val_sums]
-
         if self.isl_config.method == "heuristic":
-            return self._find_best_heuristic_qubit_pair(e_val_priorities, reuse_priorities)
+            return self._find_best_heuristic_qubit_pair(reuse_priorities)
 
         if self.isl_config.method == "ISL":
             logger.debug("Computing entanglement of pairs")
             ems = self._get_all_qubit_pair_entanglement_measures()
             self.entanglement_measures_history.append(ems)
-            return self._find_highest_entanglement_qubit_pair(
-                ems, e_val_priorities, reuse_priorities
-            )
+            return self._find_highest_entanglement_qubit_pair(ems, reuse_priorities)
 
         raise ValueError(f"Invalid ISL method {self.isl_config.method}. "f"Method must be one of ISL,heuristic,random")
 
-    def _find_highest_entanglement_qubit_pair(
-            self, entanglement_measures, e_val_priorities, reuse_priorities
-    ):
+    def _find_highest_entanglement_qubit_pair(self, entanglement_measures, reuse_priorities):
 
         # First check if the previous qubit pair was 'bad'
         if len(self.entanglement_measures_history) >= 2:
@@ -502,21 +486,32 @@ class ISLRecompiler(ApproximateRecompiler):
             # No local entanglement detected in non-bad qubit pairs;
             # defer to using 'basic' method
             logger.info("No local entanglement detected in non-bad qubit pairs")
-            return self._find_best_heuristic_qubit_pair(e_val_priorities, reuse_priorities)
+            return self._find_best_heuristic_qubit_pair(reuse_priorities)
         else:
             self.pair_selection_method_history.append(f"ISL")
+            # Add 'None' to e_val_history if no expectation values were needed
+            self.e_val_history.append(None)
             return self.coupling_map[np.argmax(filtered_ems)]
 
-    def _find_best_heuristic_qubit_pair(self, e_val_priorities, reuse_priorities):
+    def _find_best_heuristic_qubit_pair(self, reuse_priorities):
         """
         Choose the qubit pair to be the one with the largest expectation value priority multiplied by the distance
         # priority of that pair.
-        @param e_val_priorities: A pair of qubits both in the |0> or |1> state will have an expectation value priority
-        of 0 and 1 respectively.
         @param reuse_priorities: If a pair of qubits were used l layers ago, the reuse priority is 1 - np.exp2(-1 * l).
         Most recently used pair has a reuse priority of 0, pairs never used have a reuse priority of 1.
         @return: The pair of qubits with the highest multiplied e_val priority and reuse priority.
         """
+        e_vals = self._measure_qubit_expectation_values()
+        self.e_val_history.append(e_vals)
+
+        e_val_sums = self._get_all_qubit_pair_e_val_sums(e_vals)
+        logger.debug(f"Summed σ_z expectation values of pairs {e_val_sums}")
+
+        # Mapping from the σz expectation values {1, -1} to the range {0, 1} to make an expectation value based
+        # priority. This ensures that the argmax of the list favours qubits close to the |1> state (eigenvalue -1)
+        # to apply the next layer to.
+        e_val_priorities = [2 - e_val for e_val in e_val_sums]
+
         logger.debug(f"σ_z expectation value priorities of pairs {e_val_priorities}")
         logger.debug(f"Reuse priorities of pairs {reuse_priorities}")
         combined_priorities = [
