@@ -2,6 +2,10 @@ from unittest import TestCase
 
 import numpy as np
 from qiskit import QuantumCircuit, QuantumRegister
+from qiskit.quantum_info import Statevector
+from qiskit_aer import Aer
+
+from isl.utils.circuit_operations import SV_SIM
 
 
 class TestBasicCircuitOperations(TestCase):
@@ -61,8 +65,8 @@ class TestBasicCircuitOperations(TestCase):
         # [Qubit]
         assert (
                 qc.data[1][0].name == "cz"
-                and qc.data[1][1][0].index == 1
-                and qc.data[1][1][1].index == 2
+                and qc.data[1][1][0]._index == 1
+                and qc.data[1][1][1]._index == 2
         )
 
     def test_is_supported_1q_gate(self):
@@ -299,7 +303,6 @@ class TestVariationalCircuitOperations(TestCase):
 
 class TestMiscCircuitOperations(TestCase):
     def test_initial_state_to_circuit(self):
-        from qiskit import Aer, execute
 
         from isl.utils.circuit_operations.circuit_operations_full_circuit import (
             initial_state_to_circuit,
@@ -315,10 +318,6 @@ class TestMiscCircuitOperations(TestCase):
 
         qc = QuantumCircuit(qubits)
         qc.append(initial_state_to_circuit(rand_state), qc.qubits)
-        sv = (
-            execute(qc, Aer.get_backend("statevector_simulator"), shots=1)
-            .result()
-            .get_statevector()
-        )
+        sv = Statevector(qc)
         overlap_minus_1 = np.abs(np.abs(np.vdot(rand_state, sv)) - 1)
         assert overlap_minus_1 < 1e-3

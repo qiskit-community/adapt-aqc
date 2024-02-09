@@ -10,8 +10,9 @@ from typing import Union
 
 import numpy as np
 from aqc_research.mps_operations import mps_from_circuit, mps_dot
-from qiskit import Aer, ClassicalRegister, QuantumCircuit, QuantumRegister
+from qiskit import ClassicalRegister, QuantumCircuit, QuantumRegister
 from qiskit.result import Counts
+from qiskit_aer import Aer
 from qiskit_aer.backends.compatibility import Statevector
 
 import isl.utils.circuit_operations as co

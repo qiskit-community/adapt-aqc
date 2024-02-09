@@ -2,7 +2,8 @@
 import logging
 import timeit
 
-from qiskit import Aer, QuantumCircuit
+from qiskit import QuantumCircuit
+from qiskit_aer import Aer
 
 import isl.utils.circuit_operations as co
 import isl.utils.constants as vconstants

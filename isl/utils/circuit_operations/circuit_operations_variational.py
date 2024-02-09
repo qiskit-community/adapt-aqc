@@ -1,6 +1,6 @@
 import numpy as np
 from qiskit import QuantumCircuit
-from qiskit.extensions import U1Gate, U3Gate
+from qiskit.circuit.library import U3Gate, U1Gate
 
 from isl.utils.circuit_operations.circuit_operations_basic import is_supported_1q_gate
 from isl.utils.utilityfunctions import normalized_angles

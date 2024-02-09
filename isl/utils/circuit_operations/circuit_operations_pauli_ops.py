@@ -1,7 +1,7 @@
 import numpy as np
 from openfermion import QubitOperator
 from qiskit import ClassicalRegister, QuantumCircuit
-from qiskit.extensions import PhaseGate, UGate
+from qiskit.circuit.library import UGate, PhaseGate
 from qiskit.quantum_info import Pauli
 
 from isl.utils.circuit_operations.circuit_operations_full_circuit import (
@@ -89,9 +89,6 @@ def expectation_value_of_pauli_operator(
 
         remove_inner_circuit(circuit, pauli_circuit_gate_range)
     circuit.cregs.remove(creg)
-    for clbit in creg:
-        if clbit in circuit.clbits:
-            circuit.clbits.remove(clbit)
     add_classical_operations(circuit, cl_ops_data)
     return expectation_value
 

@@ -5,7 +5,7 @@ import timeit
 
 import numpy as np
 import aqc_research.mps_operations as mpsops
-from qiskit import QuantumCircuit
+from qiskit import QuantumCircuit, qasm2
 
 import isl.utils.circuit_operations as co
 import isl.utils.constants as vconstants
@@ -232,7 +232,7 @@ class ISLRecompiler(ApproximateRecompiler):
         res["exact_overlap"] = exact_overlap
         res["num_1q_gates"] = num_1q_gates
         res["num_2q_gates"] = num_2q_gates
-        res["circuit_qasm"] = recompiled_circuit.qasm()
+        res["circuit_qasm"] = qasm2.dumps(recompiled_circuit)
         return res
 
     def recompile(self, initial_ansatz: QuantumCircuit = None):
@@ -368,7 +368,7 @@ class ISLRecompiler(ApproximateRecompiler):
             "time_taken": end_time - start_time,
             "cost_evaluations": self.cost_evaluation_counter,
             "coupling_map": self.coupling_map,
-            "circuit_qasm": recompiled_circuit.qasm(),
+            "circuit_qasm": qasm2.dumps(recompiled_circuit)
         }
         logger.info("ISL completed")
         return result_dict

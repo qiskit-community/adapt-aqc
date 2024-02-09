@@ -4,10 +4,11 @@ from random import seed
 from typing import Union
 
 import numpy as np
-from qiskit import Aer, ClassicalRegister, QuantumCircuit, QuantumRegister, execute
+from qiskit import ClassicalRegister, QuantumCircuit, QuantumRegister
 from qiskit import transpile as qiskit_transpile
 from qiskit.circuit import Clbit, Gate, Instruction, Qubit, Reset
-from qiskit.quantum_info import random_statevector
+from qiskit.quantum_info import random_statevector, Statevector
+from qiskit_aer import Aer
 
 from isl.utils.circuit_operations import (
     BASIS_GATES,
@@ -93,14 +94,14 @@ def are_circuits_identical(
         for qubit1, qubit2 in zip(qargs1, qargs2):
             if match_registers and qubit1 != qubit2:
                 return False
-            if qubit1.index != qubit2.index:
+            if qubit1._index != qubit2._index:
                 return False
 
         # Check that cargs match
         for clbit1, clbit2 in zip(cargs1, cargs2):
             if match_registers and clbit1 != clbit2:
                 return False
-            if clbit1.index != clbit2.index:
+            if clbit1._index != clbit2._index:
                 return False
     return True
 
@@ -422,14 +423,10 @@ def calculate_overlap_between_circuits(
     qc2.append(circuit2, [qr2[i] for i in qubit_subset_to_recompile])
 
     sv1 = (
-        execute(qc1, Aer.get_backend("statevector_simulator"))
-        .result()
-        .get_statevector()
+        Statevector(qc1)
     )
     sv2 = (
-        execute(qc2, Aer.get_backend("statevector_simulator"))
-        .result()
-        .get_statevector()
+        Statevector(qc2)
     )
     return np.absolute(np.vdot(sv1, sv2))**2
 

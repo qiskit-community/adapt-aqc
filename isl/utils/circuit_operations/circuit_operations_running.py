@@ -1,9 +1,9 @@
 import logging
 
 import numpy as np
-from qiskit import Aer, QuantumCircuit, transpile
+from qiskit import QuantumCircuit, transpile
 from qiskit.circuit.library import CXGate
-from qiskit_aer import AerSimulator
+from qiskit_aer import AerSimulator, Aer
 from qiskit_aer.backends.aerbackend import AerBackend
 from qiskit_aer.noise import thermal_relaxation_error, NoiseModel
 from scipy.optimize import curve_fit
@@ -23,7 +23,8 @@ logger = logging.getLogger(__name__)
 
 QASM_SIM = Aer.get_backend("qasm_simulator")
 SV_SIM = Aer.get_backend("statevector_simulator")
-# TODO can we get mps_log_data=True working without it causing an error?
+
+# Setting mps_log_data=True will massively reduce performance and should only be done for debugging
 MPS_SIM = AerSimulator(method="matrix_product_state", matrix_product_state_truncation_threshold=1e-16,
                        mps_log_data=False)
 QULACS = "qulacs"
@@ -85,6 +86,9 @@ def run_circuit_without_transpilation(
         else:
             output = counts_data_from_statevector(result.get_statevector())
     else:
+        # TODO In this case (non-sv, non-mps) we could not use the result of backend.run and instead use primitives
+        # TODO e.g., StatevectorSampler which will let us use Qiskit Runtime for real device and might be a
+        # TODO performance improvement for shot simulation.
         output = result.get_counts()
 
     return output

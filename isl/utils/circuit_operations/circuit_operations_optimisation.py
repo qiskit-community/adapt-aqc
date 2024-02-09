@@ -1,6 +1,6 @@
 import numpy as np
 from qiskit import QuantumCircuit
-from qiskit.quantum_info import OneQubitEulerDecomposer
+from qiskit.synthesis import OneQubitEulerDecomposer
 
 from isl.utils.circuit_operations.circuit_operations_basic import (
     is_supported_1q_gate,

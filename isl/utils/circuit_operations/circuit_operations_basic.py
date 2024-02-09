@@ -3,8 +3,7 @@ import random
 import numpy as np
 from qiskit import QuantumCircuit
 from qiskit.circuit import Gate
-from qiskit.circuit.library import UGate, RXGate, RYGate, RZGate
-from qiskit.extensions import CXGate, CZGate, U1Gate, U3Gate
+from qiskit.circuit.library import RXGate, RYGate, RZGate, CZGate, CXGate
 from sympy import parse_expr
 
 
@@ -40,11 +39,11 @@ def create_2q_gate(gate_name):
 
 
 def add_gate(
-    circuit: QuantumCircuit,
-    gate,
-    gate_index=None,
-    qubit_indexes=None,
-    clbit_indexes=None,
+        circuit: QuantumCircuit,
+        gate,
+        gate_index=None,
+        qubit_indexes=None,
+        clbit_indexes=None,
 ):
     if gate_index is None:
         gate_index = len(circuit.data)
@@ -92,8 +91,8 @@ def replace_2q_gate(circuit, gate_index, control, target, gate_name="cx"):
     :param target: New gate target qubit
     :param gate_name: New gate name
     """
-    old_gate, old_qargs, cargs = circuit.data[gate_index]
-    qr = old_qargs[0].register
+    _, old_qargs, cargs = circuit.data[gate_index]
+    qr = old_qargs[0]._register
     new_qargs = [qr[control], qr[target]]
     new_gate = create_2q_gate(gate_name)
     circuit.data[gate_index] = (new_gate, new_qargs, cargs)
@@ -112,15 +111,15 @@ def is_supported_1q_gate(gate):
 
 
 def add_dressed_cnot(
-    circuit: QuantumCircuit,
-    control,
-    target,
-    thinly_dressed=False,
-    gate_index=None,
-    v1=True,
-    v2=True,
-    v3=True,
-    v4=True,
+        circuit: QuantumCircuit,
+        control,
+        target,
+        thinly_dressed=False,
+        gate_index=None,
+        v1=True,
+        v2=True,
+        v3=True,
+        v4=True,
 ):
     """
     Add a dressed cnot gate (cx surrounded by 4 general-rotation(rzryrz
@@ -206,7 +205,7 @@ def calculate_independent_variable_values(circuit: QuantumCircuit):
 
 
 def reevaluate_dependent_parameterised_gates(
-    circuit: QuantumCircuit, independent_variable_values
+        circuit: QuantumCircuit, independent_variable_values
 ):
     for (gate, _, _) in circuit.data:
         if gate.label is not None and "@" in gate.label:
