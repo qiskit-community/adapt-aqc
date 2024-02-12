@@ -39,7 +39,8 @@ class ISLConfig:
             bad_qubit_pair_memory=10,
             rotosolve_frequency=1,
             rotoselect_tol=1e-5,
-            rotosolve_tol=1e-3
+            rotosolve_tol=1e-3,
+            entanglement_threshold=1e-8
     ):
         """
         Termination criteria:
@@ -61,10 +62,12 @@ class ISLConfig:
             One of 'ISL', 'random', 'heuristic','basic'
 
         Other parameters:
-        :param bad_qubit_pair_memory:
-        :param rotosolve_frequency: How often rotosolve is used
-        (if n, rotosolve will be used after every n layers)
-
+        :param bad_qubit_pair_memory: If acting on a qubit pair leads to entanglement increasing, it is labelled a
+        "bad pair". This argument controls how many bad pairs should be remembered.
+        :param rotosolve_frequency: How often rotosolve is used (if n, rotosolve will be used after every n layers).
+        :param rotoselect_tol: How much does the cost need to decrease by each iteration to continue Rotoselect.
+        :param rotosolve_tol: How much does the cost need to decrease by each iteration to continue Rotosolve.
+        :param entanglement_threshold: Entanglement below this value is treated as zero.
         """
         self.bad_qubit_pair_memory = bad_qubit_pair_memory
         self.max_layers = max_layers
@@ -77,6 +80,7 @@ class ISLConfig:
         self.rotosolve_frequency = rotosolve_frequency
         self.rotoselect_tol = rotoselect_tol
         self.rotosolve_tol = rotosolve_tol
+        self.entanglement_threshold = entanglement_threshold
 
     def __repr__(self):
         representation_str = f"{self.__class__.__name__}("
@@ -482,7 +486,7 @@ class ISLRecompiler(ApproximateRecompiler):
             # Avoid using same qubit pair as the one used immediately before
             filtered_ems[self.coupling_map.index(self.qubit_pair_history[-1])] = -1
         logger.debug(f"Entanglement of all pairs: {filtered_ems}")
-        if max(filtered_ems) <= 0:
+        if max(filtered_ems) <= self.isl_config.entanglement_threshold :
             # No local entanglement detected in non-bad qubit pairs;
             # defer to using 'basic' method
             logger.info("No local entanglement detected in non-bad qubit pairs")

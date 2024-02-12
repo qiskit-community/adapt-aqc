@@ -270,8 +270,7 @@ def concurrence(rho):
     else:
         logger.warning(f"When calculating concurrence,eigenvalues were not real")
         return 0
-    eigenvalues[np.isclose(eigenvalues, 0)] = 0
-    lambdas = np.sqrt(eigenvalues)
+    lambdas = np.sqrt(eigenvalues.clip(min=0))
     return np.max([0, lambdas[0] - lambdas[1] - lambdas[2] - lambdas[3]])
 
 

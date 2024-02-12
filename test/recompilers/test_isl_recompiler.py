@@ -1,4 +1,3 @@
-import logging
 from unittest import TestCase
 from unittest.mock import patch
 
@@ -9,6 +8,7 @@ import isl.utils.circuit_operations as co
 from isl.recompilers import ISLConfig, ISLRecompiler
 from isl.utils.circuit_operations import QASM_SIM, SV_SIM, MPS_SIM
 from isl.utils.constants import DEFAULT_SUFFICIENT_COST
+from isl.utils.entanglement_measures import EM_TOMOGRAPHY_NEGATIVITY
 
 
 class TestISL(TestCase):
@@ -272,6 +272,15 @@ class TestISL(TestCase):
         recompiler = ISLRecompiler(qc, isl_config=config)
         recompiler.recompile()
 
+    def test_given_isl_mode_when_compile_circuit_with_very_small_entanglement_then_heuristic_method_used(self):
+        qc = QuantumCircuit(2)
+        qc.h(0)
+        qc.crx(1e-15, 0, 1)
+
+        recompiler = ISLRecompiler(qc, entanglement_measure=EM_TOMOGRAPHY_NEGATIVITY)
+        result = recompiler.recompile()
+        self.assertTrue("heuristic" in result.get("method_history"))
+
     @patch.object(ISLRecompiler, '_measure_qubit_expectation_values')
     def test_given_entanglement_when_find_highest_entanglement_pair_then_evals_not_evaluated(self, mock_get_evals):
         recompiler = ISLRecompiler(QuantumCircuit(2))
@@ -286,6 +295,7 @@ class TestISL(TestCase):
         recompiler = ISLRecompiler(qc)
         recompiler._find_appropriate_qubit_pair()
         mock_get_evals.assert_not_called()
+
 
 try:
     import qulacs
