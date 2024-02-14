@@ -19,7 +19,6 @@ from isl.utils.utilityfunctions import (
     expectation_value_of_qubits,
     expectation_value_of_qubits_mps,
     has_stopped_improving,
-    is_statevector_backend,
     remove_permutations_from_coupling_map,
 )
 
@@ -111,6 +110,7 @@ class ISLRecompiler(ApproximateRecompiler):
             use_roto_algos=True,
             perform_final_minimisation=False,
             local_measurements_only=False,
+            debug_log_full_ansatz=False,
     ):
         """
         :param circuit_to_recompile: Circuit that is to be recompiled
@@ -181,6 +181,8 @@ class ISLRecompiler(ApproximateRecompiler):
         self.pair_selection_method_history = []
         self.entanglement_measures_history = []
         self.e_val_history = []
+
+        self.debug_log_full_ansatz = debug_log_full_ansatz
 
     def construct_layer_2q_gate(self, custom_layer_2q_gate):
         if custom_layer_2q_gate is None:
@@ -298,16 +300,33 @@ class ISLRecompiler(ApproximateRecompiler):
             logger.info(f"Cost before adding layer: {cost}")
             cost = self._add_layer(layer_count)
             cost_history.append(cost)
-            if self.remove_unnecessary_gates:
-                co.remove_unnecessary_gates_from_circuit(
-                    self.full_circuit, False, False, gate_range=g_range()
-                )
 
             # Log ansatz part of the circuit if logger is in DEBUG (10)
             if logger.getEffectiveLevel() == 10:
                 ansatz = self.full_circuit.copy()
-                del ansatz.data[:len(self.circuit_to_recompile.data)]
-                logger.debug(f'Optimised ansatz after layer added: \n{ansatz}')
+                if self.debug_log_full_ansatz:
+                    del ansatz.data[:len(self.circuit_to_recompile.data)]
+                    logger.debug(f'Optimised ansatz after layer added: \n{ansatz}')
+
+                logger.debug(f'Qubit pair history: \n{self.qubit_pair_history}')
+
+                # Delete all gates apart from the 5 from the added layer
+                # TODO When initial_state_circuit functionality is added this needs to also delete those gates appended
+                # TODO to the end of V†
+                del ansatz.data[:-5]
+                # Remove all qubits apart from the pair acted on in the current layer
+                for qubit in range(ansatz.num_qubits - 1, -1, -1):
+                    if qubit not in self.qubit_pair_history[-1]:
+                        del ansatz.qubits[qubit]
+                if not (ansatz.data[2][0].name == 'cx'):
+                    logging.error("Final ansatz layer logging not implemented for custom ansatz or functionalities "
+                                  "placing more gates after trainable ansatz")
+                logger.debug(f'Optimised layer added: \n{ansatz}')
+
+            if self.remove_unnecessary_gates:
+                co.remove_unnecessary_gates_from_circuit(
+                    self.full_circuit, False, False, gate_range=g_range()
+                )
 
             num_2q_gates, num_1q_gates = co.find_num_gates(
                 self.full_circuit, gate_range=g_range()
@@ -486,7 +505,7 @@ class ISLRecompiler(ApproximateRecompiler):
             # Avoid using same qubit pair as the one used immediately before
             filtered_ems[self.coupling_map.index(self.qubit_pair_history[-1])] = -1
         logger.debug(f"Entanglement of all pairs: {filtered_ems}")
-        if max(filtered_ems) <= self.isl_config.entanglement_threshold :
+        if max(filtered_ems) <= self.isl_config.entanglement_threshold:
             # No local entanglement detected in non-bad qubit pairs;
             # defer to using 'basic' method
             logger.info("No local entanglement detected in non-bad qubit pairs")
