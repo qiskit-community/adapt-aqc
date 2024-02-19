@@ -51,7 +51,7 @@ class TestEntanglementMeasures(TestCase):
         qc_mps = mpsops.mps_from_circuit(qc, print_log_data=False)
         em.calculate_entanglement_measure(em.EM_TOMOGRAPHY_CONCURRENCE, qc, 0, 1, backend, mps=qc_mps)
 
-        mock_mps_partial_trace.assert_called_once_with(qc_mps, [0, 1])
+        mock_mps_partial_trace.assert_called_once_with(qc_mps, [0, 1], already_preprocessed=True)
 
     @patch('aqc_research.mps_operations.mps_from_circuit')
     def test_given_mps_backend_when_get_all_qubit_pair_em_measure_then_mps_from_circuit_called_exactly_once(
@@ -62,6 +62,7 @@ class TestEntanglementMeasures(TestCase):
         circ_mps = ([(array([[1. + 0.j]]), array([[0. + 0.j]])),
                      (array([[1. + 0.j]]), array([[0. + 0.j]]))],
                     [array([1.])])
+        circ_mps = mpsops._preprocess_mps(circ_mps)
         mock_mps_from_circuit.return_value = circ_mps
         recompiler = ISLRecompiler(qc, backend=co.MPS_SIM)
         recompiler.circ_mps = circ_mps

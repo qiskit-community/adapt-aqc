@@ -563,7 +563,7 @@ class ISLRecompiler(ApproximateRecompiler):
         # Generate MPS from circuit once if using MPS backend
         if self.is_mps_backend:
             circ = self.full_circuit.copy()
-            self.circ_mps = mpsops.mps_from_circuit(circ, print_log_data=False)
+            self.circ_mps = mpsops.mps_from_circuit(circ, print_log_data=False, return_preprocessed=True)
         else:
             self.circ_mps = None
         for control, target in self.coupling_map:

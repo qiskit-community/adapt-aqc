@@ -176,11 +176,11 @@ def expectation_value_of_qubits_mps(circuit: QuantumCircuit):
     """
     # Get mps from circuit
     circ = circuit.copy()
-    mps = mpsop.mps_from_circuit(circ, print_log_data=False)
+    mps = mpsop.mps_from_circuit(circ, print_log_data=False, return_preprocessed=True)
 
     num_qubits = circuit.num_qubits
 
-    expectation_values = [(mpsop.mps_expectation(mps, 'Z', i)) for i in range(num_qubits)]
+    expectation_values = [(mpsop.mps_expectation(mps, 'Z', i, already_preprocessed=True)) for i in range(num_qubits)]
     return expectation_values
 
 

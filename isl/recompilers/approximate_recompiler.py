@@ -387,12 +387,12 @@ class ApproximateRecompiler(ABC):
 
     def _evaluate_cost_mps(self):
         circ = self.full_circuit.copy()
-        circ_mps = mps_from_circuit(circ, print_log_data=False)
+        circ_mps = mps_from_circuit(circ, return_preprocessed=True)
         if self.zero_mps is None:
             logger.debug("Evaluating cost function directly from MPS without sampling")
-            self.zero_mps = mps_from_circuit(QuantumCircuit(self.total_num_qubits), print_log_data=False)
+            self.zero_mps = mps_from_circuit(QuantumCircuit(self.total_num_qubits), return_preprocessed=True)
 
-        cost = 1 - np.absolute(mps_dot(circ_mps, self.zero_mps)) ** 2
+        cost = 1 - np.absolute(mps_dot(circ_mps, self.zero_mps, already_preprocessed=True)) ** 2
         return cost
 
     def _evaluate_cost_measure_all(self):

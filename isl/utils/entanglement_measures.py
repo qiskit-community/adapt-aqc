@@ -62,7 +62,7 @@ def calculate_entanglement_measure(
             )
             rho = partial_trace(statevector, qubit_1, qubit_2)
         elif backend.options.method == "matrix_product_state":
-            rho = mpsops.partial_trace(mps, [qubit_1, qubit_2])
+            rho = mpsops.partial_trace(mps, [qubit_1, qubit_2], already_preprocessed=True)
         else:
             rho = perform_quantum_tomography(
                 circuit, qubit_1, qubit_2, backend, backend_options, execute_kwargs
