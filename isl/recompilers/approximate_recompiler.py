@@ -52,9 +52,14 @@ class ApproximateRecompiler(ABC):
         :param execute_kwargs: keyword arguments passed into circuit runs (
         excluding backend)
         e.g. {'noise_model:NoiseModel, shots=10000}
-        :param initial_state: Initial state that circuits act on.
-        Can be a circuit (QuantumCircuit/Instruction) or vector (
-        list/np.ndarray) or None
+
+        :param initial_state: Can be used to define an initial state to compile with respect to
+        (as opposed to the default of the |0..0> state). Effectively redefines the cost function as
+        C = 1 - |<init|V†U|init>|^2. Similar functionality can be achieved for ISLRecompiler with
+        the `starting_circuit` param, but here the solution won't prepare the initial state - it
+        assumes the initial state is already prepared. Can be a circuit (QuantumCircuit/Instruction)
+        or vector (list/np.ndarray) or None
+
         :param qubit_subset: The subset of qubits (relative to initial state
         circuit) that circuit_to_recompile acts
         on. If None, it will be assumed that circuit_to_recompile and
@@ -304,7 +309,7 @@ class ApproximateRecompiler(ABC):
         if self.initial_state_circuit is not None:
             co.add_to_circuit(
                 qc,
-                self.initial_state_circuit,
+                self.initial_state_circuit, 
                 transpile_before_adding=True,
                 transpile_kwargs={"backend": self.backend},
             )

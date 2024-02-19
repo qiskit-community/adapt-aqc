@@ -1,8 +1,10 @@
+import logging
 from unittest import TestCase
 from unittest.mock import patch
 
 import numpy as np
 from qiskit import ClassicalRegister, QuantumCircuit, QuantumRegister
+from qiskit.quantum_info import Statevector
 
 import isl.utils.circuit_operations as co
 from isl.recompilers import ISLConfig, ISLRecompiler
@@ -197,6 +199,38 @@ class TestISL(TestCase):
         qc2.append(qc1.to_instruction(), qc2.qregs[0])
         recompiler = ISLRecompiler(qc2)
         recompiler.recompile()
+
+    def test_given_starting_circuit_when_recompile_with_debug_logging_then_happy(self):
+        logging.basicConfig()
+        logging.getLogger('isl').setLevel(logging.DEBUG)
+
+        n = 3
+
+        starting_ansatz_circuit = QuantumCircuit(n)
+        starting_ansatz_circuit.x(range(0, n, 2))
+
+        qc = co.create_random_initial_state_circuit(n)
+
+        recompiler = ISLRecompiler(qc, starting_circuit=starting_ansatz_circuit)
+
+        recompiler.recompile()
+
+    def test_given_starting_circuit_when_recompile_then_solution_starts_with_it(self):
+
+        n = 2
+        starting_ansatz_circuit = QuantumCircuit(n)
+        starting_ansatz_circuit.x(0)
+
+        qc = co.create_random_initial_state_circuit(n)
+
+        recompiler = ISLRecompiler(qc, starting_circuit=starting_ansatz_circuit)
+
+        result = recompiler.recompile()
+        compiled_qc: QuantumCircuit = result.get("circuit")
+        del compiled_qc.data[1:]
+        overlap = np.abs(np.dot(Statevector(compiled_qc).conjugate(),
+                                Statevector(starting_ansatz_circuit)))**2
+        self.assertAlmostEquals(overlap, 1)
 
     def test_given_two_registers_when_recompiling_then_no_error(self):
         qr1 = QuantumRegister(2)

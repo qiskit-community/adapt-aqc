@@ -3,8 +3,8 @@
 import logging
 import timeit
 
-import numpy as np
 import aqc_research.mps_operations as mpsops
+import numpy as np
 from qiskit import QuantumCircuit, qasm2
 
 import isl.utils.circuit_operations as co
@@ -123,10 +123,10 @@ class ISLRecompiler(ApproximateRecompiler):
         initial state
         :param custom_layer_2q_gate: Entangling gate to use (default is
         thinly dressed CNOT)
-        :param starting_circuit: The initial fixed gates on the recompiled
-        circuit. WARNING: Using an entangled circuit
-            will lead to worse ISL performance because it disrupts the
-            measurement of local entanglement between qubits
+        :param starting_circuit: This circuit will be used as a set of initial fixed gates for the
+        recompiled solution. This means that during ISL, the inverse of this circuit will be added
+        to the end of V†. WARNING: Using an entangled circuit will lead to worse ISL performance
+        because it disrupts the measurement of local entanglement between qubits.
         :param use_roto_algos: Whether to use rotoselect and rotosolve
         for cost minimisation.
             Disable if custom_layer_2q_gate does not support rotosolve
@@ -202,7 +202,7 @@ class ISLRecompiler(ApproximateRecompiler):
         return qc
 
     def recompile_using_initial_ansatz(
-            self, ansatz: QuantumCircuit, modify_ansatz=True
+        self, ansatz: QuantumCircuit, modify_ansatz=True
     ):
         """
         Use the provided ansatz as a starting point for the recompilation
@@ -310,18 +310,27 @@ class ISLRecompiler(ApproximateRecompiler):
 
                 logger.debug(f'Qubit pair history: \n{self.qubit_pair_history}')
 
+                # Remove starting_circuit from end of ansatz, if there is one
+                if self.starting_circuit is not None:
+                    del ansatz.data[-len(self.starting_circuit.data):]
+
                 # Delete all gates apart from the 5 from the added layer
-                # TODO When initial_state_circuit functionality is added this needs to also delete those gates appended
-                # TODO to the end of V†
                 del ansatz.data[:-5]
                 # Remove all qubits apart from the pair acted on in the current layer
                 for qubit in range(ansatz.num_qubits - 1, -1, -1):
                     if qubit not in self.qubit_pair_history[-1]:
                         del ansatz.qubits[qubit]
                 if not (ansatz.data[2][0].name == 'cx'):
-                    logging.error("Final ansatz layer logging not implemented for custom ansatz or functionalities "
-                                  "placing more gates after trainable ansatz")
-                logger.debug(f'Optimised layer added: \n{ansatz}')
+                    logging.error(
+                        "Final ansatz layer logging not implemented for custom ansatz or functionalities "
+                        "placing more gates after trainable ansatz")
+                else:
+                    try:
+                        logger.debug(f'Optimised layer added: \n{ansatz}')
+                    except ValueError:
+                        logging.error(
+                            "Final ansatz layer logging not implemented for custom ansatz or functionalities "
+                            "placing more gates after trainable ansatz")
 
             if self.remove_unnecessary_gates:
                 co.remove_unnecessary_gates_from_circuit(
@@ -334,7 +343,7 @@ class ISLRecompiler(ApproximateRecompiler):
             cinl = self.isl_config.cost_improvement_num_layers
             cit = self.isl_config.cost_improvement_tol
             if len(cost_history) >= cinl and has_stopped_improving(
-                    cost_history[-1 * cinl:], cit
+                cost_history[-1 * cinl:], cit
             ):
                 logger.warning("ISL stopped improving")
                 break
@@ -475,7 +484,8 @@ class ISLRecompiler(ApproximateRecompiler):
             self.entanglement_measures_history.append(ems)
             return self._find_highest_entanglement_qubit_pair(ems, reuse_priorities)
 
-        raise ValueError(f"Invalid ISL method {self.isl_config.method}. "f"Method must be one of ISL,heuristic,random")
+        raise ValueError(
+            f"Invalid ISL method {self.isl_config.method}. "f"Method must be one of ISL,heuristic,random")
 
     def _find_highest_entanglement_qubit_pair(self, entanglement_measures, reuse_priorities):
 
@@ -485,19 +495,22 @@ class ISLRecompiler(ApproximateRecompiler):
             pre_em = self.entanglement_measures_history[-2][prev_qp_index]
             post_em = self.entanglement_measures_history[-1][prev_qp_index]
             if post_em >= pre_em:
-                logger.debug(f"Entanglement did not reduce for previous pair {self.coupling_map[prev_qp_index]}. "
-                             f"Adding to bad qubit pairs list.")
+                logger.debug(
+                    f"Entanglement did not reduce for previous pair {self.coupling_map[prev_qp_index]}. "
+                    f"Adding to bad qubit pairs list.")
                 self.bad_qubit_pairs.append(self.coupling_map[prev_qp_index])
             if len(self.bad_qubit_pairs) > self.isl_config.bad_qubit_pair_memory:
                 # Maintain max size of bad_qubit_pairs
-                logger.debug(f"Max size of bad qubit pairs reached. Removing {self.bad_qubit_pairs[0]} from list.")
+                logger.debug(
+                    f"Max size of bad qubit pairs reached. Removing {self.bad_qubit_pairs[0]} from list.")
                 del self.bad_qubit_pairs[0]
 
         filtered_ems = entanglement_measures.copy()
         for qp in set(self.bad_qubit_pairs):
             # Find the number of times this qubit pair has occurred recently
             reps = len(
-                [x for x in self.qubit_pair_history[-1 * self.isl_config.bad_qubit_pair_memory:] if x == qp]
+                [x for x in self.qubit_pair_history[-1 * self.isl_config.bad_qubit_pair_memory:] if
+                 x == qp]
             )
             if reps >= 1:
                 filtered_ems[self.coupling_map.index(qp)] = -1
