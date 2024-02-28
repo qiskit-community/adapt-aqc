@@ -27,19 +27,19 @@ logger = logging.getLogger(__name__)
 
 class ISLConfig:
     def __init__(
-            self,
-            max_layers: int = int(1e5),
-            sufficient_cost=vconstants.DEFAULT_SUFFICIENT_COST,
-            max_2q_gates=1e4,
-            cost_improvement_num_layers=10,
-            cost_improvement_tol=1e-2,
-            max_layers_to_modify=100,
-            method="ISL",
-            bad_qubit_pair_memory=10,
-            rotosolve_frequency=1,
-            rotoselect_tol=1e-5,
-            rotosolve_tol=1e-3,
-            entanglement_threshold=1e-8
+        self,
+        max_layers: int = int(1e5),
+        sufficient_cost=vconstants.DEFAULT_SUFFICIENT_COST,
+        max_2q_gates=1e4,
+        cost_improvement_num_layers=10,
+        cost_improvement_tol=1e-2,
+        max_layers_to_modify=100,
+        method="ISL",
+        bad_qubit_pair_memory=10,
+        rotosolve_frequency=1,
+        rotoselect_tol=1e-5,
+        rotosolve_tol=1e-3,
+        entanglement_threshold=1e-8
     ):
         """
         Termination criteria:
@@ -97,20 +97,21 @@ class ISLRecompiler(ApproximateRecompiler):
     """
 
     def __init__(
-            self,
-            circuit_to_recompile,
-            entanglement_measure=EM_TOMOGRAPHY_CONCURRENCE,
-            backend=co.SV_SIM,
-            execute_kwargs=None,
-            coupling_map=None,
-            isl_config: ISLConfig = None,
-            general_initial_state=False,
-            custom_layer_2q_gate=None,
-            starting_circuit=None,
-            use_roto_algos=True,
-            perform_final_minimisation=False,
-            local_measurements_only=False,
-            debug_log_full_ansatz=False,
+        self,
+        circuit_to_recompile,
+        entanglement_measure=EM_TOMOGRAPHY_CONCURRENCE,
+        backend=co.SV_SIM,
+        execute_kwargs=None,
+        coupling_map=None,
+        isl_config: ISLConfig = None,
+        general_initial_state=False,
+        custom_layer_2q_gate=None,
+        starting_circuit=None,
+        use_roto_algos=True,
+        perform_final_minimisation=False,
+        local_measurements_only=False,
+        debug_log_full_ansatz=False,
+        initial_single_qubit_layer=False,
     ):
         """
         :param circuit_to_recompile: Circuit that is to be recompiled
@@ -183,6 +184,8 @@ class ISLRecompiler(ApproximateRecompiler):
         self.e_val_history = []
 
         self.debug_log_full_ansatz = debug_log_full_ansatz
+
+        self.initial_single_qubit_layer = initial_single_qubit_layer
 
     def construct_layer_2q_gate(self, custom_layer_2q_gate):
         if custom_layer_2q_gate is None:
@@ -304,33 +307,37 @@ class ISLRecompiler(ApproximateRecompiler):
             # Log ansatz part of the circuit if logger is in DEBUG (10)
             if logger.getEffectiveLevel() == 10:
                 ansatz = self.full_circuit.copy()
+                logger.debug(f'Qubit pair history: \n{self.qubit_pair_history}')
                 if self.debug_log_full_ansatz:
                     del ansatz.data[:len(self.circuit_to_recompile.data)]
                     logger.debug(f'Optimised ansatz after layer added: \n{ansatz}')
-
-                logger.debug(f'Qubit pair history: \n{self.qubit_pair_history}')
 
                 # Remove starting_circuit from end of ansatz, if there is one
                 if self.starting_circuit is not None:
                     del ansatz.data[-len(self.starting_circuit.data):]
 
-                # Delete all gates apart from the 5 from the added layer
-                del ansatz.data[:-5]
-                # Remove all qubits apart from the pair acted on in the current layer
-                for qubit in range(ansatz.num_qubits - 1, -1, -1):
-                    if qubit not in self.qubit_pair_history[-1]:
-                        del ansatz.qubits[qubit]
-                if not (ansatz.data[2][0].name == 'cx'):
-                    logging.error(
-                        "Final ansatz layer logging not implemented for custom ansatz or functionalities "
-                        "placing more gates after trainable ansatz")
+                if self.initial_single_qubit_layer == True and layer_count == 0:
+                    del ansatz.data[:-ansatz.num_qubits]
+                    logger.debug(f'Optimised layer added: \n{ansatz}')
                 else:
-                    try:
-                        logger.debug(f'Optimised layer added: \n{ansatz}')
-                    except ValueError:
+
+                    # Delete all gates apart from the 5 from the added layer
+                    del ansatz.data[:-5]
+                    # Remove all qubits apart from the pair acted on in the current layer
+                    for qubit in range(ansatz.num_qubits - 1, -1, -1):
+                        if qubit not in self.qubit_pair_history[-1]:
+                            del ansatz.qubits[qubit]
+                    if not (ansatz.data[2][0].name == 'cx'):
                         logging.error(
                             "Final ansatz layer logging not implemented for custom ansatz or functionalities "
                             "placing more gates after trainable ansatz")
+                    else:
+                        try:
+                            logger.debug(f'Optimised layer added: \n{ansatz}')
+                        except ValueError:
+                            logging.error(
+                                "Final ansatz layer logging not implemented for custom ansatz or functionalities "
+                                "placing more gates after trainable ansatz")
 
             if self.remove_unnecessary_gates:
                 co.remove_unnecessary_gates_from_circuit(
@@ -414,41 +421,27 @@ class ISLRecompiler(ApproximateRecompiler):
         (computational basis).
         :return: New cost
         """
-        logger.debug("Finding best qubit pair")
-        control, target = self._find_appropriate_qubit_pair()
-        logger.debug(f"Best qubit pair found {(control, target)}")
-        co.add_to_circuit(
-            self.full_circuit,
-            self.get_layer_2q_gate(index),
-            self.variational_circuit_range()[1],
-            qubit_subset=[control, target],
-        )
-        self.qubit_pair_history.append((control, target))
-        # First modify the gates on dressed cnot (with structural learning)
-        # then modify all gates (without
-        # structural learning)
-        entangling_gate_indexes = (
-            self.variational_circuit_range()[1] - len(self.layer_2q_gate.data),
-            self.variational_circuit_range()[1],
-        )
-        rotosolve_gate_start_index = max(
-            self.variational_circuit_range()[0],
-            self.variational_circuit_range()[1]
-            - len(self.layer_2q_gate.data) * self.isl_config.max_layers_to_modify,
-        )
-        rotosolve_gate_indexes = (
-            rotosolve_gate_start_index,
-            self.variational_circuit_range()[1],
-        )
+
+        ansatz_start_index = self.variational_circuit_range()[0]
+        # Define first layer differently when initial_single_qubit_layer=True
+        if self.initial_single_qubit_layer and index == 0:
+            logger.debug("Starting with first layer comprising of only single qubit rotations")
+            rotoselect_gate_indexes = self._add_rotation_to_all_qubits(ansatz_start_index)
+        else:
+            rotoselect_gate_indexes = self._add_entangling_layer(index)
 
         if self.use_roto_algos:
+            # Do Rotoselect
             cost = self.minimizer.minimize_cost(
                 algorithm_kind=vconstants.ALG_ROTOSELECT,
                 tol=self.isl_config.rotoselect_tol,
                 stop_val=self.isl_config.sufficient_cost,
-                indexes_to_modify=entangling_gate_indexes,
+                indexes_to_modify=rotoselect_gate_indexes,
             )
-            if index % self.isl_config.rotosolve_frequency == 0:
+            # Do Rotosolve
+            if index > 0 and index % self.isl_config.rotosolve_frequency == 0:
+                rotosolve_gate_indexes = self._calculate_rotosolve_indices(ansatz_start_index)
+
                 cost = self.minimizer.minimize_cost(
                     algorithm_kind=vconstants.ALG_ROTOSOLVE,
                     tol=self.isl_config.rotosolve_tol,
@@ -461,6 +454,60 @@ class ISLRecompiler(ApproximateRecompiler):
                 alg_kwargs={"seek_global_minimum": True},
             )
         return cost
+
+    def _calculate_rotosolve_indices(self, ansatz_start_index):
+        num_entangling_layers = (
+            self.isl_config.max_layers_to_modify - int(self.initial_single_qubit_layer))
+        # This assumes first layer has n gates
+        num_gates_in_non_entangling_layer = self.full_circuit.num_qubits * int(
+            self.initial_single_qubit_layer)
+        # The earliest layer Rotosolve acts on is defined by the user. Calculating the
+        # index requires taking into account the first layer potentially being different
+        rotosolve_gate_start_index = max(
+            ansatz_start_index,
+            self.variational_circuit_range()[1]
+            - len(self.layer_2q_gate.data) * num_entangling_layers
+            - num_gates_in_non_entangling_layer,
+        )
+        # Don't modify only a fraction of the first layer gates
+        first_layer_end_index = ansatz_start_index + num_gates_in_non_entangling_layer
+        if ansatz_start_index < rotosolve_gate_start_index < first_layer_end_index:
+            rotosolve_gate_start_index = first_layer_end_index
+        rotosolve_gate_indexes = (
+            rotosolve_gate_start_index,
+            (self.variational_circuit_range()[1]),
+        )
+        return rotosolve_gate_indexes
+
+    def _add_entangling_layer(self, index):
+        logger.debug("Finding best qubit pair")
+        control, target = self._find_appropriate_qubit_pair()
+        logger.debug(f"Best qubit pair found {(control, target)}")
+        co.add_to_circuit(
+            self.full_circuit,
+            self.get_layer_2q_gate(index),
+            self.variational_circuit_range()[1],
+            qubit_subset=[control, target],
+        )
+        self.qubit_pair_history.append((control, target))
+        # Rotoselect is applied to most recent layer
+        rotoselect_gate_indexes = (
+            self.variational_circuit_range()[1] - len(self.layer_2q_gate.data),
+            (self.variational_circuit_range()[1]),
+        )
+        return rotoselect_gate_indexes
+
+    def _add_rotation_to_all_qubits(self, ansatz_start_index):
+        first_layer = QuantumCircuit(self.full_circuit.num_qubits)
+        first_layer.ry(0, range(self.full_circuit.num_qubits))
+        co.add_to_circuit(self.full_circuit, first_layer, self.variational_circuit_range()[1])
+        self._first_layer_increment_results_dict()
+        # Gate indices in the initial layer
+        rotoselect_gate_indexes = (
+            ansatz_start_index,
+            (self.variational_circuit_range()[1]),
+        )
+        return rotoselect_gate_indexes
 
     def _find_appropriate_qubit_pair(self):
         if self.isl_config.method == "random":
@@ -490,7 +537,7 @@ class ISLRecompiler(ApproximateRecompiler):
     def _find_highest_entanglement_qubit_pair(self, entanglement_measures, reuse_priorities):
 
         # First check if the previous qubit pair was 'bad'
-        if len(self.entanglement_measures_history) >= 2:
+        if len(self.entanglement_measures_history) >= 2 + int(self.initial_single_qubit_layer):
             prev_qp_index = self.coupling_map.index(self.qubit_pair_history[-1])
             pre_em = self.entanglement_measures_history[-2][prev_qp_index]
             post_em = self.entanglement_measures_history[-1][prev_qp_index]
@@ -514,7 +561,7 @@ class ISLRecompiler(ApproximateRecompiler):
             )
             if reps >= 1:
                 filtered_ems[self.coupling_map.index(qp)] = -1
-        if len(self.qubit_pair_history) > 0:
+        if len(self.qubit_pair_history) > 0 + int(self.initial_single_qubit_layer):
             # Avoid using same qubit pair as the one used immediately before
             filtered_ems[self.coupling_map.index(self.qubit_pair_history[-1])] = -1
         logger.debug(f"Entanglement of all pairs: {filtered_ems}")
@@ -563,7 +610,8 @@ class ISLRecompiler(ApproximateRecompiler):
         # Generate MPS from circuit once if using MPS backend
         if self.is_mps_backend:
             circ = self.full_circuit.copy()
-            self.circ_mps = mpsops.mps_from_circuit(circ, print_log_data=False, return_preprocessed=True)
+            self.circ_mps = mpsops.mps_from_circuit(circ, print_log_data=False,
+                                                    return_preprocessed=True)
         else:
             self.circ_mps = None
         for control, target in self.coupling_map:
@@ -625,3 +673,9 @@ class ISLRecompiler(ApproximateRecompiler):
         else:
             output = self._run_full_circuit(return_statevector=self.is_statevector_backend)
             return expectation_value_of_qubits(output)
+
+    def _first_layer_increment_results_dict(self):
+        self.entanglement_measures_history.append([None])
+        self.e_val_history.append(None)
+        self.qubit_pair_history.append(None)
+        self.pair_selection_method_history.append(None)
