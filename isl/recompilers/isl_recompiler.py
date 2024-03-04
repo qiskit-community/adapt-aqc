@@ -380,14 +380,13 @@ class ISLRecompiler(ApproximateRecompiler):
                 alg_kwargs={"seek_global_minimum": False},
             )
 
-        num_2q_gates, num_1q_gates = co.find_num_gates(
-            self.full_circuit, gate_range=g_range()
-        )
-
         final_cost = self.evaluate_cost()
         end_time = timeit.default_timer()
 
         recompiled_circuit = self.get_recompiled_circuit()
+
+        num_2q_gates, num_1q_gates = co.find_num_gates(recompiled_circuit)
+
         exact_overlap = "Not computable without SV backend"
         if self.is_statevector_backend:
             exact_overlap = co.calculate_overlap_between_circuits(

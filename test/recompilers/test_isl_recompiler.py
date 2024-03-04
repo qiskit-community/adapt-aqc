@@ -402,6 +402,21 @@ class TestISL(TestCase):
             if gate[0].name != "cx":
                 self.assertTrue(gate[0].params[0] != 0, "Added layer should have modified angles")
 
+    def test_given_random_circuit_and_starting_circuit_True_when_count_gates_in_solution_then_correct(self):
+        qc = co.create_random_circuit(3)
+        starting_circuit = co.create_random_initial_state_circuit(3)
+        compiler = ISLRecompiler(qc, starting_circuit=starting_circuit)
+        result = compiler.recompile()
+
+        num_1q_gates = 0
+        num_2q_gates = 0
+        for instr in result['circuit'].data:
+            if instr.operation.name == 'cx':
+                num_2q_gates += 1
+            elif instr.operation.name == 'rx' or 'ry' or 'rz':
+                num_1q_gates += 1
+
+        self.assertEqual((num_1q_gates, num_2q_gates), (result['num_1q_gates'], result['num_2q_gates']))
 
 
 try:
