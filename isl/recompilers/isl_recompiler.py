@@ -39,7 +39,10 @@ class ISLConfig:
         rotosolve_frequency=1,
         rotoselect_tol=1e-5,
         rotosolve_tol=1e-3,
-        entanglement_threshold=1e-8
+        entanglement_threshold=1e-8,
+        entanglement_reuse_exponent=0,
+        heuristic_reuse_exponent=1,
+        reuse_priority_mode="pair"
     ):
         """
         Termination criteria:
@@ -61,12 +64,26 @@ class ISLConfig:
             One of 'ISL', 'random', 'heuristic','basic'
 
         Other parameters:
-        :param bad_qubit_pair_memory: If acting on a qubit pair leads to entanglement increasing, it is labelled a
-        "bad pair". This argument controls how many bad pairs should be remembered.
-        :param rotosolve_frequency: How often rotosolve is used (if n, rotosolve will be used after every n layers).
-        :param rotoselect_tol: How much does the cost need to decrease by each iteration to continue Rotoselect.
-        :param rotosolve_tol: How much does the cost need to decrease by each iteration to continue Rotosolve.
+        :param bad_qubit_pair_memory: If acting on a qubit pair leads to entanglement increasing,
+        it is labelled a "bad pair". This argument controls how many bad pairs should be remembered.
+        :param rotosolve_frequency: How often rotosolve is used (if n, rotosolve will be used after
+        every n layers).
+        :param rotoselect_tol: How much does the cost need to decrease by each iteration to continue
+         Rotoselect.
+        :param rotosolve_tol: How much does the cost need to decrease by each iteration to continue
+         Rotosolve.
         :param entanglement_threshold: Entanglement below this value is treated as zero.
+
+        :param entanglement_reuse_exponent: When :param method == "ISL",
+        controls how much priority should be given to picking qubits not recently acted on. If 0,
+        the priority system is turned off and all qubits have the same priority when adding a new
+        layer. Note ISL never reuses the same pair of qubits regardless of this setting.
+
+        :param heuristic_reuse_exponent: See above, but for when :param method == "heuristic".
+        :param reuse_priority_mode: For the priority system, given qubit pair (a, b) has been used
+        before, should priority be given to:
+        (a) not reusing the same pair of qubits (a, b) (set param to "pair")
+        (b) not reusing the qubits a OR b (set param to "qubit")
         """
         self.bad_qubit_pair_memory = bad_qubit_pair_memory
         self.max_layers = max_layers
@@ -80,6 +97,9 @@ class ISLConfig:
         self.rotoselect_tol = rotoselect_tol
         self.rotosolve_tol = rotosolve_tol
         self.entanglement_threshold = entanglement_threshold
+        self.entanglement_reuse_exponent = entanglement_reuse_exponent
+        self.heuristic_reuse_exponent = heuristic_reuse_exponent
+        self.reuse_priority_mode = reuse_priority_mode.lower()
 
     def __repr__(self):
         representation_str = f"{self.__class__.__name__}("
@@ -172,7 +192,7 @@ class ISLRecompiler(ApproximateRecompiler):
             (q1, q2)
             for (q1, q2) in self.coupling_map
             if q1 in self.qubit_subset_to_recompile
-               and q2 in self.qubit_subset_to_recompile
+            and q2 in self.qubit_subset_to_recompile
         ]
         # Used to avoid adding thinly dressed CNOTs to the same qubit pair
         self.qubit_pair_history = []
@@ -514,26 +534,30 @@ class ISLRecompiler(ApproximateRecompiler):
             self.pair_selection_method_history.append(f"random")
             return self.coupling_map[rand_index]
 
-        reuse_priorities = self._get_all_qubit_pair_reuse_priorities()
-
         if self.isl_config.method == "basic":
             # Choose the qubit pair with the highest reuse priority
             self.pair_selection_method_history.append(f"basic")
+            reuse_priorities = self._get_all_qubit_pair_reuse_priorities(1)
             return self.coupling_map[np.argmax(reuse_priorities)]
 
         if self.isl_config.method == "heuristic":
-            return self._find_best_heuristic_qubit_pair(reuse_priorities)
+            return self._find_best_heuristic_qubit_pair()
 
         if self.isl_config.method == "ISL":
             logger.debug("Computing entanglement of pairs")
             ems = self._get_all_qubit_pair_entanglement_measures()
             self.entanglement_measures_history.append(ems)
-            return self._find_highest_entanglement_qubit_pair(ems, reuse_priorities)
+            return self._find_best_entanglement_qubit_pair(ems)
 
         raise ValueError(
             f"Invalid ISL method {self.isl_config.method}. "f"Method must be one of ISL,heuristic,random")
 
-    def _find_highest_entanglement_qubit_pair(self, entanglement_measures, reuse_priorities):
+    def _find_best_entanglement_qubit_pair(self, entanglement_measures):
+        """
+        Returns the qubit pair with the largest entanglement multiplied by the reuse priority of
+        that pair.
+        """
+        reuse_priorities = self._get_all_qubit_pair_reuse_priorities(self.isl_config.entanglement_reuse_exponent)
 
         # First check if the previous qubit pair was 'bad'
         if len(self.entanglement_measures_history) >= 2 + int(self.initial_single_qubit_layer):
@@ -551,7 +575,14 @@ class ISLRecompiler(ApproximateRecompiler):
                     f"Max size of bad qubit pairs reached. Removing {self.bad_qubit_pairs[0]} from list.")
                 del self.bad_qubit_pairs[0]
 
-        filtered_ems = entanglement_measures.copy()
+        logger.debug(f"Entanglement of all pairs: {entanglement_measures}")
+
+        # Combine entanglement value with reuse priority
+        filtered_ems = [
+            entanglement_measure * reuse_priority
+            for (entanglement_measure, reuse_priority) in zip(entanglement_measures, reuse_priorities)
+        ]
+
         for qp in set(self.bad_qubit_pairs):
             # Find the number of times this qubit pair has occurred recently
             reps = len(
@@ -560,29 +591,27 @@ class ISLRecompiler(ApproximateRecompiler):
             )
             if reps >= 1:
                 filtered_ems[self.coupling_map.index(qp)] = -1
-        if len(self.qubit_pair_history) > 0 + int(self.initial_single_qubit_layer):
-            # Avoid using same qubit pair as the one used immediately before
-            filtered_ems[self.coupling_map.index(self.qubit_pair_history[-1])] = -1
-        logger.debug(f"Entanglement of all pairs: {filtered_ems}")
+
+        logger.debug(f"Combined priority of all pairs: {filtered_ems}")
         if max(filtered_ems) <= self.isl_config.entanglement_threshold:
             # No local entanglement detected in non-bad qubit pairs;
             # defer to using 'basic' method
             logger.info("No local entanglement detected in non-bad qubit pairs")
-            return self._find_best_heuristic_qubit_pair(reuse_priorities)
+            return self._find_best_heuristic_qubit_pair()
         else:
             self.pair_selection_method_history.append(f"ISL")
             # Add 'None' to e_val_history if no expectation values were needed
             self.e_val_history.append(None)
             return self.coupling_map[np.argmax(filtered_ems)]
 
-    def _find_best_heuristic_qubit_pair(self, reuse_priorities):
+    def _find_best_heuristic_qubit_pair(self):
         """
-        Choose the qubit pair to be the one with the largest expectation value priority multiplied by the distance
-        # priority of that pair.
-        @param reuse_priorities: If a pair of qubits were used l layers ago, the reuse priority is 1 - np.exp2(-1 * l).
-        Most recently used pair has a reuse priority of 0, pairs never used have a reuse priority of 1.
+        Choose the qubit pair to be the one with the largest expectation value priority multiplied by the reuse 
+        priority of that pair.
         @return: The pair of qubits with the highest multiplied e_val priority and reuse priority.
         """
+        reuse_priorities = self._get_all_qubit_pair_reuse_priorities(self.isl_config.heuristic_reuse_exponent)
+
         e_vals = self._measure_qubit_expectation_values()
         self.e_val_history.append(e_vals)
 
@@ -595,7 +624,6 @@ class ISLRecompiler(ApproximateRecompiler):
         e_val_priorities = [2 - e_val for e_val in e_val_sums]
 
         logger.debug(f"σ_z expectation value priorities of pairs {e_val_priorities}")
-        logger.debug(f"Reuse priorities of pairs {reuse_priorities}")
         combined_priorities = [
             e_val_priority * reuse_priority
             for (e_val_priority, reuse_priority) in zip(e_val_priorities, reuse_priorities)
@@ -635,29 +663,83 @@ class ISLRecompiler(ApproximateRecompiler):
             e_val_sums.append(e_vals[control] + e_vals[target])
         return e_val_sums
 
-    def _get_all_qubit_pair_reuse_priorities(self):
+    def _get_all_qubit_pair_reuse_priorities(self, k):
         if not len(self.qubit_pair_history):
             return [1 for _ in range(len(self.coupling_map))]
         priorities = []
         for qp in self.coupling_map:
-            priorities.append(self._get_reuse_priority_of_qubit_pair(qp))
+            if self.isl_config.reuse_priority_mode == "pair":
+                priorities.append(self._get_pair_reuse_priority(qp, k))
+            elif self.isl_config.reuse_priority_mode == "qubit":
+                priorities.append(self._get_qubit_reuse_priority(qp, k))
+            else:
+                raise ValueError(f"Reuse priority mode must be one of: {['pair','qubit']}")
+        logger.debug(f"Reuse priorities of pairs: {priorities}")
         return priorities
 
-    def _get_reuse_priority_of_qubit_pair(self, qubit_pair):
+    def _find_last_use_of_qubit(self, qubit_pairs, qubit):
+        for index, tup in enumerate(qubit_pairs):
+            if qubit in tup:
+                return index
+        return np.inf
+
+    def _get_qubit_reuse_priority(self, qubit_pair, k):
         """
-        Priority is determined by the distance to the previous occurrence of
-        the qubit pair, stopping reusing the same qubits repeatedly.
-        Exponential dependence is such that the last occurrence has priority
-        0, 2nd last has priority 0.5, etc.
-        If a qubit pair has not been used it will have priority 1
+        Priority system based on how recently either of the qubits in a given pair were acted on.
+        The priority of a qubit pair (a,b) is given by:
+            1. -1 if (a,b) was the last pair acted on
+            2. 1 if k=0
+            3. 1 if a and b have never been acted on
+            4. min[1-2^(-(la+1)/k), 1-2^(-(lb+1)/k)] where la (lb) is the number of layers since
+            qubit a (b) has been acted on.
+
+        @param qubit_pair: Tuple where each element is the index of a qubit
+        @param k: Constant controlling how heavily recent pairs are disfavoured
         """
-        rev_chronological_cnot_locations = self.qubit_pair_history[::-1]
-        try:
-            loc = rev_chronological_cnot_locations.index(qubit_pair)
-            priority = 1 - np.exp2(-1 * loc)
-            return priority
-        except ValueError as _:
+        # Hard code that previous pair has priority -1
+        if (
+            len(self.qubit_pair_history) > 0 + int(self.initial_single_qubit_layer)
+            and qubit_pair == self.qubit_pair_history[-1]
+        ):
+            return -1
+        # If not previous pair, then use exponential disfavouring
+        elif k == 0:
             return 1
+        else:
+            qubit_pairs_reversed = self.qubit_pair_history[::-1]
+            locs = [self._find_last_use_of_qubit(qubit_pairs_reversed, qubit) for qubit in qubit_pair]
+            priorities = [1 - np.exp2(-(loc + 1) / k) for loc in locs]
+            return np.min(priorities)
+
+    def _get_pair_reuse_priority(self, qubit_pair, k):
+        """
+        Priority system based on how recently a specific pair of qubits were acted on.
+        The priority of a qubit pair (a,b) is given by:
+            1. -1 if (a,b) was the last pair acted on
+            2. 1 if k=0
+            3. 1 if (a,b) has never been acted on
+            4. 1-2^(-l/k) l is the number of layers since the pair (a,b) has been acted on.
+
+        @param qubit_pair: Tuple where each element is the index of a qubit
+        @param k: Constant controlling how heavily recent pairs are disfavoured
+        """
+        # Hard code that previous pair has priority -1
+        if (
+            len(self.qubit_pair_history) > 0 + int(self.initial_single_qubit_layer)
+            and qubit_pair == self.qubit_pair_history[-1]
+        ):
+            return -1
+        # If not previous pair, then use exponential disfavouring
+        elif k == 0:
+            return 1
+        else:
+            qubit_pairs_reversed = self.qubit_pair_history[::-1]
+            try:
+                loc = qubit_pairs_reversed.index(qubit_pair)
+                priority = 1 - np.exp2(-loc / k)
+                return priority
+            except ValueError:
+                return 1
 
     def _measure_qubit_expectation_values(self):
         if self.is_mps_backend:
@@ -676,5 +758,5 @@ class ISLRecompiler(ApproximateRecompiler):
     def _first_layer_increment_results_dict(self):
         self.entanglement_measures_history.append([None])
         self.e_val_history.append(None)
-        self.qubit_pair_history.append(None)
+        self.qubit_pair_history.append((None, None))
         self.pair_selection_method_history.append(None)

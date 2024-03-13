@@ -350,8 +350,6 @@ class TestISL(TestCase):
                         == len(result.get("qubit_pair_history"))
                         == len(result.get("method_history")))
 
-
-
     def test_given_isl_mode_when_compile_circuit_with_very_small_entanglement_then_heuristic_method_used(self):
         qc = QuantumCircuit(2)
         qc.h(0)
@@ -364,7 +362,7 @@ class TestISL(TestCase):
     @patch.object(ISLRecompiler, '_measure_qubit_expectation_values')
     def test_given_entanglement_when_find_highest_entanglement_pair_then_evals_not_evaluated(self, mock_get_evals):
         recompiler = ISLRecompiler(QuantumCircuit(2))
-        recompiler._find_highest_entanglement_qubit_pair([0.5], [1.0])
+        recompiler._find_best_entanglement_qubit_pair([0.5])
         mock_get_evals.assert_not_called()
 
     @patch.object(ISLRecompiler, '_measure_qubit_expectation_values')
@@ -417,6 +415,100 @@ class TestISL(TestCase):
                 num_1q_gates += 1
 
         self.assertEqual((num_1q_gates, num_2q_gates), (result['num_1q_gates'], result['num_2q_gates']))
+
+    def test_given_wrong_reuse_prio_mode_when_compile_then_error(self):
+        qc = co.create_random_initial_state_circuit(4)
+        config = ISLConfig(reuse_priority_mode="foo")
+        compiler = ISLRecompiler(qc, isl_config=config)
+        with self.assertRaises(ValueError):
+            compiler.recompile()
+
+    def test_when_add_layer_then_previous_pair_reuse_priority_minus_1(self):
+        qc = co.create_random_initial_state_circuit(4)
+        config = ISLConfig(rotosolve_frequency=1e5)
+        compiler = ISLRecompiler(
+            qc,
+            isl_config=config,
+        )
+        compiler._add_layer(0)
+
+        pair_acted_on = compiler.qubit_pair_history[0]
+        priority = compiler._get_qubit_reuse_priority(pair_acted_on, k=0)
+
+        self.assertEqual(priority, -1)
+
+    def test_given_exponent_equal_to_zero_when_find_reuse_priorities_then_correct(self):
+        qc = co.create_random_initial_state_circuit(4)
+        config = ISLConfig(rotosolve_frequency=1e5)
+        compiler = ISLRecompiler(
+            qc,
+            isl_config=config,
+        )
+        compiler._add_layer(0)
+
+        pair_acted_on = compiler.qubit_pair_history[0]
+        priorities = compiler._get_all_qubit_pair_reuse_priorities(k=0)
+
+        for pair in compiler.coupling_map:
+            if pair != pair_acted_on:
+                self.assertEqual(priorities[compiler.coupling_map.index(pair)], 1)
+
+    def test_given_exponent_equal_to_one_when_find_qubit_reuse_priorities_then_correct(self):
+        qc = co.create_random_initial_state_circuit(4)
+        config = ISLConfig(
+            rotosolve_frequency=1e5, entanglement_reuse_exponent=1, reuse_priority_mode="qubit"
+        )
+        compiler = ISLRecompiler(
+            qc,
+            isl_config=config,
+        )
+        compiler._add_layer(0)
+
+        pair_acted_on = compiler.qubit_pair_history[0]
+        priorities = compiler._get_all_qubit_pair_reuse_priorities(k=1)
+
+        for pair in compiler.coupling_map:
+            if pair != pair_acted_on:
+                if pair[0] in pair_acted_on or pair[1] in pair_acted_on:
+                    self.assertEqual(priorities[compiler.coupling_map.index(pair)], 0.5)
+                else:
+                    self.assertEqual(priorities[compiler.coupling_map.index(pair)], 1)
+
+    def test_given_random_exponents_when_add_layer_then_same_qubit_pair_never_acted_on_twice_in_a_row(self):
+        qc = co.create_random_initial_state_circuit(4)
+        config = ISLConfig(rotosolve_frequency=1e5,
+                           entanglement_reuse_exponent=np.random.rand()*2,
+                           heuristic_reuse_exponent=np.random.rand()*2,
+                           )
+        compiler = ISLRecompiler(
+            qc,
+            isl_config=config,
+        )
+        compiler._add_layer(0)
+        for i in range(10):
+            compiler._add_layer(i+1)
+            self.assertTrue(
+                compiler.qubit_pair_history[-1] != compiler.qubit_pair_history[-2],
+                "Same pair should not be acted on twice")
+            
+    def test_given_circuit_when_manually_find_correct_pair_to_act_on_then_pair_acted_on_by_add_layer(self):
+        qc = co.create_random_initial_state_circuit(4)
+        config = ISLConfig(rotosolve_frequency=1e5, entanglement_reuse_exponent=1)
+        compiler = ISLRecompiler(
+            qc,
+            isl_config=config,
+        )
+        compiler._add_layer(0)
+
+        # Manually find pair which should be acted on when add_layer() is called
+        reuse_priorities = compiler._get_all_qubit_pair_reuse_priorities(k=1)
+        entanglements = compiler._get_all_qubit_pair_entanglement_measures()
+        priorities = [reuse_priorities[i]*entanglements[i] for i in range(len(reuse_priorities))]
+        correct_pair = compiler.coupling_map[priorities.index(max(priorities))]
+
+        compiler._add_layer(1)
+
+        self.assertTrue(compiler.qubit_pair_history[-1]==correct_pair)
 
 
 try:
