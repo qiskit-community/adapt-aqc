@@ -19,6 +19,11 @@ class TestApproximateRecompiler(TestCase):
     def test_when_init_with_sv_backend_then_sv_backend_flag_true(self):
         self.assertTrue(ApproximateRecompiler(self.qc, SV_SIM).is_statevector_backend)
 
+    def test_when_circuit_too_large_for_backend_then_error(self):
+        qc = QuantumCircuit(50)
+        ApproximateRecompiler(qc, MPS_SIM)
+        self.assertRaises(ValueError, lambda: ApproximateRecompiler(qc, SV_SIM))
+
     def test_local_measurements_not_supported_for_qasm_and_mps(self):
         for backend in [QASM_SIM, MPS_SIM]:
             with self.assertRaises(NotImplementedError):

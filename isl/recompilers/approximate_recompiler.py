@@ -78,6 +78,8 @@ class ApproximateRecompiler(ABC):
             self.is_mps_backend = (self.backend.options.method == "matrix_product_state")
         except AttributeError:
             self.is_mps_backend = False
+        if hasattr(self.backend, "num_qubits") and circuit_to_recompile.num_qubits > self.backend.num_qubits:
+            raise ValueError(f"Number of qubits is too large for backend chosen. Maximum is {self.backend.num_qubits}.")
         self.execute_kwargs = self.parse_default_execute_kwargs(execute_kwargs)
         self.backend_options = self.parse_default_backend_options()
         self.initial_state_circuit = co.initial_state_to_circuit(initial_state)
