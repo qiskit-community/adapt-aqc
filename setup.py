@@ -18,7 +18,6 @@ setup(
         "qiskit~=1.0.0rc1",
         "qiskit_aer~=0.13.1",
         "qiskit_experiments~=0.6.0",
-        "qiskit_ibmq_provider~=0.20.2",
         "numpy",
         "scipy",
         "openfermion~=1.6",
