@@ -3,7 +3,7 @@ from unittest import TestCase
 from unittest.mock import patch
 
 import numpy as np
-from qiskit import ClassicalRegister, QuantumCircuit, QuantumRegister
+from qiskit import ClassicalRegister, QuantumCircuit, QuantumRegister, qasm2
 from qiskit.quantum_info import Statevector
 
 import isl.utils.circuit_operations as co
@@ -118,10 +118,10 @@ class TestISL(TestCase):
             0,
             0,
             0,
-            -((1 / 3)**0.5),
+            -((1 / 3) ** 0.5),
             0,
-            1j * (1 / 3)**0.5,
-            -1 * (1 / 3)**0.5,
+            1j * (1 / 3) ** 0.5,
+            -1 * (1 / 3) ** 0.5,
             0,
         ]
         qc = co.initial_state_to_circuit(statevector)
@@ -232,7 +232,7 @@ class TestISL(TestCase):
             compiled_qc: QuantumCircuit = result.get("circuit")
             del compiled_qc.data[1:]
             overlap = np.abs(np.dot(Statevector(compiled_qc).conjugate(),
-                                    Statevector(starting_ansatz_circuit)))**2
+                                    Statevector(starting_ansatz_circuit))) ** 2
             self.assertAlmostEquals(overlap, 1)
 
     def test_given_two_registers_when_recompiling_then_no_error(self):
@@ -282,6 +282,27 @@ class TestISL(TestCase):
         qc.measure(0, 0)
         recompiler = ISLRecompiler(qc, initial_single_qubit_layer=False)
         recompiler.recompile()
+
+    def test_circuit_output_regularly_saved(self):
+        qc = co.create_random_initial_state_circuit(3, seed=1)
+        qc = co.unroll_to_basis_gates(qc)
+
+        shots = 1e4
+        isl_recompiler = ISLRecompiler(qc, backend=MPS_SIM, execute_kwargs={'shots': shots}, save_circuit_history=True)
+
+        result = isl_recompiler.recompile()
+        self.assertTrue(len(result["circuit_progression"]) == len(result["cost_progression"]))
+        self.assertTrue(len(result["circuit_progression"][-1]) > len(result["circuit_progression"][-2]))
+
+    def test_circuit_output_not_saved_when_not_flagged(self):
+        qc = co.create_random_initial_state_circuit(3, seed=1)
+        qc = co.unroll_to_basis_gates(qc)
+
+        shots = 1e4
+        isl_recompiler = ISLRecompiler(qc, backend=MPS_SIM, execute_kwargs={'shots': shots})
+
+        result = isl_recompiler.recompile()
+        self.assertFalse(len(result["circuit_progression"]))
 
     # TODO See above
     def test_given_circuit_with_one_measurement_when_recompiling_then_preserve_measurement(self):
@@ -477,8 +498,8 @@ class TestISL(TestCase):
     def test_given_random_exponents_when_add_layer_then_same_qubit_pair_never_acted_on_twice_in_a_row(self):
         qc = co.create_random_initial_state_circuit(4)
         config = ISLConfig(rotosolve_frequency=1e5,
-                           entanglement_reuse_exponent=np.random.rand()*2,
-                           heuristic_reuse_exponent=np.random.rand()*2,
+                           entanglement_reuse_exponent=np.random.rand() * 2,
+                           heuristic_reuse_exponent=np.random.rand() * 2,
                            )
         compiler = ISLRecompiler(
             qc,
@@ -486,11 +507,11 @@ class TestISL(TestCase):
         )
         compiler._add_layer(0)
         for i in range(10):
-            compiler._add_layer(i+1)
+            compiler._add_layer(i + 1)
             self.assertTrue(
                 compiler.qubit_pair_history[-1] != compiler.qubit_pair_history[-2],
                 "Same pair should not be acted on twice")
-            
+
     def test_given_circuit_when_manually_find_correct_pair_to_act_on_then_pair_acted_on_by_add_layer(self):
         qc = co.create_random_initial_state_circuit(4)
         config = ISLConfig(rotosolve_frequency=1e5, entanglement_reuse_exponent=1)
@@ -503,12 +524,12 @@ class TestISL(TestCase):
         # Manually find pair which should be acted on when add_layer() is called
         reuse_priorities = compiler._get_all_qubit_pair_reuse_priorities(k=1)
         entanglements = compiler._get_all_qubit_pair_entanglement_measures()
-        priorities = [reuse_priorities[i]*entanglements[i] for i in range(len(reuse_priorities))]
+        priorities = [reuse_priorities[i] * entanglements[i] for i in range(len(reuse_priorities))]
         correct_pair = compiler.coupling_map[priorities.index(max(priorities))]
 
         compiler._add_layer(1)
 
-        self.assertTrue(compiler.qubit_pair_history[-1]==correct_pair)
+        self.assertTrue(compiler.qubit_pair_history[-1] == correct_pair)
 
 
 try:

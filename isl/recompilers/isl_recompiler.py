@@ -126,6 +126,7 @@ class ISLRecompiler(ApproximateRecompiler):
         isl_config: ISLConfig = None,
         general_initial_state=False,
         custom_layer_2q_gate=None,
+        save_circuit_history=False,
         starting_circuit=None,
         use_roto_algos=True,
         perform_final_minimisation=False,
@@ -144,6 +145,8 @@ class ISLRecompiler(ApproximateRecompiler):
         initial state
         :param custom_layer_2q_gate: Entangling gate to use (default is
         thinly dressed CNOT)
+        :param save_circuit_history: Option to regularly save circuit output as a QASM string to 
+        results object each time a block is added and optimised
         :param starting_circuit: This circuit will be used as a set of initial fixed gates for the
         recompiled solution. This means that during ISL, the inverse of this circuit will be added
         to the end of V†. WARNING: Using an entangled circuit will lead to worse ISL performance
@@ -169,6 +172,7 @@ class ISLRecompiler(ApproximateRecompiler):
             local_measurements_only=local_measurements_only,
         )
 
+        self.save_circuit_history = save_circuit_history
         self.entanglement_measure_method = entanglement_measure
         self.isl_config = isl_config if isl_config is not None else ISLConfig()
 
@@ -275,6 +279,7 @@ class ISLRecompiler(ApproximateRecompiler):
         'overlap':overlap(float),
         'num_1q_gates':number of rotation gates in circuit(int),
         'num_2q_gates':number of entangling gates in circuit(int)}
+        'circuit_progression': list of circuits as qasm strings after each block is added and optimised
         'cost_progression': list of costs after each layer is added
         'time_taken': total time taken for recompilation
         'circuit_qasm': QASM string of the resulting circuit
@@ -286,6 +291,7 @@ class ISLRecompiler(ApproximateRecompiler):
         cost, num_1q_gates, num_2q_gates = None, None, None
 
         cost_history = []
+        circuit_history = []
         g_range = self.variational_circuit_range
 
         already_successful = False
@@ -358,7 +364,9 @@ class ISLRecompiler(ApproximateRecompiler):
                             logging.error(
                                 "Final ansatz layer logging not implemented for custom ansatz or functionalities "
                                 "placing more gates after trainable ansatz")
-
+            if self.save_circuit_history:
+                circuit_qasm_string = qasm2.dumps(self.full_circuit)
+                circuit_history.append(circuit_qasm_string)
             if self.remove_unnecessary_gates:
                 co.remove_unnecessary_gates_from_circuit(
                     self.full_circuit, False, False, gate_range=g_range()
@@ -419,6 +427,7 @@ class ISLRecompiler(ApproximateRecompiler):
             "num_1q_gates": num_1q_gates,
             "num_2q_gates": num_2q_gates,
             "cost_progression": cost_history,
+            "circuit_progression": circuit_history,
             "entanglement_measures_progression": self.entanglement_measures_history,
             "e_val_history": self.e_val_history,
             "qubit_pair_history": self.qubit_pair_history,
