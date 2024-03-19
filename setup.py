@@ -2,7 +2,7 @@ from setuptools import find_packages, setup
 
 setup(
     name="quantum-isl",
-    version="1.0.1",
+    version="1.0.2",
     author="Abhishek Agarwal, Ben Jaderberg",
     author_email="abhishek.agarwal@npl.co.uk, benjamin.jaderberg@ibm.com",
     packages=find_packages(),
@@ -15,7 +15,7 @@ setup(
     long_description=open("README.md").read(),
     long_description_content_type='text/markdown',
     install_requires=[
-        "qiskit~=1.0.0rc1",
+        "qiskit~=1.0.2",
         "qiskit_aer~=0.13.1",
         "qiskit_experiments~=0.6.0",
         "numpy",
