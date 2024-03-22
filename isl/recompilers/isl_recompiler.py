@@ -646,8 +646,7 @@ class ISLRecompiler(ApproximateRecompiler):
         # Generate MPS from circuit once if using MPS backend
         if self.is_mps_backend:
             circ = self.full_circuit.copy()
-            self.circ_mps = mpsops.mps_from_circuit(circ, print_log_data=False,
-                                                    return_preprocessed=True)
+            self.circ_mps = mpsops.mps_from_circuit(circ, return_preprocessed=True, sim=self.backend)
         else:
             self.circ_mps = None
         for control, target in self.coupling_map:
@@ -752,7 +751,7 @@ class ISLRecompiler(ApproximateRecompiler):
 
     def _measure_qubit_expectation_values(self):
         if self.is_mps_backend:
-            return expectation_value_of_qubits_mps(self.full_circuit)
+            return expectation_value_of_qubits_mps(self.full_circuit, self.backend)
         elif self.local_measurements_only:
 
             output = self._run_full_circuit(add_measurements=not self.is_statevector_backend)

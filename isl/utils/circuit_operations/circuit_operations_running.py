@@ -24,9 +24,21 @@ logger = logging.getLogger(__name__)
 QASM_SIM = Aer.get_backend("qasm_simulator")
 SV_SIM = Aer.get_backend("statevector_simulator")
 
+def mps_sim_with_args(mps_truncation_threshold=1e-16, max_chi=None, mps_log_data=False):
+    """
+    :param mps_truncation_threshold: truncation threshold to use in AerSimulator
+    :param max_chi: maximum bond dimension to use in AerSimulator
+    :param mps_log_data: same as corresponding argument in AerSimulator
+    :return: instance of AerSimulator using MPS method and parameters specified above
+    """
+    return AerSimulator(method="matrix_product_state", 
+                        matrix_product_state_truncation_threshold=mps_truncation_threshold,
+                        matrix_product_state_max_bond_dimension=max_chi,
+                        mps_log_data=mps_log_data,
+                        )
+
 # Setting mps_log_data=True will massively reduce performance and should only be done for debugging
-MPS_SIM = AerSimulator(method="matrix_product_state", matrix_product_state_truncation_threshold=1e-16,
-                       mps_log_data=False)
+MPS_SIM = mps_sim_with_args()
 QULACS = "qulacs"
 
 def run_circuit_with_transpilation(

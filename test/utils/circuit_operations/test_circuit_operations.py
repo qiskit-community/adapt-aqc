@@ -5,7 +5,8 @@ from qiskit import QuantumCircuit, QuantumRegister
 from qiskit.quantum_info import Statevector
 from qiskit_aer import Aer
 
-from isl.utils.circuit_operations import SV_SIM
+from isl.utils.circuit_operations import mps_sim_with_args, create_random_circuit
+from aqc_research.mps_operations import mps_dot, mps_from_circuit
 
 
 class TestBasicCircuitOperations(TestCase):
@@ -321,3 +322,25 @@ class TestMiscCircuitOperations(TestCase):
         sv = Statevector(qc)
         overlap_minus_1 = np.abs(np.abs(np.vdot(rand_state, sv)) - 1)
         assert overlap_minus_1 < 1e-3
+
+    def test_given_mps_sims_with_different_trunc_when_mps_from_circuit_then_different_mps(self):
+        sim1 = mps_sim_with_args()
+        sim2 = mps_sim_with_args(mps_truncation_threshold=1e-1)
+
+        qc = create_random_circuit(10, 20)
+
+        mps1 = mps_from_circuit(qc.copy(), sim=sim1)
+        mps2 = mps_from_circuit(qc.copy(), sim=sim2)
+
+        self.assertLess(np.abs(mps_dot(mps1, mps2))**2, 0.99)
+
+    def test_given_mps_sims_with_different_chi_when_mps_from_circuit_then_different_mps(self):
+        sim1 = mps_sim_with_args()
+        sim2 = mps_sim_with_args(max_chi=2)
+
+        qc = create_random_circuit(10, 20)
+
+        mps1 = mps_from_circuit(qc.copy(), sim=sim1)
+        mps2 = mps_from_circuit(qc.copy(), sim=sim2)
+
+        self.assertLess(np.abs(mps_dot(mps1, mps2))**2, 0.99)

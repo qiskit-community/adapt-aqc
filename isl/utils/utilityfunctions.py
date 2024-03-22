@@ -168,15 +168,16 @@ def expectation_value_of_qubits(data: Union[Counts, Dict, Statevector]):
     return expectation_values
 
 
-def expectation_value_of_qubits_mps(circuit: QuantumCircuit):
+def expectation_value_of_qubits_mps(circuit: QuantumCircuit, sim=None):
     """
     Expectation value of qubits (in computational basis) using mps
     :param circuit: Circuit corresponding to state
+    :param sim: MPS AerSimulator instance. If none, will use default in AQC Research.
     :return: [expectation_value(float)]
     """
     # Get mps from circuit
     circ = circuit.copy()
-    mps = mpsop.mps_from_circuit(circ, print_log_data=False, return_preprocessed=True)
+    mps = mpsop.mps_from_circuit(circ, return_preprocessed=True, sim=sim)
 
     num_qubits = circuit.num_qubits
 
