@@ -24,13 +24,12 @@ class TestApproximateRecompiler(TestCase):
         ApproximateRecompiler(qc, MPS_SIM)
         self.assertRaises(ValueError, lambda: ApproximateRecompiler(qc, SV_SIM))
 
-    def test_local_measurements_not_supported_for_qasm_and_mps(self):
-        for backend in [QASM_SIM, MPS_SIM]:
-            with self.assertRaises(NotImplementedError):
-                ApproximateRecompiler(self.qc, local_measurements_only=True, backend=backend)
+    def test_local_measurements_not_supported_for_qasm(self):
+        with self.assertRaises(NotImplementedError):
+            ApproximateRecompiler(self.qc, local_measurements_only=True, backend=QASM_SIM)
 
     def test_when_evaluate_cost_with_mps_backend_then_non_sampling_method_called(self):
         compiler = ApproximateRecompiler(QuantumCircuit(1), MPS_SIM)
-        with patch.object(compiler, '_evaluate_cost_mps') as mock:
+        with patch.object(compiler, '_evaluate_global_cost_mps') as mock:
             compiler.evaluate_cost()
         mock.assert_called_once()

@@ -21,7 +21,7 @@ from isl.utils.circuit_operations.circuit_operations_full_circuit import (
     remove_classical_operations,
 )
 from isl.utils.cost_minimiser import CostMinimiser
-from isl.utils.utilityfunctions import is_statevector_backend
+from isl.utils.utilityfunctions import is_statevector_backend, expectation_value_of_qubits, expectation_value_of_qubits_mps
 
 logger = logging.getLogger(__name__)
 
@@ -91,9 +91,9 @@ class ApproximateRecompiler(ABC):
         self.starting_circuit = starting_circuit
         self.zero_mps = None
         self.local_measurements_only = local_measurements_only
-        if (not self.is_statevector_backend) and (self.local_measurements_only):
+        if (not (self.is_statevector_backend or self.is_mps_backend)) and (self.local_measurements_only):
             raise NotImplementedError(
-                "Local Hilbert Schmidt Test cost function is only supported for statevector simulators currently")
+                "Local Hilbert Schmidt Test cost function is only supported for statevector and MPS simulators currently")
         if initial_state is not None and general_initial_state:
             raise ValueError(
                 "Can't recompile for general initial state when specific "
@@ -372,22 +372,24 @@ class ApproximateRecompiler(ABC):
         :return: Cost (float)
         """
         self.cost_evaluation_counter += 1
-        if self.is_statevector_backend:
-            return self._evaluate_cost_sv()
 
-        if self.is_mps_backend:
-            return self._evaluate_cost_mps()
         if self.local_measurements_only:
-            return self._evaluate_cost_measure_local()
+            return self._evaluate_local_cost()
         else:
-            return self._evaluate_cost_measure_all()
+            return self._evaluate_global_cost()
 
-    def _evaluate_cost_sv(self):
+    def _evaluate_global_cost_sv(self):
         sv1 = self._run_full_circuit(return_statevector=True)
         cost = 1 - (np.absolute(sv1[0])) ** 2
         return cost
+    
+    def _evaluate_local_cost_sv(self):
+        sv = self._run_full_circuit(return_statevector=True)
+        e_vals = expectation_value_of_qubits(sv)
+        cost = 0.5*(1 - np.mean(e_vals))
+        return cost
 
-    def _evaluate_cost_mps(self):
+    def _evaluate_global_cost_mps(self):
         circ = self.full_circuit.copy()
         circ_mps = mps_from_circuit(circ, return_preprocessed=True, sim=self.backend)
         if self.zero_mps is None:
@@ -396,87 +398,72 @@ class ApproximateRecompiler(ABC):
 
         cost = 1 - np.absolute(mps_dot(circ_mps, self.zero_mps, already_preprocessed=True)) ** 2
         return cost
-
-    def _evaluate_cost_measure_all(self):
-        counts = self._run_full_circuit()
-        total_qubits = (
-            2 * self.total_num_qubits
-            if self.general_initial_state
-            else self.total_num_qubits
-        )
-        all_zero_string = "".join(str(int(e)) for e in np.zeros(total_qubits))
-        total_shots = sum([each_count for _, each_count in counts.items()])
-        # '00...00' might not be present in counts if no shot resulted in
-        # the ground state
-        if all_zero_string in counts:
-            overlap = counts[all_zero_string] / total_shots
-        else:
-            overlap = 0
-        cost = 1 - overlap
+    
+    def _evaluate_local_cost_mps(self):
+        circ = self.full_circuit.copy()
+        e_vals = expectation_value_of_qubits_mps(circ, self.backend)
+        cost = 0.5*(1 - np.mean(e_vals))
         return cost
 
-    def _evaluate_cost_measure_local(self):
-        qubit_costs = np.zeros(self.total_num_qubits)
-        if self.is_statevector_backend:
+    def _evaluate_global_cost(self):
+        if self.is_mps_backend:
+            return self._evaluate_global_cost_mps()
+        elif self.is_statevector_backend:
+            return self._evaluate_global_cost_sv()
+        else:
             counts = self._run_full_circuit()
+            total_qubits = (
+                2 * self.total_num_qubits
+                if self.general_initial_state
+                else self.total_num_qubits
+            )
+            all_zero_string = "".join(str(int(e)) for e in np.zeros(total_qubits))
             total_shots = sum([each_count for _, each_count in counts.items()])
+            # '00...00' might not be present in counts if no shot resulted in
+            # the ground state
+            if all_zero_string in counts:
+                overlap = counts[all_zero_string] / total_shots
+            else:
+                overlap = 0
+            cost = 1 - overlap
+            return cost
+
+    def _evaluate_local_cost(self):
+        if self.is_mps_backend:
+            return self._evaluate_local_cost_mps()
+        elif self.is_statevector_backend:
+            return self._evaluate_local_cost_sv()
+        else:
+            qubit_costs = np.zeros(self.total_num_qubits)
             for i in range(self.total_num_qubits):
                 if self.general_initial_state:
-                    overlap = (
-                            sum(
-                                [
-                                    count
-                                    for bit_str, count in counts.items()
-                                    if bit_str[-1 * (1 + i)] == "0"
-                                       and bit_str[-1 * (1 + i + self.total_num_qubits)] == "0"
-                                ]
-                            )
-                            / total_shots
-                    )
+                    self.full_circuit.measure(i, 0)
+                    self.full_circuit.measure(i + self.total_num_qubits, 1)
+                    counts = self._run_full_circuit()
+                    del self.full_circuit.data[-1]
+                    del self.full_circuit.data[-1]
+                    total_shots = sum([each_count for _, each_count in counts.items()])
+                    # '00...00' might not be present in counts if no shot
+                    # resulted in the ground state
+                    if "00" in counts:
+                        overlap = counts["00"] / total_shots
+                    else:
+                        overlap = 0
                     qubit_costs[i] = 1 - overlap
                 else:
-                    overlap = (
-                            sum(
-                                [
-                                    count
-                                    for bit_str, count in counts.items()
-                                    if bit_str[-1 * (1 + i)] == "0"
-                                ]
-                            )
-                            / total_shots
-                    )
+                    self.full_circuit.measure(i, 0)
+                    counts = self._run_full_circuit()
+                    del self.full_circuit.data[-1]
+                    total_shots = sum([each_count for _, each_count in counts.items()])
+                    # '00...00' might not be present in counts if no shot
+                    # resulted in the ground state
+                    if "0" in counts:
+                        overlap = counts["0"] / total_shots
+                    else:
+                        overlap = 0
                     qubit_costs[i] = 1 - overlap
             cost = np.mean(qubit_costs)
             return cost
-        for i in range(self.total_num_qubits):
-            if self.general_initial_state:
-                self.full_circuit.measure(i, 0)
-                self.full_circuit.measure(i + self.total_num_qubits, 1)
-                counts = self._run_full_circuit()
-                del self.full_circuit.data[-1]
-                del self.full_circuit.data[-1]
-                total_shots = sum([each_count for _, each_count in counts.items()])
-                # '00...00' might not be present in counts if no shot
-                # resulted in the ground state
-                if "00" in counts:
-                    overlap = counts["00"] / total_shots
-                else:
-                    overlap = 0
-                qubit_costs[i] = 1 - overlap
-            else:
-                self.full_circuit.measure(i, 0)
-                counts = self._run_full_circuit()
-                del self.full_circuit.data[-1]
-                total_shots = sum([each_count for _, each_count in counts.items()])
-                # '00...00' might not be present in counts if no shot
-                # resulted in the ground state
-                if "0" in counts:
-                    overlap = counts["0"] / total_shots
-                else:
-                    overlap = 0
-                qubit_costs[i] = 1 - overlap
-        cost = np.mean(qubit_costs)
-        return cost
 
     def _run_full_circuit(self, return_statevector=None, add_measurements=False) -> Union[Counts, Statevector]:
         """

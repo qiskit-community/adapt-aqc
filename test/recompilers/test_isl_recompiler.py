@@ -105,6 +105,7 @@ class TestISL(TestCase):
         )
         result = isl_recompiler.recompile()
         approx_circuit = result["circuit"]
+        # Intermittent failure because when using local measurements the cost is not the overlap
         overlap = co.calculate_overlap_between_circuits(approx_circuit, qc)
         assert overlap > 1 - DEFAULT_SUFFICIENT_COST
 
