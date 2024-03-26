@@ -130,7 +130,7 @@ class ISLRecompiler(ApproximateRecompiler):
         starting_circuit=None,
         use_roto_algos=True,
         perform_final_minimisation=False,
-        local_measurements_only=False,
+        local_cost_function=False,
         debug_log_full_ansatz=False,
         initial_single_qubit_layer=False,
     ):
@@ -156,8 +156,8 @@ class ISLRecompiler(ApproximateRecompiler):
             Disable if custom_layer_2q_gate does not support rotosolve
         :param perform_final_minimisation: Perform a final cost minimisation
         once ISL has ended
-        :param local_measurements_only: Use LHST cost function as defined in
-        (arXiv:1807.00800v5)
+        :param local_cost_function: Use LLET cost function as defined in
+        (arXiv:1908.04416)
         :param execute_kwargs: keyword arguments passed into circuit runs (
         excluding backend)
             e.g. {'noise_model:NoiseModel, 'shots':10000}
@@ -169,7 +169,7 @@ class ISLRecompiler(ApproximateRecompiler):
             execute_kwargs=execute_kwargs,
             general_initial_state=general_initial_state,
             starting_circuit=starting_circuit,
-            local_measurements_only=local_measurements_only,
+            local_cost_function=local_cost_function,
         )
 
         self.save_circuit_history = save_circuit_history
@@ -752,7 +752,7 @@ class ISLRecompiler(ApproximateRecompiler):
     def _measure_qubit_expectation_values(self):
         if self.is_mps_backend:
             return expectation_value_of_qubits_mps(self.full_circuit, self.backend)
-        elif self.local_measurements_only:
+        elif self.local_cost_function:
 
             output = self._run_full_circuit(add_measurements=not self.is_statevector_backend)
 

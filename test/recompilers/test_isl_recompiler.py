@@ -95,19 +95,19 @@ class TestISL(TestCase):
         exact_overlap2 = co.calculate_overlap_between_circuits(approx_circuit, qc)
         self.assertAlmostEquals(exact_overlap1, exact_overlap2, delta=1e-2)
 
-    def test_local_measurements_sv(self):
+    def test_local_cost_sv(self):
         qc = co.create_random_initial_state_circuit(3)
         qc = co.unroll_to_basis_gates(qc)
         isl_config = ISLConfig(cost_improvement_num_layers=10)
 
         isl_recompiler = ISLRecompiler(
-            qc, local_measurements_only=True, backend=SV_SIM, isl_config=isl_config
+            qc, local_cost_function=True, backend=SV_SIM, isl_config=isl_config
         )
         result = isl_recompiler.recompile()
         approx_circuit = result["circuit"]
         # Intermittent failure because when using local measurements the cost is not the overlap
-        overlap = co.calculate_overlap_between_circuits(approx_circuit, qc)
-        assert overlap > 1 - DEFAULT_SUFFICIENT_COST
+        cost = isl_recompiler.evaluate_cost()
+        assert cost < DEFAULT_SUFFICIENT_COST
 
     def test_custom_layer_gate(self):
         from qiskit import QuantumCircuit
