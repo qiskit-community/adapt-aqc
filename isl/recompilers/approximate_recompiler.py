@@ -394,7 +394,7 @@ class ApproximateRecompiler(ABC):
     def _evaluate_local_cost_sv(self):
         sv = self._run_full_circuit(return_statevector=True)
         e_vals = expectation_value_of_qubits(sv)
-        cost = 0.5*(1 - np.mean(e_vals))
+        cost = 0.5 * (1 - np.mean(e_vals))
         return cost
     
     def _evaluate_local_cost_counts(self):
