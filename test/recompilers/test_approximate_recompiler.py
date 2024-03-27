@@ -129,3 +129,14 @@ class TestApproximateRecompiler(TestCase):
                 isl_costs.append(cost)
 
         np.testing.assert_allclose(isl_costs, analytic_costs)
+
+    def test_given_random_circuit_when_calculate_cost_local_less_or_equal_to_global(self):
+        qc = co.create_random_initial_state_circuit(4)
+
+        recompiler_local = ISLRecompiler(qc, backend=SV_SIM, local_cost_function=True)
+        recompiler_global = ISLRecompiler(qc, backend=SV_SIM)
+
+        cost_local = recompiler_local.evaluate_cost()
+        cost_global = recompiler_global.evaluate_cost()
+
+        self.assertLessEqual(cost_local, cost_global)
