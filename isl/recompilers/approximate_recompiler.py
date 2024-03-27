@@ -388,7 +388,7 @@ class ApproximateRecompiler(ABC):
     def _evaluate_local_cost_mps(self):
         circ = self.full_circuit.copy()
         e_vals = expectation_value_of_qubits_mps(circ, self.backend)
-        cost = 0.5*(1 - np.mean(e_vals))
+        cost = 0.5 * (1 - np.mean(e_vals))
         return cost
         
     def _evaluate_local_cost_sv(self):
