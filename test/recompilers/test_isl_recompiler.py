@@ -104,8 +104,6 @@ class TestISL(TestCase):
             qc, local_cost_function=True, backend=SV_SIM, isl_config=isl_config
         )
         result = isl_recompiler.recompile()
-        approx_circuit = result["circuit"]
-        # Intermittent failure because when using local measurements the cost is not the overlap
         cost = isl_recompiler.evaluate_cost()
         assert cost < DEFAULT_SUFFICIENT_COST
 
