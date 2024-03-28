@@ -31,7 +31,7 @@ isl_recompiler = ISLRecompiler(
     isl_config=isl_config,
     perform_final_minimisation=False,
     general_initial_state=False,
-    local_measurements_only=False,
+    local_cost_function=False,
 )
 
 result = isl_recompiler.recompile()
