@@ -140,3 +140,8 @@ class TestApproximateRecompiler(TestCase):
         cost_global = recompiler_global.evaluate_cost()
 
         self.assertLessEqual(cost_local, cost_global)
+
+    @patch('qiskit.QuantumCircuit.set_matrix_product_state')
+    def test_set_matrix_product_state_used_when_mps_backend(self, mock_set_matrix_product_state):
+        ApproximateRecompiler(QuantumCircuit(1), MPS_SIM)
+        mock_set_matrix_product_state.assert_called_once()

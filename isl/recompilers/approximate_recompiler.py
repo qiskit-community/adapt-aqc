@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 from typing import Union
 
 import numpy as np
-from aqc_research.mps_operations import mps_from_circuit, mps_dot
+from aqc_research.mps_operations import mps_from_circuit, mps_dot, check_mps
 from qiskit import ClassicalRegister, QuantumCircuit, QuantumRegister
 from qiskit.result import Counts
 from qiskit_aer import Aer
@@ -22,6 +22,7 @@ from isl.utils.circuit_operations.circuit_operations_full_circuit import (
 )
 from isl.utils.cost_minimiser import CostMinimiser
 from isl.utils.utilityfunctions import is_statevector_backend, expectation_value_of_qubits, expectation_value_of_qubits_mps
+from isl.utils.constants import QiskitMPS
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,7 @@ class ApproximateRecompiler(ABC):
 
     def __init__(
             self,
-            circuit_to_recompile: QuantumCircuit,
+            target: QuantumCircuit | QiskitMPS,
             backend,
             execute_kwargs=None,
             initial_state=None,
@@ -47,7 +48,7 @@ class ApproximateRecompiler(ABC):
             local_cost_function=False,
     ):
         """
-        :param circuit_to_recompile: Circuit that is to be recompiled
+        :param target: Circuit or MPS that is to be recompiled
         :param backend: Backend that is to be used
         :param execute_kwargs: keyword arguments passed into circuit runs (
         excluding backend)
@@ -61,15 +62,14 @@ class ApproximateRecompiler(ABC):
         or vector (list/np.ndarray) or None
 
         :param qubit_subset: The subset of qubits (relative to initial state
-        circuit) that circuit_to_recompile acts
-        on. If None, it will be assumed that circuit_to_recompile and
+        circuit) that target acts
+        on. If None, it will be assumed that target and
         initial_state circuit have the same qubits
         :param general_initial_state: Whether recompilation should be for a
         general initial state
         """
-        self.original_circuit = circuit_to_recompile
+        self.target = target
         self.original_circuit_classical_ops = None
-        self.circuit_to_recompile = self.prepare_circuit()
         self.backend = (
             backend if backend is not None else Aer.get_backend("qasm_simulator")
         )
@@ -78,7 +78,10 @@ class ApproximateRecompiler(ABC):
             self.is_mps_backend = (self.backend.options.method == "matrix_product_state")
         except AttributeError:
             self.is_mps_backend = False
-        if hasattr(self.backend, "num_qubits") and circuit_to_recompile.num_qubits > self.backend.num_qubits:
+        if check_mps(self.target) and not self.is_mps_backend:
+            raise Exception("An MPS backend must be used when target is an MPS")
+        self.circuit_to_recompile = self.prepare_circuit()
+        if hasattr(self.backend, "num_qubits") and self.circuit_to_recompile.num_qubits > self.backend.num_qubits:
             raise ValueError(f"Number of qubits is too large for backend chosen. Maximum is {self.backend.num_qubits}.")
         self.execute_kwargs = self.parse_default_execute_kwargs(execute_kwargs)
         self.backend_options = self.parse_default_backend_options()
@@ -106,19 +109,35 @@ class ApproximateRecompiler(ABC):
 
     def prepare_circuit(self):
         """
-        TODO Add description
+        Constructs a circuit from the target which will then be recompiled. This is composed of four parts:
+        1. Remove classical operations from circuit
+        2. Transpile circuit to BASIS_GATES
+        3. Find MPS representation of circuit
+        4. Create circuit with set_matrix_product_state instruction generating the MPS found in 3.
+
+        For the four combinations of (target, backend), prepare_circuit performs:
+        (circuit, non-mps): 1 -> 2 -> return circuit
+        (circuit, mps): 1 -> 2 -> 3 -> 4 -> return circuit
+        (mps, non-mps): exception will have been raised already
+        (mps, mps): 4 -> return circuit
         """
-        circuit_to_recompile_copy = self.original_circuit.copy()
-        self.original_circuit_classical_ops = remove_classical_operations(
-            circuit_to_recompile_copy
-        )
-        qc2 = QuantumCircuit(len(self.original_circuit.qubits))
-        qc2.append(
-            co.make_quantum_only_circuit(circuit_to_recompile_copy).to_instruction(),
-            qc2.qregs[0],
-        )
-        prepared_circuit = co.unroll_to_basis_gates(qc2)
-        return prepared_circuit
+        if check_mps(self.target):
+            target_mps = self.target
+            target_mps_circuit = QuantumCircuit(len(target_mps[0]))
+            target_mps_circuit.set_matrix_product_state(target_mps)
+            return target_mps_circuit
+        else:
+            target_copy = self.target.copy()
+            self.original_circuit_classical_ops = remove_classical_operations(target_copy)
+            qc2 = QuantumCircuit(len(self.target.qubits))
+            qc2.append(co.make_quantum_only_circuit(target_copy).to_instruction(), qc2.qregs[0])
+            prepared_circuit = co.unroll_to_basis_gates(qc2)
+            if self.is_mps_backend:
+                target_mps = mps_from_circuit(prepared_circuit, sim=self.backend)
+                target_mps_circuit = QuantumCircuit(prepared_circuit.num_qubits)
+                target_mps_circuit.set_matrix_product_state(target_mps)
+                return target_mps_circuit
+            return prepared_circuit
 
     def parse_default_execute_kwargs(self, execute_kwargs):
         kwargs = {} if execute_kwargs is None else dict(execute_kwargs)
@@ -274,16 +293,24 @@ class ApproximateRecompiler(ABC):
         }
         co.add_to_circuit(final_circuit, recompiled_circuit, qubit_subset=qubit_map)
 
-        final_circuit_original_regs = QuantumCircuit(
-            *self.original_circuit.qregs, *self.original_circuit.cregs
-        )
+        # If self.target is a QuantumCircuit object, this ensures the quantum and classical registers of the recompiled
+        # circuit are the same as those of the target. If self.target is an MPS, there were no registers in the first 
+        # place, so this makes a QuantumCircuit with the default register names
+        if isinstance(self.target, QuantumCircuit):
+            final_circuit_original_regs = QuantumCircuit(
+                *self.target.qregs, *self.target.cregs
+            )
+        else:
+            final_circuit_original_regs = QuantumCircuit(self.circuit_to_recompile.num_qubits)
+
         final_circuit_original_regs.append(
             final_circuit.to_instruction(), final_circuit_original_regs.qubits
         )
         circuit_no_classical_ops = co.unroll_to_basis_gates(final_circuit_original_regs)
-        co.add_classical_operations(
-            circuit_no_classical_ops, self.original_circuit_classical_ops
-        )
+        if self.original_circuit_classical_ops is not None:
+            co.add_classical_operations(
+                circuit_no_classical_ops, self.original_circuit_classical_ops
+            )
         return circuit_no_classical_ops
 
     def _prepare_full_circuit(self):

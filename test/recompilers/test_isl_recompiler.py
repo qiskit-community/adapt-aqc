@@ -12,6 +12,7 @@ from isl.utils.circuit_operations import QASM_SIM, SV_SIM, MPS_SIM
 from isl.utils.constants import DEFAULT_SUFFICIENT_COST
 from isl.utils.entanglement_measures import EM_TOMOGRAPHY_NEGATIVITY
 
+from aqc_research.mps_operations import mps_from_circuit
 
 class TestISL(TestCase):
 
@@ -52,6 +53,20 @@ class TestISL(TestCase):
 
         overlap = co.calculate_overlap_between_circuits(approx_circuit_mps, qc)
         assert overlap > 1 - DEFAULT_SUFFICIENT_COST - 5 / np.sqrt(shots)
+
+    def test_isl_procedure_when_input_mps_directly(self):
+        qc = co.create_random_initial_state_circuit(3)
+        qc = co.unroll_to_basis_gates(qc)
+        mps = mps_from_circuit(qc.copy(), sim=MPS_SIM)
+
+        # Input MPS for recompilation rather than QuantumCircuit
+        recompiler = ISLRecompiler(mps, backend=MPS_SIM)
+
+        result = recompiler.recompile()
+        approx_circuit = result["circuit"]
+
+        overlap = co.calculate_overlap_between_circuits(approx_circuit, qc)
+        assert overlap > 1 - DEFAULT_SUFFICIENT_COST
 
     def test_GHZ(self):
         qc = QuantumCircuit(5)
@@ -528,8 +543,7 @@ class TestISL(TestCase):
 
         compiler._add_layer(1)
 
-        self.assertTrue(compiler.qubit_pair_history[-1] == correct_pair)
-
+        self.assertTrue(compiler.qubit_pair_history[-1] == correct_pair)        
 
 try:
     import qulacs

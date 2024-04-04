@@ -118,7 +118,7 @@ class ISLRecompiler(ApproximateRecompiler):
 
     def __init__(
         self,
-        circuit_to_recompile,
+        target,
         entanglement_measure=EM_TOMOGRAPHY_CONCURRENCE,
         backend=co.SV_SIM,
         execute_kwargs=None,
@@ -135,7 +135,7 @@ class ISLRecompiler(ApproximateRecompiler):
         initial_single_qubit_layer=False,
     ):
         """
-        :param circuit_to_recompile: Circuit that is to be recompiled
+        :param target: Circuit or MPS that is to be recompiled
         :param entanglement_measure: The entanglement measurement method to
         use for quantifying local entanglement
         :param backend: Backend to run circuits on
@@ -163,7 +163,7 @@ class ISLRecompiler(ApproximateRecompiler):
             e.g. {'noise_model:NoiseModel, 'shots':10000}
         """
         super().__init__(
-            circuit_to_recompile=circuit_to_recompile,
+            target=target,
             initial_state=None,
             backend=backend,
             execute_kwargs=execute_kwargs,
@@ -364,9 +364,16 @@ class ISLRecompiler(ApproximateRecompiler):
                             logging.error(
                                 "Final ansatz layer logging not implemented for custom ansatz or functionalities "
                                 "placing more gates after trainable ansatz")
+                            
             if self.save_circuit_history:
-                circuit_qasm_string = qasm2.dumps(self.full_circuit)
+                if not self.is_mps_backend:
+                    circuit_qasm_string = qasm2.dumps(self.full_circuit)
+                else:
+                    circuit_copy = self.full_circuit.copy()
+                    del circuit_copy.data[0]
+                    circuit_qasm_string = qasm2.dumps(circuit_copy)
                 circuit_history.append(circuit_qasm_string)
+
             if self.remove_unnecessary_gates:
                 co.remove_unnecessary_gates_from_circuit(
                     self.full_circuit, False, False, gate_range=g_range()
@@ -437,6 +444,9 @@ class ISLRecompiler(ApproximateRecompiler):
             "coupling_map": self.coupling_map,
             "circuit_qasm": qasm2.dumps(recompiled_circuit)
         }
+        if self.save_circuit_history and self.is_mps_backend:
+            logger.warning("When using MPS backend, circuit history will not contain the"
+                                   " set_matrix_product_state instruction at the start of the circuit")
         logger.info("ISL completed")
         return result_dict
 

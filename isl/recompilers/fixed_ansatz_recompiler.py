@@ -8,6 +8,7 @@ from qiskit_aer import Aer
 
 import isl.utils.circuit_operations as co
 import isl.utils.constants as vconstants
+from isl.utils.constants import QiskitMPS
 from isl.recompilers.approximate_recompiler import ApproximateRecompiler
 
 logger = logging.getLogger(__name__)
@@ -20,7 +21,7 @@ class FixedAnsatzRecompiler(ApproximateRecompiler):
 
     def __init__(
         self,
-        circuit_to_recompile: QuantumCircuit,
+        target: QuantumCircuit | QiskitMPS,
         ansatz_circuit: QuantumCircuit,
         initial_state=None,
         qubit_indexes=None,
@@ -49,7 +50,7 @@ class FixedAnsatzRecompiler(ApproximateRecompiler):
         general initial state
         """
         super().__init__(
-            circuit_to_recompile=circuit_to_recompile,
+            target=target,
             initial_state=initial_state,
             backend=backend,
             qubit_subset=qubit_indexes,
@@ -65,7 +66,7 @@ class FixedAnsatzRecompiler(ApproximateRecompiler):
             raise Exception(
                 "Number of qubits in ansatz must equal the number of qubits "
                 "in qubit_indexes (if provided) "
-                "or else number of qubits in circuit_to_recompile"
+                "or else number of qubits in target"
             )
         g_range = self.variational_circuit_range
 

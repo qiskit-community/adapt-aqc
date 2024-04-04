@@ -21,7 +21,7 @@ class RotoselectRecompiler(ApproximateRecompiler):
 
     def __init__(
         self,
-        circuit_to_recompile,
+        target,
         initial_state=None,
         backend=Aer.get_backend("statevector_simulator"),
         qubit_subset=None,
@@ -47,7 +47,7 @@ class RotoselectRecompiler(ApproximateRecompiler):
         general initial state
         """
         super().__init__(
-            circuit_to_recompile=circuit_to_recompile,
+            target=target,
             initial_state=initial_state,
             backend=backend,
             qubit_subset=qubit_subset,

@@ -1,4 +1,9 @@
 """Contains constants"""
+from typing import List, Optional, Tuple
+import numpy as np
+
+# Type of MPS data as it outputted by Qiskit.
+QiskitMPS = Tuple[List[Tuple[np.ndarray, np.ndarray]], List[np.ndarray]]
 
 ALG_ROTOSOLVE = "rotosolve"
 ALG_ROTOSELECT = "rotoselect"
