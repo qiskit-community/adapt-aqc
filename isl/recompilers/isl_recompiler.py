@@ -4,7 +4,6 @@ import logging
 import timeit
 
 import aqc_research.mps_operations as mpsops
-import isl.utils.cuquantum_functions as cu
 import numpy as np
 from qiskit import QuantumCircuit, qasm2
 
@@ -12,7 +11,6 @@ import isl.utils.circuit_operations as co
 import isl.utils.constants as vconstants
 from isl.recompilers.approximate_recompiler import ApproximateRecompiler
 from isl.utils.constants import CMAP_FULL, generate_coupling_map
-from isl.utils.cuquantum_functions import cu_expectation_value_of_qubits
 from isl.utils.entanglement_measures import (
     EM_TOMOGRAPHY_CONCURRENCE,
     calculate_entanglement_measure,
@@ -368,7 +366,7 @@ class ISLRecompiler(ApproximateRecompiler):
                                 "placing more gates after trainable ansatz")
                             
             if self.save_circuit_history:
-                if not self.is_aer_mps_backend:
+                if not self.is_mps_backend:
                     circuit_qasm_string = qasm2.dumps(self.full_circuit)
                 else:
                     circuit_copy = self.full_circuit.copy()
@@ -446,7 +444,7 @@ class ISLRecompiler(ApproximateRecompiler):
             "coupling_map": self.coupling_map,
             "circuit_qasm": qasm2.dumps(recompiled_circuit)
         }
-        if self.save_circuit_history and self.is_aer_mps_backend:
+        if self.save_circuit_history and self.is_mps_backend:
             logger.warning("When using MPS backend, circuit history will not contain the"
                                    " set_matrix_product_state instruction at the start of the circuit")
         logger.info("ISL completed")
@@ -656,11 +654,9 @@ class ISLRecompiler(ApproximateRecompiler):
     def _get_all_qubit_pair_entanglement_measures(self):
         entanglement_measures = []
         # Generate MPS from circuit once if using MPS backend
-        if self.is_aer_mps_backend:
+        if self.is_mps_backend:
             circ = self.full_circuit.copy()
             self.circ_mps = mpsops.mps_from_circuit(circ, return_preprocessed=True, sim=self.backend)
-        elif self.backend == "cuquantum_experimental":
-            self.circ_mps = cu.cu_mps_from_circuit(self.full_circuit)
         else:
             self.circ_mps = None
         for control, target in self.coupling_map:
@@ -764,11 +760,10 @@ class ISLRecompiler(ApproximateRecompiler):
                 return 1
 
     def _measure_qubit_expectation_values(self):
-        if self.is_aer_mps_backend:
+        if self.is_mps_backend:
             return expectation_value_of_qubits_mps(self.full_circuit, self.backend)
-        if self.is_cuquantum_backend:
-            return cu_expectation_value_of_qubits(self.full_circuit, self.backend)
         elif self.local_cost_function:
+
             output = self._run_full_circuit(add_measurements=not self.is_statevector_backend)
 
             rel_counts = {k[0: self.total_num_qubits]: v for k, v in output.items()}

@@ -10,7 +10,7 @@ from qiskit_aer import Aer
 import isl.utils.circuit_operations as co
 import isl.utils.entanglement_measures as em
 from isl.recompilers import ISLRecompiler
-from isl.utils.circuit_operations import MPS_SIM, SV_SIM, CUQUANTUM_SIM
+from isl.utils.circuit_operations import MPS_SIM, SV_SIM
 from isl.utils.entanglement_measures import perform_quantum_tomography, EM_TOMOGRAPHY_CONCURRENCE, \
     EM_TOMOGRAPHY_NEGATIVITY, EM_TOMOGRAPHY_EOF
 
@@ -81,30 +81,4 @@ class TestEntanglementMeasures(TestCase):
             np.testing.assert_allclose(
                 sv_recompiler._get_all_qubit_pair_entanglement_measures(),
                 mps_recompiler._get_all_qubit_pair_entanglement_measures(),
-                atol=1e-06)
-
-try:
-    import cuquantum
-    module_failed = False
-except ImportError:
-    module_failed = True
-
-class TestEntanglementCuquantum(TestCase):
-
-    def setUp(self):
-        if module_failed:
-            self.skipTest('Skipping as cuquantum is not installed')
-
-    def test_given_random_state_when_cuquantum_or_statevector_then_ent_measures_equal(self):
-        qc = co.create_random_initial_state_circuit(4)
-
-        entanglement_measures = [EM_TOMOGRAPHY_CONCURRENCE, EM_TOMOGRAPHY_NEGATIVITY, EM_TOMOGRAPHY_EOF]
-
-        for i in entanglement_measures:
-            sv_recompiler = ISLRecompiler(qc, entanglement_measure=i, backend=SV_SIM)
-            cuquantum_recompiler = ISLRecompiler(qc, entanglement_measure=i, backend=CUQUANTUM_SIM)
-
-            np.testing.assert_allclose(
-                sv_recompiler._get_all_qubit_pair_entanglement_measures(),
-                cuquantum_recompiler._get_all_qubit_pair_entanglement_measures(),
                 atol=1e-06)

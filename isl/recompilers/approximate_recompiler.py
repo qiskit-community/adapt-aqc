@@ -8,24 +8,20 @@ import timeit
 from abc import ABC, abstractmethod
 from typing import Union
 
-import aqc_research.mps_operations as mpsops
 import numpy as np
 from aqc_research.mps_operations import mps_from_circuit, mps_dot, check_mps
-from cuquantum import CircuitToEinsum
 from qiskit import ClassicalRegister, QuantumCircuit, QuantumRegister
 from qiskit.result import Counts
 from qiskit_aer import Aer
 from qiskit_aer.backends.compatibility import Statevector
 
 import isl.utils.circuit_operations as co
-import isl.utils.cuquantum_functions as cu
 from isl.utils.circuit_operations import QASM_SIM
 from isl.utils.circuit_operations.circuit_operations_full_circuit import (
     remove_classical_operations,
 )
 from isl.utils.cost_minimiser import CostMinimiser
-from isl.utils.utilityfunctions import is_statevector_backend, is_aer_mps_backend, \
-    is_cuquantum_backend, expectation_value_of_qubits, expectation_value_of_qubits_mps
+from isl.utils.utilityfunctions import is_statevector_backend, expectation_value_of_qubits, expectation_value_of_qubits_mps
 from isl.utils.constants import QiskitMPS
 
 logger = logging.getLogger(__name__)
@@ -78,16 +74,11 @@ class ApproximateRecompiler(ABC):
             backend if backend is not None else Aer.get_backend("qasm_simulator")
         )
         self.is_statevector_backend = is_statevector_backend(self.backend)
-        self.is_aer_mps_backend = is_aer_mps_backend(self.backend)
-        self.is_cuquantum_backend = is_cuquantum_backend(self.backend)
-        if self.is_cuquantum_backend:
-            try:
-                import cupy
-                import cuquantum
-            except ModuleNotFoundError as e:
-                logger.error(e)
-                raise ModuleNotFoundError("cuquantum not installed. Try a different backend.")
-        if check_mps(self.target) and not self.is_aer_mps_backend:
+        try:
+            self.is_mps_backend = (self.backend.options.method == "matrix_product_state")
+        except AttributeError:
+            self.is_mps_backend = False
+        if check_mps(self.target) and not self.is_mps_backend:
             raise Exception("An MPS backend must be used when target is an MPS")
         self.circuit_to_recompile = self.prepare_circuit()
         if hasattr(self.backend, "num_qubits") and self.circuit_to_recompile.num_qubits > self.backend.num_qubits:
@@ -141,7 +132,7 @@ class ApproximateRecompiler(ABC):
             qc2 = QuantumCircuit(len(self.target.qubits))
             qc2.append(co.make_quantum_only_circuit(target_copy).to_instruction(), qc2.qregs[0])
             prepared_circuit = co.unroll_to_basis_gates(qc2)
-            if self.is_aer_mps_backend:
+            if self.is_mps_backend:
                 target_mps = mps_from_circuit(prepared_circuit, sim=self.backend)
                 target_mps_circuit = QuantumCircuit(prepared_circuit.num_qubits)
                 target_mps_circuit.set_matrix_product_state(target_mps)
@@ -284,16 +275,12 @@ class ApproximateRecompiler(ABC):
             )
         )
         if self.starting_circuit is not None:
-            if not self.is_cuquantum_backend:
-                transpile_kwargs = {"backend": self.backend}
-            else:
-                transpile_kwargs = None
             co.add_to_circuit(
                 recompiled_circuit,
                 self.starting_circuit,
                 0,
                 transpile_before_adding=True,
-                transpile_kwargs=transpile_kwargs,
+                transpile_kwargs={"backend": self.backend},
             )
         final_circuit = QuantumCircuit(
             *self.circuit_to_recompile.qregs, *self.circuit_to_recompile.cregs
@@ -307,7 +294,7 @@ class ApproximateRecompiler(ABC):
         co.add_to_circuit(final_circuit, recompiled_circuit, qubit_subset=qubit_map)
 
         # If self.target is a QuantumCircuit object, this ensures the quantum and classical registers of the recompiled
-        # circuit are the same as those of the target. If self.target is an MPS, there were no registers in the first
+        # circuit are the same as those of the target. If self.target is an MPS, there were no registers in the first 
         # place, so this makes a QuantumCircuit with the default register names
         if isinstance(self.target, QuantumCircuit):
             final_circuit_original_regs = QuantumCircuit(
@@ -346,18 +333,12 @@ class ApproximateRecompiler(ABC):
         qr = QuantumRegister(total_qubits)
         qc = QuantumCircuit(qr)
 
-        # only populate transpile_kwargs is not cuquantum backend
-        if not self.is_cuquantum_backend:
-            transpile_kwargs = {"backend": self.backend}
-        else:
-            transpile_kwargs = None
-
         if self.initial_state_circuit is not None:
             co.add_to_circuit(
                 qc,
                 self.initial_state_circuit, 
                 transpile_before_adding=True,
-                transpile_kwargs=transpile_kwargs,
+                transpile_kwargs={"backend": self.backend},
             )
         elif self.general_initial_state:
             for qubit in range(self.total_num_qubits):
@@ -380,14 +361,14 @@ class ApproximateRecompiler(ABC):
                 qc,
                 isc.inverse(),
                 transpile_before_adding=True,
-                transpile_kwargs=transpile_kwargs,
+                transpile_kwargs={"backend": self.backend},
             )
         if self.starting_circuit is not None:
             co.add_to_circuit(
                 qc,
                 self.starting_circuit.inverse(),
                 transpile_before_adding=True,
-                transpile_kwargs=transpile_kwargs,
+                transpile_kwargs={"backend": self.backend},
             )
         elif self.general_initial_state:
             for qubit in range(self.total_num_qubits - 1, -1, -1):
@@ -424,7 +405,7 @@ class ApproximateRecompiler(ABC):
             return self._evaluate_global_cost()
         
     def _evaluate_local_cost(self):
-        if self.is_aer_mps_backend or self.is_cuquantum_backend:
+        if self.is_mps_backend:
             return self._evaluate_local_cost_mps()
         elif self.is_statevector_backend:
             return self._evaluate_local_cost_sv()
@@ -433,11 +414,7 @@ class ApproximateRecompiler(ABC):
         
     def _evaluate_local_cost_mps(self):
         circ = self.full_circuit.copy()
-        if self.is_cuquantum_backend:
-            e_vals = cu.cu_expectation_value_of_qubits(circ, self.backend)
-        else:
-            e_vals = expectation_value_of_qubits_mps(circ, self.backend)
-
+        e_vals = expectation_value_of_qubits_mps(circ, self.backend)
         cost = 0.5 * (1 - np.mean(e_vals))
         return cost
         
@@ -480,7 +457,7 @@ class ApproximateRecompiler(ABC):
         return cost
     
     def _evaluate_global_cost(self):
-        if self.is_aer_mps_backend or self.is_cuquantum_backend:
+        if self.is_mps_backend:
             return self._evaluate_global_cost_mps()
         elif self.is_statevector_backend:
             return self._evaluate_global_cost_sv()
@@ -488,21 +465,13 @@ class ApproximateRecompiler(ABC):
             return self._evaluate_global_cost_counts()
         
     def _evaluate_global_cost_mps(self):
-        if self.backend == "cuquantum":
-            zero_inner_prod = cu.cu_get_zero_amplitude(self.full_circuit)
-        else:
-            if self.backend == "cuquantum_experimental":
-                circ_mps = cu.cu_mps_from_circuit(self.full_circuit)
-            else:
-                circ = self.full_circuit.copy()
-                circ_mps = mpsops.mps_from_circuit(circ, return_preprocessed=True, sim=self.backend)
-            if self.zero_mps is None:
-                logger.debug("Evaluating cost function directly from MPS without sampling")
-                self.zero_mps = mpsops.mps_from_circuit(QuantumCircuit(self.total_num_qubits), return_preprocessed=True)
+        circ = self.full_circuit.copy()
+        circ_mps = mps_from_circuit(circ, return_preprocessed=True, sim=self.backend)
+        if self.zero_mps is None:
+            logger.debug("Evaluating cost function directly from MPS without sampling")
+            self.zero_mps = mps_from_circuit(QuantumCircuit(self.total_num_qubits), return_preprocessed=True, sim=self.backend)
 
-            zero_inner_prod = mpsops.mps_dot(circ_mps, self.zero_mps, already_preprocessed=True)
-
-        cost = 1 - np.absolute(zero_inner_prod)**2
+        cost = 1 - np.absolute(mps_dot(circ_mps, self.zero_mps, already_preprocessed=True)) ** 2
         return cost
 
     def _evaluate_global_cost_sv(self):
