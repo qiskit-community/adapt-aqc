@@ -24,6 +24,11 @@ logger = logging.getLogger(__name__)
 QASM_SIM = Aer.get_backend("qasm_simulator")
 SV_SIM = Aer.get_backend("statevector_simulator")
 
+# This simulator manually builds the tensors for a performance improvement but is an experimental
+# feature. It currently has a memory error.
+CUQUANTUM_SIM_EXPERIMENTAL = "cuquantum_experimental"
+CUQUANTUM_SIM = "cuquantum"
+
 def mps_sim_with_args(mps_truncation_threshold=1e-16, max_chi=None, mps_log_data=False):
     """
     :param mps_truncation_threshold: truncation threshold to use in AerSimulator

@@ -13,6 +13,7 @@ from scipy import linalg
 from scipy.linalg import eig
 
 import isl.utils.circuit_operations as co
+from isl.utils.cuquantum_functions import cu_two_qubit_rdm_from_circuit
 from isl.utils.utilityfunctions import is_statevector_backend
 
 logger = logging.getLogger(__name__)
@@ -61,8 +62,10 @@ def calculate_entanglement_measure(
                 circuit, backend, return_statevector=True
             )
             rho = partial_trace(statevector, qubit_1, qubit_2)
-        elif backend.options.method == "matrix_product_state":
+        elif mps is not None:
             rho = mpsops.partial_trace(mps, [qubit_1, qubit_2], already_preprocessed=True)
+        elif backend == "cuquantum":
+            rho = cu_two_qubit_rdm_from_circuit(circuit, [qubit_1, qubit_2])
         else:
             rho = perform_quantum_tomography(
                 circuit, qubit_1, qubit_2, backend, backend_options, execute_kwargs

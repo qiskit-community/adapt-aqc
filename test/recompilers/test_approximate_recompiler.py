@@ -18,7 +18,7 @@ class TestApproximateRecompiler(TestCase):
         self.qc = QuantumCircuit(1)
 
     def test_when_init_with_mps_backend_then_mps_backend_flag_true(self):
-        self.assertTrue(ApproximateRecompiler(self.qc, MPS_SIM).is_mps_backend)
+        self.assertTrue(ApproximateRecompiler(self.qc, MPS_SIM).is_aer_mps_backend)
 
     def test_when_init_with_sv_backend_then_sv_backend_flag_true(self):
         self.assertTrue(ApproximateRecompiler(self.qc, SV_SIM).is_statevector_backend)
