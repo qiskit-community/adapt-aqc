@@ -109,11 +109,31 @@ def is_statevector_backend(backend):
     """
     if backend == "qulacs":
         return True
+    elif backend == "cuquantum":
+        return False
     try:
         return backend.name().startswith("statevector")
     except TypeError:
         return backend.name.startswith("statevector")
+    
+def is_aer_mps_backend(backend):
+    """
+    Check if backend is a Aer MPS simulator backed
+    :param backend: Simulator backend
+    :return: Boolean
+    """
+    try:
+        return backend.options.method == "matrix_product_state"
+    except AttributeError:
+        return False
 
+def is_cuquantum_backend(backend):
+    """
+    Check if backend is a CuQuantum simulator backed
+    :param backend: Simulator backend
+    :return: Boolean
+    """
+    return backend == "cuquantum"
 
 def counts_data_from_statevector(
         statevector,

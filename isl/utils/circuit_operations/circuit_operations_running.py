@@ -8,11 +8,11 @@ from qiskit_aer.backends.aerbackend import AerBackend
 from qiskit_aer.noise import thermal_relaxation_error, NoiseModel
 from scipy.optimize import curve_fit
 
-from isl.utils.circuit_operations.circuit_operations_qulacs import (
-    run_on_qulacs_noiseless,
-)
 from isl.utils.circuit_operations.circuit_operations_full_circuit import (
     unroll_to_basis_gates,
+)
+from isl.utils.circuit_operations.circuit_operations_qulacs import (
+    run_on_qulacs_noiseless,
 )
 from isl.utils.utilityfunctions import (
     counts_data_from_statevector,
@@ -23,6 +23,11 @@ logger = logging.getLogger(__name__)
 
 QASM_SIM = Aer.get_backend("qasm_simulator")
 SV_SIM = Aer.get_backend("statevector_simulator")
+
+# For cuquantum backend
+CUQUANTUM_SIM = "cuquantum"
+DEFAULT_CU_ALGORITHM = {'qr_method': False,
+                            'svd_method':{'partition': 'UV', 'max_extent': 256}}
 
 def mps_sim_with_args(mps_truncation_threshold=1e-16, max_chi=None, mps_log_data=False):
     """

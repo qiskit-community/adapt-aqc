@@ -4,12 +4,14 @@ import logging
 import timeit
 
 import aqc_research.mps_operations as mpsops
+import isl.utils.cuquantum_functions as cu
 import numpy as np
 from qiskit import QuantumCircuit, qasm2
 
 import isl.utils.circuit_operations as co
 import isl.utils.constants as vconstants
 from isl.recompilers.approximate_recompiler import ApproximateRecompiler
+from isl.utils import circuit_operations as co
 from isl.utils.constants import CMAP_FULL, generate_coupling_map
 from isl.utils.entanglement_measures import (
     EM_TOMOGRAPHY_CONCURRENCE,
@@ -133,6 +135,7 @@ class ISLRecompiler(ApproximateRecompiler):
         local_cost_function=False,
         debug_log_full_ansatz=False,
         initial_single_qubit_layer=False,
+        cu_algorithm=None,
     ):
         """
         :param target: Circuit or MPS that is to be recompiled
@@ -161,6 +164,10 @@ class ISLRecompiler(ApproximateRecompiler):
         :param execute_kwargs: keyword arguments passed into circuit runs (
         excluding backend)
             e.g. {'noise_model:NoiseModel, 'shots':10000}
+        :param cu_algorithm: If using the cuquantum backend, this specifies the contract and
+        decompose algorithm to use for gate application. Can be either a `dict` or a
+        `ContractDecomposeAlgorithm`. If None set, the default used is
+        isl.utils.circuit_operations.DEFAULT_CU_ALGORITHM
         """
         super().__init__(
             target=target,
@@ -170,6 +177,7 @@ class ISLRecompiler(ApproximateRecompiler):
             general_initial_state=general_initial_state,
             starting_circuit=starting_circuit,
             local_cost_function=local_cost_function,
+            cu_algorithm=cu_algorithm
         )
 
         self.save_circuit_history = save_circuit_history
@@ -366,7 +374,7 @@ class ISLRecompiler(ApproximateRecompiler):
                                 "placing more gates after trainable ansatz")
                             
             if self.save_circuit_history:
-                if not self.is_mps_backend:
+                if not self.is_aer_mps_backend:
                     circuit_qasm_string = qasm2.dumps(self.full_circuit)
                 else:
                     circuit_copy = self.full_circuit.copy()
@@ -444,7 +452,7 @@ class ISLRecompiler(ApproximateRecompiler):
             "coupling_map": self.coupling_map,
             "circuit_qasm": qasm2.dumps(recompiled_circuit)
         }
-        if self.save_circuit_history and self.is_mps_backend:
+        if self.save_circuit_history and self.is_aer_mps_backend:
             logger.warning("When using MPS backend, circuit history will not contain the"
                                    " set_matrix_product_state instruction at the start of the circuit")
         logger.info("ISL completed")
@@ -654,9 +662,14 @@ class ISLRecompiler(ApproximateRecompiler):
     def _get_all_qubit_pair_entanglement_measures(self):
         entanglement_measures = []
         # Generate MPS from circuit once if using MPS backend
-        if self.is_mps_backend:
+        if self.is_aer_mps_backend:
             circ = self.full_circuit.copy()
             self.circ_mps = mpsops.mps_from_circuit(circ, return_preprocessed=True, sim=self.backend)
+        elif self.is_cuquantum_backend:
+            ansatz_circuit = co.extract_inner_circuit(self.full_circuit, self.variational_circuit_range())
+            self.circ_mps = cu.mps_from_circuit_and_starting_mps(
+                ansatz_circuit, self.cu_cached_target_tensor,
+                self.cu_algorithm)
         else:
             self.circ_mps = None
         for control, target in self.coupling_map:
@@ -760,8 +773,15 @@ class ISLRecompiler(ApproximateRecompiler):
                 return 1
 
     def _measure_qubit_expectation_values(self):
-        if self.is_mps_backend:
+        if self.is_aer_mps_backend:
             return expectation_value_of_qubits_mps(self.full_circuit, self.backend)
+        if self.is_cuquantum_backend:
+            ansatz_circuit = co.extract_inner_circuit(self.full_circuit, self.variational_circuit_range())
+            mps = cu.mps_from_circuit_and_starting_mps(
+                ansatz_circuit, self.cu_cached_target_tensor,
+                self.cu_algorithm)
+            return [(mpsops.mps_expectation(mps, 'Z', i, already_preprocessed=True))
+                      for i in range(len(mps))]
         elif self.local_cost_function:
 
             output = self._run_full_circuit(add_measurements=not self.is_statevector_backend)

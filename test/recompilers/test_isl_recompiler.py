@@ -8,7 +8,7 @@ from qiskit.quantum_info import Statevector
 
 import isl.utils.circuit_operations as co
 from isl.recompilers import ISLConfig, ISLRecompiler
-from isl.utils.circuit_operations import QASM_SIM, SV_SIM, MPS_SIM
+from isl.utils.circuit_operations import QASM_SIM, SV_SIM, MPS_SIM, CUQUANTUM_SIM
 from isl.utils.constants import DEFAULT_SUFFICIENT_COST
 from isl.utils.entanglement_measures import EM_TOMOGRAPHY_NEGATIVITY
 
@@ -543,7 +543,15 @@ class TestISL(TestCase):
 
         compiler._add_layer(1)
 
-        self.assertTrue(compiler.qubit_pair_history[-1] == correct_pair)        
+        self.assertTrue(compiler.qubit_pair_history[-1] == correct_pair)
+
+    def test_given_cuquantum_not_installed_when_cuquantum_backend_called_then_error(self):
+        qc = co.create_random_initial_state_circuit(3, seed=1)
+        try:
+            import cuquantum
+        except:
+            with self.assertRaises(ModuleNotFoundError):
+                ISLRecompiler(qc, backend=CUQUANTUM_SIM)
 
 try:
     import qulacs
@@ -590,3 +598,32 @@ class TestISLQulacs(TestCase):
         num_2q_before = co.find_num_gates(qc)[0]
         num_2q_after = co.find_num_gates(result["circuit"])[0]
         self.assertLessEqual(num_2q_after, num_2q_before)
+
+try:
+    import cuquantum
+
+    module_failed = False
+except ImportError:
+    module_failed = True
+
+class TestISLCuquantum(TestCase):
+
+    def setUp(self):
+        if module_failed:
+            self.skipTest('Skipping as cuquantum is not installed')
+
+    @patch('isl.utils.cuquantum_functions.mps_from_circuit')
+    def test_given_cuquantum_backend_when_get_entanglement_then_correct_mps_from_circuit_called(self, mock_cuquantum_mps_from_circuit):
+        qc = co.create_random_initial_state_circuit(3, seed=1)
+        qc = co.unroll_to_basis_gates(qc)
+        stubbed_mps = [np.random.rand(1, 2, 2), np.random.rand(2, 2, 2), np.random.rand(2, 2, 1)]
+        mock_cuquantum_mps_from_circuit.return_value = stubbed_mps
+        recompiler = ISLRecompiler(qc, backend=CUQUANTUM_SIM)
+        recompiler._get_all_qubit_pair_entanglement_measures()
+        mock_cuquantum_mps_from_circuit.assert_called_once()
+
+    def test_given_cuquantum_backend_when_recompile_then_happy_path(self):
+        qc = co.create_random_initial_state_circuit(3)
+        qc = co.unroll_to_basis_gates(qc)
+        recompiler = ISLRecompiler(qc, backend=CUQUANTUM_SIM)
+        recompiler.recompile()
