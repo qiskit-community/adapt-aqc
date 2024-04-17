@@ -14,6 +14,7 @@ from isl.utils.entanglement_measures import EM_TOMOGRAPHY_NEGATIVITY
 
 from aqc_research.mps_operations import mps_from_circuit
 
+
 class TestISL(TestCase):
 
     def test_isl_procedure_sv(self):
@@ -553,18 +554,51 @@ class TestISL(TestCase):
             with self.assertRaises(ModuleNotFoundError):
                 ISLRecompiler(qc, backend=CUQUANTUM_SIM)
 
+    def test_given_random_circuit_when_recompile_with_save_previous_layer_mps_then_works(self):
+        qc = co.create_random_initial_state_circuit(4)
+        config = ISLConfig(rotosolve_frequency=np.inf)
+        compiler = ISLRecompiler(qc, backend=co.MPS_SIM, isl_config=config)
+        result = compiler.recompile()
+        overlap = co.calculate_overlap_between_circuits(qc, result['circuit'])
+
+        self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
+
+    def test_given_random_circuit_when_recompile_with_starting_circuit_and_save_previous_layer_mps_then_works(self):
+        qc = co.create_random_initial_state_circuit(4)
+        starting_circuit = QuantumCircuit(4)
+        starting_circuit.x([0, 2])
+        config = ISLConfig(rotosolve_frequency=np.inf)
+        compiler = ISLRecompiler(qc, backend=co.MPS_SIM, isl_config=config, starting_circuit=starting_circuit)
+        result = compiler.recompile()
+        overlap = co.calculate_overlap_between_circuits(qc, result['circuit'])
+
+        self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
+
+    def test_given_circuit_when_recompile_with_mps_backend_then_saving_previous_layer_mps_faster_than_not_saving(self):
+        qc = co.create_random_initial_state_circuit(4)
+        # Previous layer MPS should only be saved when rotosolve_frequency=np.inf
+        config_1 = ISLConfig(rotosolve_frequency=1e5)
+        config_2 = ISLConfig(rotosolve_frequency=np.inf)
+        compiler_1 = ISLRecompiler(qc, backend=co.MPS_SIM, isl_config=config_1)
+        compiler_2 = ISLRecompiler(qc, backend=co.MPS_SIM, isl_config=config_2)
+        result_1 = compiler_1.recompile()
+        result_2 = compiler_2.recompile()
+
+        self.assertLess(result_2['time_taken'], result_1['time_taken'])
+
+
 try:
     import qulacs
 
-    module_failed = False
+    module_failed_qulacs = False
 except ImportError:
-    module_failed = True
+    module_failed_qulacs = True
 
 
 class TestISLQulacs(TestCase):
 
     def setUp(self):
-        if module_failed:
+        if module_failed_qulacs:
             self.skipTest('Skipping as qulacs is not installed')
 
     def test_qulacs_recompiler(self):
@@ -602,14 +636,14 @@ class TestISLQulacs(TestCase):
 try:
     import cuquantum
 
-    module_failed = False
+    module_failed_cuquantum = False
 except ImportError:
-    module_failed = True
+    module_failed_cuquantum = True
 
 class TestISLCuquantum(TestCase):
 
     def setUp(self):
-        if module_failed:
+        if module_failed_cuquantum:
             self.skipTest('Skipping as cuquantum is not installed')
 
     @patch('isl.utils.cuquantum_functions.mps_from_circuit')

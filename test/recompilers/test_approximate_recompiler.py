@@ -79,7 +79,7 @@ class TestApproximateRecompiler(TestCase):
         np.testing.assert_almost_equal(cost_sv, cost_mps, decimal=5)
         np.testing.assert_almost_equal(cost_sv, cost_qasm, decimal=2)
         np.testing.assert_almost_equal(cost_mps, cost_qasm, decimal=2)
-    
+
     def test_given_random_circuit_when_evaluate_global_cost_all_three_methods_return_same_cost(self):
         qc = co.create_random_initial_state_circuit(4)
 
@@ -104,21 +104,21 @@ class TestApproximateRecompiler(TestCase):
         # |++++> global=15/16, local=1/2
         # Using equations 9 and 11 from arXiv:1908.04416
 
-        analytic_costs = [0, 0, 1, 1/2, 1/2, 1/2, 15/16, 1/2]
+        analytic_costs = [0, 0, 1, 1 / 2, 1 / 2, 1 / 2, 15 / 16, 1 / 2]
         isl_costs = []
 
         zero = QuantumCircuit(4)
 
         neel = QuantumCircuit(4)
-        neel.x([0,2])
+        neel.x([0, 2])
 
         ghz = QuantumCircuit(4)
         ghz.h(0)
         for i in range(3):
-            ghz.cx(0, i+1)
+            ghz.cx(0, i + 1)
 
         hadamard = QuantumCircuit(4)
-        hadamard.h([0,1,2,3])
+        hadamard.h([0, 1, 2, 3])
 
         circuits = [zero, neel, ghz, hadamard]
 

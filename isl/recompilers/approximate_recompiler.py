@@ -211,8 +211,10 @@ class ApproximateRecompiler(ABC):
             total_num_qubits = self.initial_state_circuit.num_qubits
         return total_num_qubits
 
-    def variational_circuit_range(self):
-        return self.lhs_gate_count, len(self.full_circuit.data) - self.rhs_gate_count
+    def variational_circuit_range(self, circuit=None):
+        if circuit == None:
+            circuit = self.full_circuit
+        return self.lhs_gate_count, len(circuit.data) - self.rhs_gate_count
 
     @abstractmethod
     def recompile(self) -> dict:
@@ -509,7 +511,7 @@ class ApproximateRecompiler(ABC):
             circ_mps = mpsops.mps_from_circuit(circ, return_preprocessed=True, sim=self.backend)
         if self.zero_mps is None:
             logger.debug("Evaluating cost function directly from MPS without sampling")
-            self.zero_mps = mpsops.mps_from_circuit(QuantumCircuit(self.total_num_qubits), return_preprocessed=True)
+            self.zero_mps = mpsops.mps_from_circuit(QuantumCircuit(self.total_num_qubits), return_preprocessed=True, sim=self.backend)
 
         cost = 1 - np.absolute(
             mpsops.mps_dot(circ_mps, self.zero_mps, already_preprocessed=True))**2

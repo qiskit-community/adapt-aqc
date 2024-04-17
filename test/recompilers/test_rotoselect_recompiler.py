@@ -4,6 +4,7 @@ import isl.utils.circuit_operations as co
 from isl.recompilers import RotoselectRecompiler
 from isl.utils.constants import DEFAULT_SUFFICIENT_COST
 
+
 class TestRotoselectRecompiler(TestCase):
     def test_no_initial_state(self):
         qc = co.create_random_initial_state_circuit(3)

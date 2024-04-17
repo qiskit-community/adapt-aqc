@@ -69,7 +69,7 @@ class ISLConfig:
         :param bad_qubit_pair_memory: If acting on a qubit pair leads to entanglement increasing,
         it is labelled a "bad pair". This argument controls how many bad pairs should be remembered.
         :param rotosolve_frequency: How often rotosolve is used (if n, rotosolve will be used after
-        every n layers).
+        every n layers). NOTE When using Aer MPS simulator setting this to np.inf leads to large performance improvement.
         :param rotoselect_tol: How much does the cost need to decrease by each iteration to continue
          Rotoselect.
         :param rotosolve_tol: How much does the cost need to decrease by each iteration to continue
@@ -219,6 +219,14 @@ class ISLRecompiler(ApproximateRecompiler):
 
         self.initial_single_qubit_layer = initial_single_qubit_layer
 
+        if self.is_aer_mps_backend and self.isl_config.rotosolve_frequency == np.inf:
+            self.save_previous_layer_mps = True
+            # As variational gates will be absorbed into one large MPS instruction, we need to
+            # separately keep track of ansatz gates to return a compiled solution.
+            self.ref_circuit_as_gates = self.full_circuit.copy()
+        else:
+            self.save_previous_layer_mps = False
+
     def construct_layer_2q_gate(self, custom_layer_2q_gate):
         if custom_layer_2q_gate is None:
             qc = QuantumCircuit(2)
@@ -338,41 +346,22 @@ class ISLRecompiler(ApproximateRecompiler):
             cost = self._add_layer(layer_count)
             cost_history.append(cost)
 
-            # Log ansatz part of the circuit if logger is in DEBUG (10)
-            if logger.getEffectiveLevel() == 10:
-                ansatz = self.full_circuit.copy()
-                logger.debug(f'Qubit pair history: \n{self.qubit_pair_history}')
-                if self.debug_log_full_ansatz:
-                    del ansatz.data[:len(self.circuit_to_recompile.data)]
-                    logger.debug(f'Optimised ansatz after layer added: \n{ansatz}')
+            if self.save_previous_layer_mps:
+                self._add_last_layer_to_ref_circuit(layer_count)
+                self._debug_log_optimised_layer(layer_count)
+                self._absorb_layer_into_mps()
+                # Don't call remove_unnecessary_gates_from_circuit because no gates to remove
+                num_2q_gates, num_1q_gates = co.find_num_gates(
+                    self.ref_circuit_as_gates, gate_range=g_range(self.ref_circuit_as_gates)
+                )
+            else:
+                self._debug_log_optimised_layer(layer_count)
+                if self.remove_unnecessary_gates:
+                    co.remove_unnecessary_gates_from_circuit(self.full_circuit, False, False, gate_range=g_range())
+                num_2q_gates, num_1q_gates = co.find_num_gates(
+                    self.full_circuit, gate_range=g_range()
+                )
 
-                # Remove starting_circuit from end of ansatz, if there is one
-                if self.starting_circuit is not None:
-                    del ansatz.data[-len(self.starting_circuit.data):]
-
-                if self.initial_single_qubit_layer == True and layer_count == 0:
-                    del ansatz.data[:-ansatz.num_qubits]
-                    logger.debug(f'Optimised layer added: \n{ansatz}')
-                else:
-
-                    # Delete all gates apart from the 5 from the added layer
-                    del ansatz.data[:-5]
-                    # Remove all qubits apart from the pair acted on in the current layer
-                    for qubit in range(ansatz.num_qubits - 1, -1, -1):
-                        if qubit not in self.qubit_pair_history[-1]:
-                            del ansatz.qubits[qubit]
-                    if not (ansatz.data[2][0].name == 'cx'):
-                        logging.error(
-                            "Final ansatz layer logging not implemented for custom ansatz or functionalities "
-                            "placing more gates after trainable ansatz")
-                    else:
-                        try:
-                            logger.debug(f'Optimised layer added: \n{ansatz}')
-                        except ValueError:
-                            logging.error(
-                                "Final ansatz layer logging not implemented for custom ansatz or functionalities "
-                                "placing more gates after trainable ansatz")
-                            
             if self.save_circuit_history:
                 if not self.is_aer_mps_backend:
                     circuit_qasm_string = qasm2.dumps(self.full_circuit)
@@ -382,14 +371,6 @@ class ISLRecompiler(ApproximateRecompiler):
                     circuit_qasm_string = qasm2.dumps(circuit_copy)
                 circuit_history.append(circuit_qasm_string)
 
-            if self.remove_unnecessary_gates:
-                co.remove_unnecessary_gates_from_circuit(
-                    self.full_circuit, False, False, gate_range=g_range()
-                )
-
-            num_2q_gates, num_1q_gates = co.find_num_gates(
-                self.full_circuit, gate_range=g_range()
-            )
             cinl = self.isl_config.cost_improvement_num_layers
             cit = self.isl_config.cost_improvement_tol
             if len(cost_history) >= cinl and has_stopped_improving(
@@ -411,16 +392,20 @@ class ISLRecompiler(ApproximateRecompiler):
                 )
                 break
 
-        if self.remove_unnecessary_gates:
-            co.remove_unnecessary_gates_from_circuit(
-                self.full_circuit, True, True, gate_range=g_range()
-            )
-
         # Perform a final optimisation
         if self.perform_final_minimisation:
             self.minimizer.minimize_cost(
                 algorithm_kind=vconstants.ALG_PYBOBYQA,
                 alg_kwargs={"seek_global_minimum": False},
+            )
+
+        if self.save_previous_layer_mps:
+            # Replace full_circuit with ref_circuit_as_gates, otherwise no way to remove unnecessary gates
+            self.full_circuit = self.ref_circuit_as_gates
+
+        if self.remove_unnecessary_gates:
+            co.remove_unnecessary_gates_from_circuit(
+                self.full_circuit, True, True, gate_range=g_range()
             )
 
         final_cost = self.evaluate_cost()
@@ -457,6 +442,50 @@ class ISLRecompiler(ApproximateRecompiler):
                                    " set_matrix_product_state instruction at the start of the circuit")
         logger.info("ISL completed")
         return result_dict
+
+    def _debug_log_optimised_layer(self, layer_count):
+        if logger.getEffectiveLevel() == 10:
+            logger.debug(f'Qubit pair history: \n{self.qubit_pair_history}')
+
+            if self.debug_log_full_ansatz:
+                if self.save_previous_layer_mps:
+                    ansatz = self.ref_circuit_as_gates.copy()
+                else:
+                    ansatz = self.full_circuit.copy()
+                del ansatz.data[:len(self.circuit_to_recompile.data)]
+                logger.debug(f'Optimised ansatz after layer added: \n{ansatz}')
+
+            layer_added = self._get_layer_added(layer_count)
+            if self.initial_single_qubit_layer == True and layer_count == 0:
+                logger.debug(f'Optimised layer added: \n{layer_added}')
+            else:
+                # Remove all qubits apart from the pair acted on in the current layer
+                for qubit in range(layer_added.num_qubits - 1, -1, -1):
+                    if qubit not in self.qubit_pair_history[-1]:
+                        del layer_added.qubits[qubit]
+                if not (layer_added.data[2][0].name == 'cx'):
+                    logging.error(
+                        "Final ansatz layer logging not implemented for custom ansatz or functionalities "
+                        "placing more gates after trainable ansatz")
+                else:
+                    try:
+                        logger.debug(f'Optimised layer added: \n{layer_added}')
+                    except ValueError:
+                        logging.error(
+                            "Final ansatz layer logging not implemented for custom ansatz or functionalities "
+                            "placing more gates after trainable ansatz")
+
+    def _add_last_layer_to_ref_circuit(self, layer_count):
+        # Find the layer which has just been added, and add to ref_circuit_as_gates
+        layer_added = self._get_layer_added(layer_count)
+        if self.starting_circuit is not None:
+            # Add the layer between the previous layer and starting_circuit
+            co.add_to_circuit(self.ref_circuit_as_gates, layer_added,
+                              location=len(self.ref_circuit_as_gates.data) - len(
+                                  self.starting_circuit))
+        else:
+            # Add the layer to the end of the ansatz
+            co.add_to_circuit(self.ref_circuit_as_gates, layer_added)
 
     def _add_layer(self, index):
         """
@@ -798,3 +827,45 @@ class ISLRecompiler(ApproximateRecompiler):
         self.e_val_history.append(None)
         self.qubit_pair_history.append((None, None))
         self.pair_selection_method_history.append(None)
+
+    def _absorb_layer_into_mps(self):
+        """
+        Takes the circuit:
+        -|0>--|mps(V†(n-1)U|0>)|--|layer_n_gates|--|starting_circuit_inverse|-
+        and returns:
+        -|0>--|mps(V†(n)U|0>)|--|starting_circuit_inverse|-
+
+        Where mps(V†(k)U|0>) is the set_matrix_product_state instruction representing the state after k layers
+        have been added, and layer_n_gates are the optimised gates added in the nth layer.
+        """
+        # Get full_circuit without starting_circuit on the end
+        full_without_starting_circuit = self.full_circuit.copy()
+        if self.starting_circuit is not None:
+            del full_without_starting_circuit.data[-len(self.starting_circuit):]
+
+        # Get MPS of full_circuit without starting_circuit
+        full_circuit_mps = mpsops.mps_from_circuit(full_without_starting_circuit, sim=self.backend)
+
+        # Create circuit with MPS instruction found above, with same registers as full_circuit
+        mps_circuit = QuantumCircuit(self.full_circuit.qregs[0])
+        mps_circuit.set_matrix_product_state(full_circuit_mps)
+
+        # Replace non-starting_circuit part of full_circuit with its MPS instruction
+        if self.starting_circuit is not None:
+            del self.full_circuit.data[:-len(self.starting_circuit)]
+        else:
+            del self.full_circuit.data[:]
+        self.full_circuit.data.insert(0, mps_circuit.data[0])
+
+    def _get_layer_added(self, layer_count):
+        layer_added = self.full_circuit.copy()
+        # Remove starting_circuit from end of ansatz, if there is one
+        if self.starting_circuit is not None:
+            del layer_added.data[-len(self.starting_circuit.data):]  
+        if self.initial_single_qubit_layer == True and layer_count == 0:
+            del layer_added.data[:-layer_added.num_qubits]
+            return layer_added
+        else:
+            # Delete all gates apart from the 5 from the added layer
+            del layer_added.data[:-5]
+            return layer_added
