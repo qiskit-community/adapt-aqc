@@ -556,7 +556,7 @@ class TestISL(TestCase):
 
     def test_given_random_circuit_when_recompile_with_save_previous_layer_mps_then_works(self):
         qc = co.create_random_initial_state_circuit(4)
-        config = ISLConfig(rotosolve_frequency=np.inf)
+        config = ISLConfig(rotosolve_frequency=0)
         compiler = ISLRecompiler(qc, backend=co.MPS_SIM, isl_config=config)
         result = compiler.recompile()
         overlap = co.calculate_overlap_between_circuits(qc, result['circuit'])
@@ -567,7 +567,7 @@ class TestISL(TestCase):
         qc = co.create_random_initial_state_circuit(4)
         starting_circuit = QuantumCircuit(4)
         starting_circuit.x([0, 2])
-        config = ISLConfig(rotosolve_frequency=np.inf)
+        config = ISLConfig(rotosolve_frequency=0)
         compiler = ISLRecompiler(qc, backend=co.MPS_SIM, isl_config=config, starting_circuit=starting_circuit)
         result = compiler.recompile()
         overlap = co.calculate_overlap_between_circuits(qc, result['circuit'])
@@ -576,9 +576,9 @@ class TestISL(TestCase):
 
     def test_given_circuit_when_recompile_with_mps_backend_then_saving_previous_layer_mps_faster_than_not_saving(self):
         qc = co.create_random_initial_state_circuit(4)
-        # Previous layer MPS should only be saved when rotosolve_frequency=np.inf
+        # Previous layer MPS should only be saved when rotosolve_frequency=0
         config_1 = ISLConfig(rotosolve_frequency=1e5)
-        config_2 = ISLConfig(rotosolve_frequency=np.inf)
+        config_2 = ISLConfig(rotosolve_frequency=0)
         compiler_1 = ISLRecompiler(qc, backend=co.MPS_SIM, isl_config=config_1)
         compiler_2 = ISLRecompiler(qc, backend=co.MPS_SIM, isl_config=config_2)
         result_1 = compiler_1.recompile()

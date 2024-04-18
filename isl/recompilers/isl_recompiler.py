@@ -69,7 +69,7 @@ class ISLConfig:
         :param bad_qubit_pair_memory: If acting on a qubit pair leads to entanglement increasing,
         it is labelled a "bad pair". This argument controls how many bad pairs should be remembered.
         :param rotosolve_frequency: How often rotosolve is used (if n, rotosolve will be used after
-        every n layers). NOTE When using Aer MPS simulator setting this to np.inf leads to large performance improvement.
+        every n layers). NOTE When using Aer MPS simulator setting this to 0 leads to large performance improvement.
         :param rotoselect_tol: How much does the cost need to decrease by each iteration to continue
          Rotoselect.
         :param rotosolve_tol: How much does the cost need to decrease by each iteration to continue
@@ -219,7 +219,7 @@ class ISLRecompiler(ApproximateRecompiler):
 
         self.initial_single_qubit_layer = initial_single_qubit_layer
 
-        if self.is_aer_mps_backend and self.isl_config.rotosolve_frequency == np.inf:
+        if self.is_aer_mps_backend and self.isl_config.rotosolve_frequency == 0:
             self.save_previous_layer_mps = True
             # As variational gates will be absorbed into one large MPS instruction, we need to
             # separately keep track of ansatz gates to return a compiled solution.
@@ -514,7 +514,7 @@ class ISLRecompiler(ApproximateRecompiler):
                 indexes_to_modify=rotoselect_gate_indexes,
             )
             # Do Rotosolve
-            if index > 0 and index % self.isl_config.rotosolve_frequency == 0:
+            if self.isl_config.rotosolve_frequency != 0 and index > 0 and index % self.isl_config.rotosolve_frequency == 0:
                 rotosolve_gate_indexes = self._calculate_rotosolve_indices(ansatz_start_index)
 
                 cost = self.minimizer.minimize_cost(
