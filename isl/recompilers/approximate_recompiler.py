@@ -17,7 +17,6 @@ from qiskit.result import Counts
 from qiskit_aer import Aer
 from qiskit_aer.backends.compatibility import Statevector
 
-from isl.recompilers.isl_recompiler import ISLRecompiler
 import isl.utils.cuquantum_functions as cu
 from isl.utils import circuit_operations as co
 from isl.utils.circuit_operations import QASM_SIM, DEFAULT_CU_ALGORITHM
@@ -451,7 +450,7 @@ class ApproximateRecompiler(ABC):
     def _evaluate_local_cost_mps(self):
         circ = self.full_circuit.copy()
         if self.is_cuquantum_backend:
-            if isinstance(self, ISLRecompiler):
+            if self.isl_config is not None:
                 if self.isl_config.rotosolve_frequency == 0:
                     gates_to_contract = co.extract_inner_circuit(circ, self.layer_added_and_starting_circuit_range())
                     mps = cu.mps_from_circuit_and_starting_mps(gates_to_contract, self.cu_cached_mps, self.cu_algorithm)
@@ -514,7 +513,7 @@ class ApproximateRecompiler(ABC):
         
     def _evaluate_global_cost_mps(self):
         if self.is_cuquantum_backend:
-            if isinstance(self, ISLRecompiler):
+            if self.isl_config is not None:
                 if self.isl_config.rotosolve_frequency == 0:
                     gates_to_contract = co.extract_inner_circuit(circ, self.layer_added_and_starting_circuit_range())
                     circ_mps = cu.mps_from_circuit_and_starting_mps(gates_to_contract, self.cu_cached_mps, self.cu_algorithm)
