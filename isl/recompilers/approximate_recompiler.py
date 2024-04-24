@@ -17,6 +17,7 @@ from qiskit.result import Counts
 from qiskit_aer import Aer
 from qiskit_aer.backends.compatibility import Statevector
 
+from isl.recompilers.isl_recompiler import ISLRecompiler
 import isl.utils.cuquantum_functions as cu
 from isl.utils import circuit_operations as co
 from isl.utils.circuit_operations import QASM_SIM, DEFAULT_CU_ALGORITHM
@@ -86,7 +87,7 @@ class ApproximateRecompiler(ABC):
             try:
                 import cupy
                 import cuquantum
-                self.cu_cached_target_tensor = None
+                self.cu_cached_mps = None
             except ModuleNotFoundError as e:
                 logger.error(e)
                 raise ModuleNotFoundError("cuquantum not installed. Try a different backend.")
@@ -157,7 +158,7 @@ class ApproximateRecompiler(ABC):
                 logger.info("Pre-computing target circuit as MPS")
                 # Here we cache the target MPS but don't return a circuit since we can't smuggle a
                 # CuQuantum MPS inside a Qiskit QuantumCircuit
-                self.cu_cached_target_tensor = (
+                self.cu_cached_mps = (
                     cu.mps_from_circuit(prepared_circuit, algorithm=self.cu_algorithm))
             return prepared_circuit
 
@@ -215,6 +216,11 @@ class ApproximateRecompiler(ABC):
         if circuit == None:
             circuit = self.full_circuit
         return self.lhs_gate_count, len(circuit.data) - self.rhs_gate_count
+    
+    def layer_added_and_starting_circuit_range(self):
+        end = len(self.full_circuit.data) - self.rhs_gate_count
+        start = end - len(self.starting_circuit) - len(self.layer_2q_gate)
+        return start, end
 
     @abstractmethod
     def recompile(self) -> dict:
@@ -445,10 +451,15 @@ class ApproximateRecompiler(ABC):
     def _evaluate_local_cost_mps(self):
         circ = self.full_circuit.copy()
         if self.is_cuquantum_backend:
-            ansatz_circ = co.extract_inner_circuit(circ, self.variational_circuit_range())
-            mps = cu.mps_from_circuit_and_starting_mps(ansatz_circ, self.cu_cached_target_tensor, self.cu_algorithm)
+            if isinstance(self, ISLRecompiler):
+                if self.isl_config.rotosolve_frequency == 0:
+                    gates_to_contract = co.extract_inner_circuit(circ, self.layer_added_and_starting_circuit_range())
+                    mps = cu.mps_from_circuit_and_starting_mps(gates_to_contract, self.cu_cached_mps, self.cu_algorithm)
+            else:
+                ansatz_circ = co.extract_inner_circuit(circ, self.variational_circuit_range())
+                mps = cu.mps_from_circuit_and_starting_mps(ansatz_circ, self.cu_cached_mps, self.cu_algorithm)
             e_vals = [(mpsops.mps_expectation(mps, 'Z', i, already_preprocessed=True))
-                      for i in range(len(mps))]
+                        for i in range(len(mps))]
         else:
             e_vals = expectation_value_of_qubits_mps(circ, self.backend)
 
@@ -503,9 +514,13 @@ class ApproximateRecompiler(ABC):
         
     def _evaluate_global_cost_mps(self):
         if self.is_cuquantum_backend:
-            ansatz_circ = co.extract_inner_circuit(self.full_circuit, self.variational_circuit_range())
-            circ_mps = cu.mps_from_circuit_and_starting_mps(
-                ansatz_circ, self.cu_cached_target_tensor, self.cu_algorithm)
+            if isinstance(self, ISLRecompiler):
+                if self.isl_config.rotosolve_frequency == 0:
+                    gates_to_contract = co.extract_inner_circuit(circ, self.layer_added_and_starting_circuit_range())
+                    circ_mps = cu.mps_from_circuit_and_starting_mps(gates_to_contract, self.cu_cached_mps, self.cu_algorithm)
+            else:
+                ansatz_circ = co.extract_inner_circuit(circ, self.variational_circuit_range())
+                circ_mps = cu.mps_from_circuit_and_starting_mps(ansatz_circ, self.cu_cached_mps, self.cu_algorithm)
         else:
             circ = self.full_circuit.copy()
             circ_mps = mpsops.mps_from_circuit(circ, return_preprocessed=True, sim=self.backend)

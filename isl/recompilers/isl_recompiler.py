@@ -220,12 +220,17 @@ class ISLRecompiler(ApproximateRecompiler):
         self.initial_single_qubit_layer = initial_single_qubit_layer
 
         if self.is_aer_mps_backend and self.isl_config.rotosolve_frequency == 0:
-            self.save_previous_layer_mps = True
+            self.save_previous_layer_mps_aer = True
             # As variational gates will be absorbed into one large MPS instruction, we need to
             # separately keep track of ansatz gates to return a compiled solution.
             self.ref_circuit_as_gates = self.full_circuit.copy()
         else:
-            self.save_previous_layer_mps = False
+            self.save_previous_layer_mps_aer = False
+
+        if self.is_cuquantum_backend and self.isl_config.rotosolve_frequency == 0:
+            self.save_previous_layer_mps_cuquantum = True
+        else:
+            self.save_previous_layer_mps_cuquantum = False
 
     def construct_layer_2q_gate(self, custom_layer_2q_gate):
         if custom_layer_2q_gate is None:
@@ -346,10 +351,10 @@ class ISLRecompiler(ApproximateRecompiler):
             cost = self._add_layer(layer_count)
             cost_history.append(cost)
 
-            if self.save_previous_layer_mps:
+            if self.save_previous_layer_mps_aer:
                 self._add_last_layer_to_ref_circuit(layer_count)
                 self._debug_log_optimised_layer(layer_count)
-                self._absorb_layer_into_mps()
+                self._absorb_layer_into_mps_aer()
                 # Don't call remove_unnecessary_gates_from_circuit because no gates to remove
                 num_2q_gates, num_1q_gates = co.find_num_gates(
                     self.ref_circuit_as_gates, gate_range=g_range(self.ref_circuit_as_gates)
@@ -361,6 +366,9 @@ class ISLRecompiler(ApproximateRecompiler):
                 num_2q_gates, num_1q_gates = co.find_num_gates(
                     self.full_circuit, gate_range=g_range()
                 )
+            
+            if self.save_previous_layer_mps_cuquantum:
+                self._absorb_layer_into_mps_cuquantum(layer_count)
 
             if self.save_circuit_history:
                 if not self.is_aer_mps_backend:
@@ -399,7 +407,7 @@ class ISLRecompiler(ApproximateRecompiler):
                 alg_kwargs={"seek_global_minimum": False},
             )
 
-        if self.save_previous_layer_mps:
+        if self.save_previous_layer_mps_aer:
             # Replace full_circuit with ref_circuit_as_gates, otherwise no way to remove unnecessary gates
             self.full_circuit = self.ref_circuit_as_gates
 
@@ -448,7 +456,7 @@ class ISLRecompiler(ApproximateRecompiler):
             logger.debug(f'Qubit pair history: \n{self.qubit_pair_history}')
 
             if self.debug_log_full_ansatz:
-                if self.save_previous_layer_mps:
+                if self.save_previous_layer_mps_aer:
                     ansatz = self.ref_circuit_as_gates.copy()
                 else:
                     ansatz = self.full_circuit.copy()
@@ -695,9 +703,9 @@ class ISLRecompiler(ApproximateRecompiler):
             circ = self.full_circuit.copy()
             self.circ_mps = mpsops.mps_from_circuit(circ, return_preprocessed=True, sim=self.backend)
         elif self.is_cuquantum_backend:
-            ansatz_circuit = co.extract_inner_circuit(self.full_circuit, self.variational_circuit_range())
+            starting_circuit = self.starting_circuit
             self.circ_mps = cu.mps_from_circuit_and_starting_mps(
-                ansatz_circuit, self.cu_cached_target_tensor,
+                starting_circuit, self.cu_cached_mps,
                 self.cu_algorithm)
         else:
             self.circ_mps = None
@@ -805,9 +813,9 @@ class ISLRecompiler(ApproximateRecompiler):
         if self.is_aer_mps_backend:
             return expectation_value_of_qubits_mps(self.full_circuit, self.backend)
         if self.is_cuquantum_backend:
-            ansatz_circuit = co.extract_inner_circuit(self.full_circuit, self.variational_circuit_range())
+            starting_circuit = self.starting_circuit
             mps = cu.mps_from_circuit_and_starting_mps(
-                ansatz_circuit, self.cu_cached_target_tensor,
+                starting_circuit, self.cu_cached_mps,
                 self.cu_algorithm)
             return [(mpsops.mps_expectation(mps, 'Z', i, already_preprocessed=True))
                       for i in range(len(mps))]
@@ -828,7 +836,7 @@ class ISLRecompiler(ApproximateRecompiler):
         self.qubit_pair_history.append((None, None))
         self.pair_selection_method_history.append(None)
 
-    def _absorb_layer_into_mps(self):
+    def _absorb_layer_into_mps_aer(self):
         """
         Takes the circuit:
         -|0>--|mps(V†(n-1)U|0>)|--|layer_n_gates|--|starting_circuit_inverse|-
@@ -857,8 +865,26 @@ class ISLRecompiler(ApproximateRecompiler):
             del self.full_circuit.data[:]
         self.full_circuit.data.insert(0, mps_circuit.data[0])
 
+    def _absorb_layer_into_mps_cuquantum(self, index):
+        """
+        Takes the circuit:
+        -|0>--|mps(V†(n-1)U|0>)|--|layer_n_gates|--|starting_circuit_inverse|-
+        and returns:
+        -|0>--|mps(V†(n)U|0>)|--|starting_circuit_inverse|-
+
+        Overwrites self.cu_cached_mps with MPS calculated using 
+        cuquantum with new optimised layer.
+
+        """
+        # Get MPS of full_circuit without starting_circuit
+        layer_added = self._get_layer_added(index)
+        full_circuit_mps = cu.mps_from_circuit_and_starting_mps(layer_added, self.cu_cached_mps, self.cu_algorithm)
+        # Replace self.cu_cached_mps with new layer added
+        self.cu_cached_mps = full_circuit_mps
+
     def _get_layer_added(self, layer_count):
         layer_added = self.full_circuit.copy()
+        len_layer_added = len(self.layer_2q_gate)
         # Remove starting_circuit from end of ansatz, if there is one
         if self.starting_circuit is not None:
             del layer_added.data[-len(self.starting_circuit.data):]  
@@ -867,5 +893,5 @@ class ISLRecompiler(ApproximateRecompiler):
             return layer_added
         else:
             # Delete all gates apart from the 5 from the added layer
-            del layer_added.data[:-5]
+            del layer_added.data[:-len_layer_added]
             return layer_added
