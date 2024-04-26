@@ -524,8 +524,9 @@ class ApproximateRecompiler(ABC):
             circ = self.full_circuit.copy()
             circ_mps = mpsops.mps_from_circuit(circ, return_preprocessed=True, sim=self.backend)
         if self.zero_mps is None:
-            logger.debug("Evaluating cost function directly from MPS without sampling")
-            self.zero_mps = mpsops.mps_from_circuit(QuantumCircuit(self.total_num_qubits), return_preprocessed=True, sim=self.backend)
+            sim = self.backend if self.is_aer_mps_backend else None
+            self.zero_mps = mpsops.mps_from_circuit(QuantumCircuit(self.total_num_qubits),
+                                                    return_preprocessed=True, sim=sim)
 
         cost = 1 - np.absolute(
             mpsops.mps_dot(circ_mps, self.zero_mps, already_preprocessed=True))**2

@@ -656,8 +656,27 @@ class TestISLCuquantum(TestCase):
         recompiler._get_all_qubit_pair_entanglement_measures()
         mock_cuquantum_mps_from_circuit.assert_called_once()
 
-    def test_given_cuquantum_backend_when_recompile_then_happy_path(self):
+    def test_given_cuquantum_backend_when_recompile_then_works(self):
         qc = co.create_random_initial_state_circuit(3)
         qc = co.unroll_to_basis_gates(qc)
         recompiler = ISLRecompiler(qc, backend=CUQUANTUM_SIM)
         recompiler.recompile()
+
+    def test_given_cuquantum_backend_when_recompile_with_save_previous_layer_mps_then_works(self):
+        qc = co.create_random_initial_state_circuit(3)
+        qc = co.unroll_to_basis_gates(qc)
+        config = ISLConfig(rotosolve_frequency=0)
+        recompiler = ISLRecompiler(qc, backend=CUQUANTUM_SIM, isl_config=config)
+        recompiler.recompile()
+
+    def test_given_cuquantum_backend_when_recompile_with_save_previous_layer_then_same_as_without_save_previous_layer(self):
+        qc = co.create_random_initial_state_circuit(4)
+        config_1 = ISLConfig(rotosolve_frequency=0)
+        config_2 = ISLConfig(rotosolve_frequency=np.inf)
+        compiler_1 = ISLRecompiler(qc, backend=CUQUANTUM_SIM, isl_config=config_1)
+        compiler_2 = ISLRecompiler(qc, backend=CUQUANTUM_SIM, isl_config=config_2)
+        result_1 = compiler_1.recompile()
+        result_2 = compiler_2.recompile()
+
+        self.assertEqual(result_1['overlap'], 1)
+        self.assertEqual(result_2['overlap'], 1)
