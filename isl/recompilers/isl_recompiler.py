@@ -703,10 +703,13 @@ class ISLRecompiler(ApproximateRecompiler):
             circ = self.full_circuit.copy()
             self.circ_mps = mpsops.mps_from_circuit(circ, return_preprocessed=True, sim=self.backend)
         elif self.is_cuquantum_backend:
-            starting_circuit = self.starting_circuit.data
-            self.circ_mps = cu.mps_from_circuit_and_starting_mps(
-                starting_circuit, self.cu_cached_mps,
-                self.cu_algorithm)
+            if self.starting_circuit is not None:
+                self.circ_mps = cu.mps_from_circuit_and_starting_mps(
+                    self.starting_circuit.data, self.cu_cached_mps,
+                    self.cu_algorithm)
+            else:
+                self.circ_mps = cu.mps_from_circuit(
+                    self.full_circuit.copy(), self.cu_algorithm)
         else:
             self.circ_mps = None
         for control, target in self.coupling_map:
@@ -813,10 +816,13 @@ class ISLRecompiler(ApproximateRecompiler):
         if self.is_aer_mps_backend:
             return expectation_value_of_qubits_mps(self.full_circuit, self.backend)
         if self.is_cuquantum_backend:
-            starting_circuit = self.starting_circuit.data
-            mps = cu.mps_from_circuit_and_starting_mps(
-                starting_circuit, self.cu_cached_mps,
-                self.cu_algorithm)
+            if self.starting_circuit is not None:
+                mps = cu.mps_from_circuit_and_starting_mps(
+                    self.starting_circuit.data, self.cu_cached_mps,
+                    self.cu_algorithm)
+            else:
+                mps = cu.mps_from_circuit(
+                    self.full_circuit.copy(), self.cu_algorithm)
             return [(mpsops.mps_expectation(mps, 'Z', i, already_preprocessed=True))
                       for i in range(len(mps))]
         elif self.local_cost_function:
