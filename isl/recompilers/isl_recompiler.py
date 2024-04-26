@@ -703,7 +703,7 @@ class ISLRecompiler(ApproximateRecompiler):
             circ = self.full_circuit.copy()
             self.circ_mps = mpsops.mps_from_circuit(circ, return_preprocessed=True, sim=self.backend)
         elif self.is_cuquantum_backend:
-            starting_circuit = self.starting_circuit
+            starting_circuit = self.starting_circuit.data
             self.circ_mps = cu.mps_from_circuit_and_starting_mps(
                 starting_circuit, self.cu_cached_mps,
                 self.cu_algorithm)
@@ -813,7 +813,7 @@ class ISLRecompiler(ApproximateRecompiler):
         if self.is_aer_mps_backend:
             return expectation_value_of_qubits_mps(self.full_circuit, self.backend)
         if self.is_cuquantum_backend:
-            starting_circuit = self.starting_circuit
+            starting_circuit = self.starting_circuit.data
             mps = cu.mps_from_circuit_and_starting_mps(
                 starting_circuit, self.cu_cached_mps,
                 self.cu_algorithm)
