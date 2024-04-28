@@ -660,7 +660,7 @@ class TestISLCuquantum(TestCase):
         recompiler._get_all_qubit_pair_entanglement_measures()
         mock_cuquantum_mps_from_circuit.assert_called_once()
 
-    def test_given_cuquantum_backend_when_recompile_with_no_starting_circuit_then_works(self):
+    def test_given_cuquantum_backend_when_recompile_then_works(self):
         qc = co.create_random_initial_state_circuit(3)
         qc = co.unroll_to_basis_gates(qc)
         recompiler = ISLRecompiler(qc, backend=CUQUANTUM_SIM)
@@ -676,3 +676,28 @@ class TestISLCuquantum(TestCase):
         recompiler = ISLRecompiler(qc, backend=CUQUANTUM_SIM, starting_circuit=initial_circuit)
         recompiler.cu_cached_mps = cu.mps_from_circuit(qc)
         recompiler.recompile()
+
+    def test_given_cuquantum_backend_when_recompile_with_save_previous_layer_mps_then_works(self):
+        qc = co.create_random_initial_state_circuit(3)
+        qc = co.unroll_to_basis_gates(qc)
+        config = ISLConfig(rotosolve_frequency=0)
+        recompiler = ISLRecompiler(qc, backend=CUQUANTUM_SIM, isl_config=config)
+        recompiler.cu_cached_mps = cu.mps_from_circuit(qc)
+        result = recompiler.recompile()
+        approx_circuit = result["circuit"]
+        overlap = co.calculate_overlap_between_circuits(approx_circuit, qc)
+        self.assertTrue(overlap > 1 - DEFAULT_SUFFICIENT_COST)
+
+    def test_given_cuquantum_backend_when_recompile_with_save_previous_layer_and_starting_circuit_mps_then_works(self):
+        qc = co.create_random_initial_state_circuit(3)
+        qc = co.unroll_to_basis_gates(qc)
+        initial_circuit = QuantumCircuit(3)
+        initial_circuit.x(0)
+        initial_circuit.x(1)
+        config = ISLConfig(rotosolve_frequency=0)
+        recompiler = ISLRecompiler(qc, backend=CUQUANTUM_SIM, isl_config=config, starting_circuit=initial_circuit)
+        recompiler.cu_cached_mps = cu.mps_from_circuit(qc)
+        result = recompiler.recompile()
+        approx_circuit = result["circuit"]
+        overlap = co.calculate_overlap_between_circuits(approx_circuit, qc)
+        self.assertTrue(overlap > 1 - DEFAULT_SUFFICIENT_COST)
