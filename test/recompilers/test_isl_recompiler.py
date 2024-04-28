@@ -666,3 +666,13 @@ class TestISLCuquantum(TestCase):
         recompiler = ISLRecompiler(qc, backend=CUQUANTUM_SIM)
         recompiler.cu_cached_mps = cu.mps_from_circuit(qc)
         recompiler.recompile()
+
+    def test_given_cuquantum_backend_when_recompile_with_starting_circuit_then_works(self):
+        qc = co.create_random_initial_state_circuit(3)
+        qc = co.unroll_to_basis_gates(qc)
+        initial_circuit = QuantumCircuit(3)
+        initial_circuit.x(0)
+        initial_circuit.x(1)
+        recompiler = ISLRecompiler(qc, backend=CUQUANTUM_SIM, starting_circuit=initial_circuit)
+        recompiler.cu_cached_mps = cu.mps_from_circuit(qc)
+        recompiler.recompile()
