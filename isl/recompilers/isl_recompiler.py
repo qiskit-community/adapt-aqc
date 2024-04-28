@@ -708,6 +708,7 @@ class ISLRecompiler(ApproximateRecompiler):
                 self.circ_mps = cu.mps_from_circuit_and_starting_mps(
                     self.starting_circuit, self.cu_cached_mps,
                     self.cu_algorithm)
+                self.circ_mps = cu.cu_mps_to_aer_mps(self.circ_mps)
             else:
                 self.circ_mps = cu.cu_mps_to_aer_mps(self.cu_cached_mps)
         else:
@@ -820,6 +821,7 @@ class ISLRecompiler(ApproximateRecompiler):
                 mps = cu.mps_from_circuit_and_starting_mps(
                     self.starting_circuit, self.cu_cached_mps,
                     self.cu_algorithm)
+                mps = cu.cu_mps_to_aer_mps(mps)
             else:
                 mps = cu.cu_mps_to_aer_mps(self.cu_cached_mps)
             return [(mpsops.mps_expectation(mps, 'Z', i, already_preprocessed=True))

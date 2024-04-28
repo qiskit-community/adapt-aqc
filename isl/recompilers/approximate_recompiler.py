@@ -454,11 +454,13 @@ class ApproximateRecompiler(ABC):
                 if self.starting_circuit is not None:
                     gates_to_contract = co.extract_inner_circuit(circ, self.layer_added_and_starting_circuit_range())
                     mps = cu.mps_from_circuit_and_starting_mps(gates_to_contract, self.cu_cached_mps, self.cu_algorithm)
+                    mps = cu.cu_mps_to_aer_mps(mps)
                 else:
                     mps = cu.cu_mps_to_aer_mps(self.cu_cached_mps)
             else:
                 ansatz_circ = co.extract_inner_circuit(circ, self.variational_circuit_range())
                 mps = cu.mps_from_circuit_and_starting_mps(ansatz_circ, self.cu_cached_mps, self.cu_algorithm)
+                mps = cu.cu_mps_to_aer_mps(mps)
             e_vals = [(mpsops.mps_expectation(mps, 'Z', i, already_preprocessed=True))
                         for i in range(len(mps))]
         else:
@@ -520,11 +522,13 @@ class ApproximateRecompiler(ABC):
                 if self.starting_circuit is not None:
                     gates_to_contract = co.extract_inner_circuit(circ, self.layer_added_and_starting_circuit_range())
                     circ_mps = cu.mps_from_circuit_and_starting_mps(gates_to_contract, self.cu_cached_mps, self.cu_algorithm)
+                    circ_mps = cu.cu_mps_to_aer_mps(circ_mps)
                 else:
                     circ_mps = cu.cu_mps_to_aer_mps(self.cu_cached_mps)
             else:
                 ansatz_circ = co.extract_inner_circuit(circ, self.variational_circuit_range())
                 circ_mps = cu.mps_from_circuit_and_starting_mps(ansatz_circ, self.cu_cached_mps, self.cu_algorithm)
+                circ_mps = cu.cu_mps_to_aer_mps(circ_mps)
         else:
             circ_mps = mpsops.mps_from_circuit(circ, return_preprocessed=True, sim=self.backend)
         if self.zero_mps is None:
