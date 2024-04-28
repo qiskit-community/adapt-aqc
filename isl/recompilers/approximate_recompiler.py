@@ -450,10 +450,12 @@ class ApproximateRecompiler(ABC):
     def _evaluate_local_cost_mps(self):
         circ = self.full_circuit.copy()
         if self.is_cuquantum_backend:
-            if self.isl_config is not None:
-                if self.isl_config.rotosolve_frequency == 0:
+            if self.isl_config is not None and self.isl_config.rotosolve_frequency == 0:
+                if self.starting_circuit is not None:
                     gates_to_contract = co.extract_inner_circuit(circ, self.layer_added_and_starting_circuit_range())
                     mps = cu.mps_from_circuit_and_starting_mps(gates_to_contract, self.cu_cached_mps, self.cu_algorithm)
+                else:
+                    mps = cu.cu_mps_to_aer_mps(self.cu_cached_mps)
             else:
                 ansatz_circ = co.extract_inner_circuit(circ, self.variational_circuit_range())
                 mps = cu.mps_from_circuit_and_starting_mps(ansatz_circ, self.cu_cached_mps, self.cu_algorithm)
@@ -512,16 +514,18 @@ class ApproximateRecompiler(ABC):
             return self._evaluate_global_cost_counts()
         
     def _evaluate_global_cost_mps(self):
+        circ = self.full_circuit.copy()
         if self.is_cuquantum_backend:
-            if self.isl_config is not None:
-                if self.isl_config.rotosolve_frequency == 0:
+            if self.isl_config is not None and self.isl_config.rotosolve_frequency == 0:
+                if self.starting_circuit is not None:
                     gates_to_contract = co.extract_inner_circuit(circ, self.layer_added_and_starting_circuit_range())
                     circ_mps = cu.mps_from_circuit_and_starting_mps(gates_to_contract, self.cu_cached_mps, self.cu_algorithm)
+                else:
+                    circ_mps = cu.cu_mps_to_aer_mps(self.cu_cached_mps)
             else:
                 ansatz_circ = co.extract_inner_circuit(circ, self.variational_circuit_range())
                 circ_mps = cu.mps_from_circuit_and_starting_mps(ansatz_circ, self.cu_cached_mps, self.cu_algorithm)
         else:
-            circ = self.full_circuit.copy()
             circ_mps = mpsops.mps_from_circuit(circ, return_preprocessed=True, sim=self.backend)
         if self.zero_mps is None:
             sim = self.backend if self.is_aer_mps_backend else None

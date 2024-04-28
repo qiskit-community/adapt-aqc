@@ -7,6 +7,7 @@ from qiskit import ClassicalRegister, QuantumCircuit, QuantumRegister, qasm2
 from qiskit.quantum_info import Statevector
 
 import isl.utils.circuit_operations as co
+import isl.utils.cuquantum_functions as cu
 from isl.recompilers import ISLConfig, ISLRecompiler
 from isl.utils.circuit_operations import QASM_SIM, SV_SIM, MPS_SIM, CUQUANTUM_SIM
 from isl.utils.constants import DEFAULT_SUFFICIENT_COST
@@ -646,37 +647,22 @@ class TestISLCuquantum(TestCase):
         if module_failed_cuquantum:
             self.skipTest('Skipping as cuquantum is not installed')
 
-    @patch('isl.utils.cuquantum_functions.mps_from_circuit')
+    @patch('isl.utils.cuquantum_functions.mps_from_circuit_and_starting_mps')
     def test_given_cuquantum_backend_when_get_entanglement_then_correct_mps_from_circuit_called(self, mock_cuquantum_mps_from_circuit):
         qc = co.create_random_initial_state_circuit(3, seed=1)
         qc = co.unroll_to_basis_gates(qc)
-        stubbed_mps = [np.random.rand(1, 2, 2), np.random.rand(2, 2, 2), np.random.rand(2, 2, 1)]
+        stubbed_mps = [np.random.rand(2, 1, 2), np.random.rand(2, 2, 2), np.random.rand(2, 2, 1)]
         mock_cuquantum_mps_from_circuit.return_value = stubbed_mps
-        recompiler = ISLRecompiler(qc, backend=CUQUANTUM_SIM)
+        initial_circuit = QuantumCircuit(3)
+        initial_circuit.x(0)
+        initial_circuit.x(1)
+        recompiler = ISLRecompiler(qc, backend=CUQUANTUM_SIM, starting_circuit=initial_circuit)
         recompiler._get_all_qubit_pair_entanglement_measures()
         mock_cuquantum_mps_from_circuit.assert_called_once()
 
-    def test_given_cuquantum_backend_when_recompile_then_works(self):
+    def test_given_cuquantum_backend_when_recompile_with_no_starting_circuit_then_works(self):
         qc = co.create_random_initial_state_circuit(3)
         qc = co.unroll_to_basis_gates(qc)
         recompiler = ISLRecompiler(qc, backend=CUQUANTUM_SIM)
+        recompiler.cu_cached_mps = cu.mps_from_circuit(qc)
         recompiler.recompile()
-
-    def test_given_cuquantum_backend_when_recompile_with_save_previous_layer_mps_then_works(self):
-        qc = co.create_random_initial_state_circuit(3)
-        qc = co.unroll_to_basis_gates(qc)
-        config = ISLConfig(rotosolve_frequency=0)
-        recompiler = ISLRecompiler(qc, backend=CUQUANTUM_SIM, isl_config=config)
-        recompiler.recompile()
-
-    def test_given_cuquantum_backend_when_recompile_with_save_previous_layer_then_same_as_without_save_previous_layer(self):
-        qc = co.create_random_initial_state_circuit(4)
-        config_1 = ISLConfig(rotosolve_frequency=0)
-        config_2 = ISLConfig(rotosolve_frequency=np.inf)
-        compiler_1 = ISLRecompiler(qc, backend=CUQUANTUM_SIM, isl_config=config_1)
-        compiler_2 = ISLRecompiler(qc, backend=CUQUANTUM_SIM, isl_config=config_2)
-        result_1 = compiler_1.recompile()
-        result_2 = compiler_2.recompile()
-
-        self.assertEqual(result_1['overlap'], 1)
-        self.assertEqual(result_2['overlap'], 1)

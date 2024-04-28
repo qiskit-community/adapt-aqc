@@ -12,6 +12,7 @@ import isl.utils.circuit_operations as co
 import isl.utils.constants as vconstants
 from isl.recompilers.approximate_recompiler import ApproximateRecompiler
 from isl.utils import circuit_operations as co
+from isl.utils import cuquantum_functions as cu
 from isl.utils.constants import CMAP_FULL, generate_coupling_map
 from isl.utils.entanglement_measures import (
     EM_TOMOGRAPHY_CONCURRENCE,
@@ -705,11 +706,10 @@ class ISLRecompiler(ApproximateRecompiler):
         elif self.is_cuquantum_backend:
             if self.starting_circuit is not None:
                 self.circ_mps = cu.mps_from_circuit_and_starting_mps(
-                    self.starting_circuit.data, self.cu_cached_mps,
+                    self.starting_circuit, self.cu_cached_mps,
                     self.cu_algorithm)
             else:
-                self.circ_mps = cu.mps_from_circuit(
-                    self.full_circuit.copy(), self.cu_algorithm)
+                self.circ_mps = cu.cu_mps_to_aer_mps(self.cu_cached_mps)
         else:
             self.circ_mps = None
         for control, target in self.coupling_map:
@@ -818,11 +818,10 @@ class ISLRecompiler(ApproximateRecompiler):
         if self.is_cuquantum_backend:
             if self.starting_circuit is not None:
                 mps = cu.mps_from_circuit_and_starting_mps(
-                    self.starting_circuit.data, self.cu_cached_mps,
+                    self.starting_circuit, self.cu_cached_mps,
                     self.cu_algorithm)
             else:
-                mps = cu.mps_from_circuit(
-                    self.full_circuit.copy(), self.cu_algorithm)
+                mps = cu.cu_mps_to_aer_mps(self.cu_cached_mps)
             return [(mpsops.mps_expectation(mps, 'Z', i, already_preprocessed=True))
                       for i in range(len(mps))]
         elif self.local_cost_function:
