@@ -714,3 +714,15 @@ class TestISLCuquantum(TestCase):
             mps_2 = recompiler2._get_full_circ_mps_using_cu()
             self.assertAlmostEqual(abs(mps_dot(mps_1, mps_2, already_preprocessed=True))**2, 1, 1)
 
+    def test_given_cuquantum_when_caching_previous_layers_then_faster(self):
+        qc = co.create_random_initial_state_circuit(3, seed=1)
+        config1 = ISLConfig(rotosolve_frequency=1e5)
+        config2 = ISLConfig(rotosolve_frequency=0)
+
+        recompiler1 = ISLRecompiler(qc, backend=CUQUANTUM_SIM, isl_config=config1)
+        recompiler2 = ISLRecompiler(qc, backend=CUQUANTUM_SIM, isl_config=config2)
+
+        result1 = recompiler1.recompile()
+        result2 = recompiler2.recompile()
+
+        self.assertLess(result2['time_taken'], result1['time_taken'])
