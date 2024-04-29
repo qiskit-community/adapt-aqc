@@ -664,7 +664,7 @@ class TestISLCuquantum(TestCase):
         qc = co.unroll_to_basis_gates(qc)
         recompiler = ISLRecompiler(qc, backend=CUQUANTUM_SIM)
         recompiler.cu_cached_mps = cu.mps_from_circuit(qc)
-        recompiler.recompile()
+        result = recompiler.recompile()
         overlap = co.calculate_overlap_between_circuits(qc, result['circuit'])
         self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
 
