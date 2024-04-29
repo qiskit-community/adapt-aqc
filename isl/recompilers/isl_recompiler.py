@@ -317,6 +317,7 @@ class ISLRecompiler(ApproximateRecompiler):
         g_range = self.variational_circuit_range
 
         # If an initial ansatz has been provided, add that and run minimization
+        initial_ansatz_already_successful = False
         if initial_ansatz is not None:
             co.add_to_circuit(
                 self.full_circuit,
@@ -337,14 +338,13 @@ class ISLRecompiler(ApproximateRecompiler):
                     alg_kwargs={"seek_global_minimum": True},
                 )
             if cost < self.isl_config.sufficient_cost:
-                self.already_successful = True
+                initial_ansatz_already_successful = True
                 logger.debug(
                     "ISL successfully found approximate circuit using provided ansatz only"
                 )
 
         for layer_count in range(self.isl_config.max_layers):
-            # Make sure recompilation already hasn't been completed using initial ansatz
-            if self.already_successful:
+            if initial_ansatz_already_successful:
                 break
 
             logger.info(f"Cost before adding layer: {cost}")
@@ -385,10 +385,12 @@ class ISLRecompiler(ApproximateRecompiler):
                 cost_history[-1 * cinl:], cit
             ):
                 logger.warning("ISL stopped improving")
+                self.compiling_finished = True
                 break
 
             if cost < self.isl_config.sufficient_cost:
                 logger.info("ISL successfully found approximate circuit")
+                self.compiling_finished = True
                 break
             elif num_2q_gates >= self.isl_config.max_2q_gates:
                 logger.warning("ISL MAX_2Q_GATES reached. Using ROTOSOLVE one last time")
@@ -398,6 +400,7 @@ class ISLRecompiler(ApproximateRecompiler):
                     tol=1e-5,
                     stop_val=self.isl_config.sufficient_cost,
                 )
+                self.compiling_finished = True
                 break
 
         # Perform a final optimisation

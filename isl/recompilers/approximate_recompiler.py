@@ -86,6 +86,7 @@ class ApproximateRecompiler(ABC):
             try:
                 import cupy
                 import cuquantum
+                self.cu_target_mps = None
                 self.cu_cached_mps = None
             except ModuleNotFoundError as e:
                 logger.error(e)
@@ -119,7 +120,7 @@ class ApproximateRecompiler(ABC):
         # Count number of cost evaluations
         self.cost_evaluation_counter = 0
 
-        self.already_successful = False
+        self.compiling_finished = False
 
     def prepare_circuit(self):
         """
@@ -159,8 +160,9 @@ class ApproximateRecompiler(ABC):
                 logger.info("Pre-computing target circuit as MPS")
                 # Here we cache the target MPS but don't return a circuit since we can't smuggle a
                 # CuQuantum MPS inside a Qiskit QuantumCircuit
-                self.cu_cached_mps = (
+                self.cu_target_mps = (
                     cu.mps_from_circuit(prepared_circuit, algorithm=self.cu_algorithm))
+                self.cu_cached_mps = self.cu_target_mps.copy()
             return prepared_circuit
 
     def parse_default_execute_kwargs(self, execute_kwargs):
@@ -537,23 +539,14 @@ class ApproximateRecompiler(ABC):
 
     def _get_full_circ_mps_using_cu(self):
         # TODO We use ISL specific logic, so this and where it's called should be in ISLRecompiler
-        if self.isl_config.rotosolve_frequency == 0:
-            # If completed, we just need to add on the starting circuit (if using)
-            if self.already_successful:
-                if self.starting_circuit:
-                    gates_to_contract =  co.extract_inner_circuit(self.full_circuit,self._starting_circuit_range())
-                    cu.mps_from_circuit_and_starting_mps(gates_to_contract, self.cu_cached_mps,
-                                                         self.cu_algorithm)
-                else:
-                    return cu.cu_mps_to_aer_mps(self.cu_cached_mps)
-
-            # Otherwise we need to contract the most recent layer and starting circuit (if using)
+        if self.isl_config.rotosolve_frequency == 0 and not self.compiling_finished:
+            # Contract the most recent layer and starting circuit (if using)
             gates_to_contract = co.extract_inner_circuit(self.full_circuit, self.layer_added_and_starting_circuit_range())
             circ_mps = cu.mps_from_circuit_and_starting_mps(gates_to_contract, self.cu_cached_mps,
                                                             self.cu_algorithm)
         else:
             ansatz_circ = co.extract_inner_circuit(self.full_circuit, self.rhs_range())
-            circ_mps = cu.mps_from_circuit_and_starting_mps(ansatz_circ, self.cu_cached_mps,
+            circ_mps = cu.mps_from_circuit_and_starting_mps(ansatz_circ, self.cu_target_mps,
                                                             self.cu_algorithm)
         return cu.cu_mps_to_aer_mps(circ_mps)
 

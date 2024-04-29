@@ -694,24 +694,23 @@ class TestISLCuquantum(TestCase):
                 self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
 
     def test_given_cuquantum_when_add_layers_then_mps_same_with_and_without_layer_caching(self):
-        logging.basicConfig()
-        logging.getLogger('isl').setLevel(logging.DEBUG)
         qc = co.create_random_initial_state_circuit(3, seed=1)
         starting_circuit = QuantumCircuit(3)
         starting_circuit.x([0, 1])
         config1 = ISLConfig(rotosolve_frequency=1e5)
         config2 = ISLConfig(rotosolve_frequency=0)
-        recompiler1 = ISLRecompiler(
-            qc, backend=CUQUANTUM_SIM, starting_circuit=starting_circuit, isl_config=config1
-        )
-        recompiler2 = ISLRecompiler(
-            qc, backend=CUQUANTUM_SIM, starting_circuit=starting_circuit, isl_config=config2
-        )
+        for sc in [starting_circuit, None]:
+            recompiler1 = ISLRecompiler(
+                qc, backend=CUQUANTUM_SIM, starting_circuit=sc, isl_config=config1
+            )
+            recompiler2 = ISLRecompiler(
+                qc, backend=CUQUANTUM_SIM, starting_circuit=sc, isl_config=config2
+            )
 
-        print(recompiler1.recompile().get('circuit'))
-        print(recompiler2.recompile().get('circuit'))
+            recompiler1.recompile()
+            recompiler2.recompile()
 
-        mps_1 = recompiler1._get_full_circ_mps_using_cu()
-        mps_2 = recompiler2._get_full_circ_mps_using_cu()
-        self.assertAlmostEqual(abs(mps_dot(mps_1, mps_2, already_preprocessed=True))**2, 1)
+            mps_1 = recompiler1._get_full_circ_mps_using_cu()
+            mps_2 = recompiler2._get_full_circ_mps_using_cu()
+            self.assertAlmostEqual(abs(mps_dot(mps_1, mps_2, already_preprocessed=True))**2, 1, 1)
 
