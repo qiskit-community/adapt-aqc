@@ -727,8 +727,6 @@ class ISLRecompiler(ApproximateRecompiler):
         else:
             self.circ_mps = None
         for control, target in self.coupling_map:
-            if not self.is_statevector_backend:
-                logger.debug(f"Computing entanglement for pair {(control, target)}")
             this_entanglement_measure = calculate_entanglement_measure(
                 self.entanglement_measure_method,
                 self.full_circuit,
