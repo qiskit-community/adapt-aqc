@@ -679,6 +679,18 @@ class TestISLCuquantum(TestCase):
         overlap = co.calculate_overlap_between_circuits(qc, result['circuit'])
         self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
 
+    def test_given_cuquantum_backend_when_recompile_with_save_previous_layer_mps_then_works(self):
+        logging.basicConfig()
+        logging.getLogger('isl').setLevel(logging.DEBUG)
+        qc = co.create_random_initial_state_circuit(3, seed=1)
+        qc = co.unroll_to_basis_gates(qc)
+        config = ISLConfig(rotosolve_frequency=0)
+        recompiler = ISLRecompiler(qc, backend=CUQUANTUM_SIM, isl_config=config)
+        recompiler.cu_cached_mps = cu.mps_from_circuit(qc)
+        result = recompiler.recompile()
+        overlap = co.calculate_overlap_between_circuits(qc, result['circuit'])
+        self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
+
     def test_given_cuquantum_backend_when_recompile_with_starting_circuit_and_save_previous_layer_mps_then_works(self):
         qc = co.create_random_initial_state_circuit(3, seed=1)
         qc = co.unroll_to_basis_gates(qc)
