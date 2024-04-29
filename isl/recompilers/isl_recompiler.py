@@ -316,7 +316,6 @@ class ISLRecompiler(ApproximateRecompiler):
         circuit_history = []
         g_range = self.variational_circuit_range
 
-        already_successful = False
         # If an initial ansatz has been provided, add that and run minimization
         if initial_ansatz is not None:
             co.add_to_circuit(
@@ -338,14 +337,14 @@ class ISLRecompiler(ApproximateRecompiler):
                     alg_kwargs={"seek_global_minimum": True},
                 )
             if cost < self.isl_config.sufficient_cost:
-                already_successful = True
+                self.already_successful = True
                 logger.debug(
                     "ISL successfully found approximate circuit using provided ansatz only"
                 )
 
         for layer_count in range(self.isl_config.max_layers):
             # Make sure recompilation already hasn't been completed using initial ansatz
-            if already_successful:
+            if self.already_successful:
                 break
 
             logger.info(f"Cost before adding layer: {cost}")

@@ -119,6 +119,8 @@ class ApproximateRecompiler(ABC):
         # Count number of cost evaluations
         self.cost_evaluation_counter = 0
 
+        self.already_successful = False
+
     def prepare_circuit(self):
         """
         Constructs a circuit from the target which will then be recompiled. This is composed of four
@@ -215,10 +217,23 @@ class ApproximateRecompiler(ABC):
         if circuit == None:
             circuit = self.full_circuit
         return self.lhs_gate_count, len(circuit.data) - self.rhs_gate_count
+
+    def rhs_range(self):
+        return self.lhs_gate_count, len(self.full_circuit.data)
     
     def layer_added_and_starting_circuit_range(self):
-        end = len(self.full_circuit.data) - self.rhs_gate_count
-        start = end - len(self.starting_circuit) - len(self.layer_2q_gate)
+        ansatz = co.extract_inner_circuit(self.full_circuit, self.variational_circuit_range())
+        if ansatz.depth() == 1 and len(ansatz) == ansatz.width():
+            gates_in_last_layer = ansatz.width()
+        else:
+            gates_in_last_layer = len(self.layer_2q_gate)
+        end = len(self.full_circuit)
+        start = end - gates_in_last_layer - self.rhs_gate_count
+        return start, end
+
+    def _starting_circuit_range(self):
+        end = len(self.full_circuit.data)
+        start = end - self.rhs_gate_count
         return start, end
 
     @abstractmethod
@@ -446,24 +461,14 @@ class ApproximateRecompiler(ABC):
             return self._evaluate_local_cost_sv()
         else:
             return self._evaluate_local_cost_counts()
-        
+
     def _evaluate_local_cost_mps(self):
-        circ = self.full_circuit.copy()
         if self.is_cuquantum_backend:
-            if self.isl_config is not None and self.isl_config.rotosolve_frequency == 0:
-                if self.starting_circuit is not None:
-                    gates_to_contract = co.extract_inner_circuit(circ, self.layer_added_and_starting_circuit_range())
-                    mps = cu.mps_from_circuit_and_starting_mps(gates_to_contract, self.cu_cached_mps, self.cu_algorithm)
-                    mps = cu.cu_mps_to_aer_mps(mps)
-                else:
-                    mps = cu.cu_mps_to_aer_mps(self.cu_cached_mps)
-            else:
-                ansatz_circ = co.extract_inner_circuit(circ, self.variational_circuit_range())
-                mps = cu.mps_from_circuit_and_starting_mps(ansatz_circ, self.cu_cached_mps, self.cu_algorithm)
-                mps = cu.cu_mps_to_aer_mps(mps)
+            mps = self._get_full_circ_mps_using_cu()
             e_vals = [(mpsops.mps_expectation(mps, 'Z', i, already_preprocessed=True))
-                        for i in range(len(mps))]
+                      for i in range(len(mps))]
         else:
+            circ = self.full_circuit.copy()
             e_vals = expectation_value_of_qubits_mps(circ, self.backend)
 
         cost = 0.5 * (1 - np.mean(e_vals))
@@ -514,22 +519,12 @@ class ApproximateRecompiler(ABC):
             return self._evaluate_global_cost_sv()
         else:
             return self._evaluate_global_cost_counts()
-        
+
     def _evaluate_global_cost_mps(self):
-        circ = self.full_circuit.copy()
         if self.is_cuquantum_backend:
-            if self.isl_config is not None and self.isl_config.rotosolve_frequency == 0:
-                if self.starting_circuit is not None:
-                    gates_to_contract = co.extract_inner_circuit(circ, self.layer_added_and_starting_circuit_range())
-                    circ_mps = cu.mps_from_circuit_and_starting_mps(gates_to_contract, self.cu_cached_mps, self.cu_algorithm)
-                    circ_mps = cu.cu_mps_to_aer_mps(circ_mps)
-                else:
-                    circ_mps = cu.cu_mps_to_aer_mps(self.cu_cached_mps)
-            else:
-                ansatz_circ = co.extract_inner_circuit(circ, self.variational_circuit_range())
-                circ_mps = cu.mps_from_circuit_and_starting_mps(ansatz_circ, self.cu_cached_mps, self.cu_algorithm)
-                circ_mps = cu.cu_mps_to_aer_mps(circ_mps)
+            circ_mps = self._get_full_circ_mps_using_cu()
         else:
+            circ = self.full_circuit.copy()
             circ_mps = mpsops.mps_from_circuit(circ, return_preprocessed=True, sim=self.backend)
         if self.zero_mps is None:
             sim = self.backend if self.is_aer_mps_backend else None
@@ -539,6 +534,28 @@ class ApproximateRecompiler(ABC):
         cost = 1 - np.absolute(
             mpsops.mps_dot(circ_mps, self.zero_mps, already_preprocessed=True))**2
         return cost
+
+    def _get_full_circ_mps_using_cu(self):
+        # TODO We use ISL specific logic, so this and where it's called should be in ISLRecompiler
+        if self.isl_config.rotosolve_frequency == 0:
+            # If completed, we just need to add on the starting circuit (if using)
+            if self.already_successful:
+                if self.starting_circuit:
+                    gates_to_contract =  co.extract_inner_circuit(self.full_circuit,self._starting_circuit_range())
+                    cu.mps_from_circuit_and_starting_mps(gates_to_contract, self.cu_cached_mps,
+                                                         self.cu_algorithm)
+                else:
+                    return cu.cu_mps_to_aer_mps(self.cu_cached_mps)
+
+            # Otherwise we need to contract the most recent layer and starting circuit (if using)
+            gates_to_contract = co.extract_inner_circuit(self.full_circuit, self.layer_added_and_starting_circuit_range())
+            circ_mps = cu.mps_from_circuit_and_starting_mps(gates_to_contract, self.cu_cached_mps,
+                                                            self.cu_algorithm)
+        else:
+            ansatz_circ = co.extract_inner_circuit(self.full_circuit, self.rhs_range())
+            circ_mps = cu.mps_from_circuit_and_starting_mps(ansatz_circ, self.cu_cached_mps,
+                                                            self.cu_algorithm)
+        return cu.cu_mps_to_aer_mps(circ_mps)
 
     def _evaluate_global_cost_sv(self):
         sv1 = self._run_full_circuit(return_statevector=True)
