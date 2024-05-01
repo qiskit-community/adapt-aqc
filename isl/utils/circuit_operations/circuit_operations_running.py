@@ -36,6 +36,7 @@ def mps_sim_with_args(mps_truncation_threshold=1e-16, max_chi=None, mps_log_data
     :param mps_log_data: same as corresponding argument in AerSimulator
     :return: instance of AerSimulator using MPS method and parameters specified above
     """
+    logger.info(f"Using Aer MPS Simulator with truncation {mps_truncation_threshold}")
     return AerSimulator(method="matrix_product_state", 
                         matrix_product_state_truncation_threshold=mps_truncation_threshold,
                         matrix_product_state_max_bond_dimension=max_chi,

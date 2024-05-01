@@ -555,37 +555,61 @@ class TestISL(TestCase):
             with self.assertRaises(ModuleNotFoundError):
                 ISLRecompiler(qc, backend=CUQUANTUM_SIM)
 
-    def test_given_random_circuit_when_recompile_with_save_previous_layer_mps_then_works(self):
+    def test_given_random_rotosolve_frequency_and_max_layers_to_modify_values_when_recompile_mps_then_works(self):
+        n = 4
+        starting_circuit = QuantumCircuit(n)
+        starting_circuit.x(range(0, n, 2))
+        for isql in [True, False]:
+            for sc in [starting_circuit, None]:
+                qc = co.create_random_initial_state_circuit(n)
+                rotosolve_frequency = np.random.randint(1, 101)
+                max_layers_to_modify = np.random.randint(1, 101)
+                config = ISLConfig(rotosolve_frequency=rotosolve_frequency, max_layers_to_modify=max_layers_to_modify)
+                recompiler = ISLRecompiler(
+                    qc,
+                    backend=MPS_SIM,
+                    isl_config=config,
+                    starting_circuit=sc,
+                    initial_single_qubit_layer=isql,
+                )
+                result = recompiler.recompile()
+                overlap = co.calculate_overlap_between_circuits(qc, result["circuit"])
+
+                self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
+
+    def test_given_mps_backend_when_add_layer_then_num_gates_not_in_mps_is_as_expected(self):
         qc = co.create_random_initial_state_circuit(4)
-        config = ISLConfig(rotosolve_frequency=0)
-        compiler = ISLRecompiler(qc, backend=co.MPS_SIM, isl_config=config)
-        result = compiler.recompile()
-        overlap = co.calculate_overlap_between_circuits(qc, result['circuit'])
+        config = ISLConfig(rotosolve_frequency=4, max_layers_to_modify=3)
+        recompiler = ISLRecompiler(qc, backend=MPS_SIM, isl_config=config)
+        # Rotosolve happens on layers 4, 8, 12...
+        # Add layer 0: absorb layer -> 0 gates left in ansatz
+        # Add layer 1: absorb layer -> 0 gates
+        # Add layer 2: don't absorb layer -> 5 gates
+        # Add layer 3: don't absorb layer -> 10 gates
+        # Add layer 4: absorb layers 2, 3, 4 -> 0 gates
+        # Etc.
+        expected_num_gates = [0, 0, 5, 10, 0, 0, 5, 10, 0, 0, 5, 10, 0]
+        actual_num_gates = []
+        for i in range(13):
+            recompiler._add_layer(i)
+            actual_num_gates.append(len(recompiler.full_circuit.data) - 1)
+        
+        np.testing.assert_equal(actual_num_gates, expected_num_gates)
 
-        self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
-
-    def test_given_random_circuit_when_recompile_with_starting_circuit_and_save_previous_layer_mps_then_works(self):
+    def test_given_max_layers_larger_than_freq_when_add_layer_then_num_gates_not_in_mps_as_expected(
+        self,
+    ):
         qc = co.create_random_initial_state_circuit(4)
-        starting_circuit = QuantumCircuit(4)
-        starting_circuit.x([0, 2])
-        config = ISLConfig(rotosolve_frequency=0)
-        compiler = ISLRecompiler(qc, backend=co.MPS_SIM, isl_config=config, starting_circuit=starting_circuit)
-        result = compiler.recompile()
-        overlap = co.calculate_overlap_between_circuits(qc, result['circuit'])
-
-        self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
-
-    def test_given_circuit_when_recompile_with_mps_backend_then_saving_previous_layer_mps_faster_than_not_saving(self):
-        qc = co.create_random_initial_state_circuit(4)
-        # Previous layer MPS should only be saved when rotosolve_frequency=0
-        config_1 = ISLConfig(rotosolve_frequency=1e5)
-        config_2 = ISLConfig(rotosolve_frequency=0)
-        compiler_1 = ISLRecompiler(qc, backend=co.MPS_SIM, isl_config=config_1)
-        compiler_2 = ISLRecompiler(qc, backend=co.MPS_SIM, isl_config=config_2)
-        result_1 = compiler_1.recompile()
-        result_2 = compiler_2.recompile()
-
-        self.assertLess(result_2['time_taken'], result_1['time_taken'])
+        config = ISLConfig(rotosolve_frequency=4, max_layers_to_modify=5)
+        recompiler = ISLRecompiler(qc, backend=MPS_SIM, isl_config=config)
+        # layer counter       0  1   2   3   4  5   6   7   8   9  10  11  12
+        expected_num_gates = [5, 10, 15, 20, 5, 10, 15, 20, 5, 10, 15, 20, 5]
+        actual_num_gates = []
+        for i in range(13):
+            recompiler._add_layer(i)
+            actual_num_gates.append(len(recompiler.full_circuit.data) - 1)
+    
+        np.testing.assert_equal(actual_num_gates, expected_num_gates)
 
 
 try:

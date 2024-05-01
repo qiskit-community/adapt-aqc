@@ -4,12 +4,11 @@ import logging
 import timeit
 
 import aqc_research.mps_operations as mpsops
-import isl.utils.cuquantum_functions as cu
 import numpy as np
 from qiskit import QuantumCircuit, qasm2
 
-import isl.utils.circuit_operations as co
 import isl.utils.constants as vconstants
+import isl.utils.cuquantum_functions as cu
 from isl.recompilers.approximate_recompiler import ApproximateRecompiler
 from isl.utils import circuit_operations as co
 from isl.utils import cuquantum_functions as cu
@@ -39,54 +38,54 @@ class ISLConfig:
         max_layers_to_modify=100,
         method="ISL",
         bad_qubit_pair_memory=10,
+        entanglement_reuse_exponent=0,
+        heuristic_reuse_exponent=1,
+        reuse_priority_mode="pair",
         rotosolve_frequency=1,
         rotoselect_tol=1e-5,
         rotosolve_tol=1e-3,
         entanglement_threshold=1e-8,
-        entanglement_reuse_exponent=0,
-        heuristic_reuse_exponent=1,
-        reuse_priority_mode="pair"
     ):
         """
-        Termination criteria:
-        :param max_layers: Maximum number of layers where each layer has a
-        thinly dressed cnot gate
-        :param sufficient_cost: ISL will terminate if the cost (1-overlap)
-        reaches below this value
-        :param max_2q_gates: ISL will terminate if the number of 2 qubit
-        gates reaches this value
-        :param cost_improvement_num_layers: The number of layer costs to
-        consider when evaluating cost improvement
-        :param cost_improvement_tol: The minimum relative cost improvement
-        to continue adding layers
+        ISL termination criteria.
+        :param max_layers: ISL will terminate if the number of ansatz layers reaches this value.
+        :param sufficient_cost: ISL will terminate if the cost reaches below this value.
+        :param max_2q_gates: ISL will terminate if the number of 2 qubit gates reaches this value.
+        :param cost_improvement_num_layers: The number of layer costs to consider when evaluating
+        if the cost is decreasing fast enough.
+        :param cost_improvement_tol: ISL will terminate if in the last cost_improvement_num_layers,
+        the cost has not decreased by this value on average per layer.
 
         Add layer criteria:
-        :param max_layers_to_modify: Only the last max_layers_to_modify
-        layers will be modified when Rotosolve is called
-        :param method: Method to choose qubit pair for 2-qubit gates.
-            One of 'ISL', 'random', 'heuristic','basic'
+        :param max_layers_to_modify: The number of layers to modify, counting from the back of
+        the ansatz, when Rotosolve is used.
+        :param method: Method by which a qubit pair is prioritised for the next layer. One of:
+         'ISL' - Largest pairwise entanglement as defined by ISLRecompiler.entanglement_measure
+         'heuristic' - Smallest combined σz expectation values (i.e., closest to min value of -2)
+         'basic' - Pair not picked in the longest time
+         'random' - Pair selected randomly
+        :param bad_qubit_pair_memory: For the ISL method, if acting on a qubit pair leads to
+        entanglement increasing, it is labelled a "bad pair". After this, for a number of layers
+        corresponding to the bad_qubit_pair_memory, this pair will not be selected.
+        :param entanglement_reuse_exponent: For the ISL method, this
+        controls how much priority should be given to picking qubits not recently acted on. If 0,
+        the priority system is turned off and all qubits have the same reuse priority when adding
+        a new layer. Note ISL never reuses the same pair of qubits regardless of this setting.
+        :param heuristic_reuse_exponent: Same as above but for the heuristic method.
+        :param reuse_priority_mode: For the priority system, given qubit pair (q1, q2) has been used
+        before, should priority be given to:
+        (a) not reusing the same pair of qubits (q1, q2) (set param to "pair")
+        (b) not reusing the qubits q1 OR q2 (set param to "qubit")
 
         Other parameters:
-        :param bad_qubit_pair_memory: If acting on a qubit pair leads to entanglement increasing,
-        it is labelled a "bad pair". This argument controls how many bad pairs should be remembered.
-        :param rotosolve_frequency: How often rotosolve is used (if n, rotosolve will be used after
-        every n layers). NOTE When using Aer MPS simulator setting this to 0 leads to large performance improvement.
+        :param rotosolve_frequency: How often Rotosolve is used (if n, rotosolve will be used after
+        every n layers).
         :param rotoselect_tol: How much does the cost need to decrease by each iteration to continue
          Rotoselect.
         :param rotosolve_tol: How much does the cost need to decrease by each iteration to continue
          Rotosolve.
-        :param entanglement_threshold: Entanglement below this value is treated as zero.
-
-        :param entanglement_reuse_exponent: When :param method == "ISL",
-        controls how much priority should be given to picking qubits not recently acted on. If 0,
-        the priority system is turned off and all qubits have the same priority when adding a new
-        layer. Note ISL never reuses the same pair of qubits regardless of this setting.
-
-        :param heuristic_reuse_exponent: See above, but for when :param method == "heuristic".
-        :param reuse_priority_mode: For the priority system, given qubit pair (a, b) has been used
-        before, should priority be given to:
-        (a) not reusing the same pair of qubits (a, b) (set param to "pair")
-        (b) not reusing the qubits a OR b (set param to "qubit")
+        :param entanglement_threshold: For the ISL method, entanglement below this value is treated
+         as zero in terms of picking the next layer.
         """
         self.bad_qubit_pair_memory = bad_qubit_pair_memory
         self.max_layers = max_layers
@@ -141,30 +140,32 @@ class ISLRecompiler(ApproximateRecompiler):
         """
         :param target: Circuit or MPS that is to be recompiled
         :param entanglement_measure: The entanglement measurement method to
-        use for quantifying local entanglement
-        :param backend: Backend to run circuits on
+        use for quantifying local entanglement. Valid options are defined in
+        entanglement_measures.py.
+        :param backend: Backend to run circuits on. Valid options are defined in
+        circuit_operations_running.py.
+        :param execute_kwargs: keyword arguments passed onto AerBackend.run
         :param coupling_map: 2-qubit gate coupling map to use
         :param isl_config: ISLConfig object
         :param general_initial_state: Recompile circuit for an arbitrary
-        initial state
-        :param custom_layer_2q_gate: Entangling gate to use (default is
-        thinly dressed CNOT)
-        :param save_circuit_history: Option to regularly save circuit output as a QASM string to 
+        initial state.
+        :param custom_layer_2q_gate: A two-qubit QuantumCircuit which will be used as the ansatz
+        layers.
+        :param save_circuit_history: Option to regularly save circuit output as a QASM string to
         results object each time a block is added and optimised
         :param starting_circuit: This circuit will be used as a set of initial fixed gates for the
         recompiled solution. This means that during ISL, the inverse of this circuit will be added
         to the end of V†. WARNING: Using an entangled circuit will lead to worse ISL performance
         because it disrupts the measurement of local entanglement between qubits.
-        :param use_roto_algos: Whether to use rotoselect and rotosolve
-        for cost minimisation.
-            Disable if custom_layer_2q_gate does not support rotosolve
+        :param use_roto_algos: Whether to use rotoselect and rotosolve for cost minimisation.
+        Disable if custom_layer_2q_gate does not support rotosolve
         :param perform_final_minimisation: Perform a final cost minimisation
         once ISL has ended
-        :param local_cost_function: Use LLET cost function as defined in
-        (arXiv:1908.04416)
-        :param execute_kwargs: keyword arguments passed into circuit runs (
-        excluding backend)
-            e.g. {'noise_model:NoiseModel, 'shots':10000}
+        :param local_cost_function: Use LLET cost function as defined in (arXiv:1908.04416)
+        :param debug_log_full_ansatz: When True, debug logging will print the entire ansatz at
+        every step, as opposed to just the most recently optimised layer.
+        :param initial_single_qubit_layer: When True, the first layer of the ISL ansatz will be
+        a trainable single-qubit rotation on each qubit.
         :param cu_algorithm: If using the cuquantum backend, this specifies the contract and
         decompose algorithm to use for gate application. Can be either a `dict` or a
         `ContractDecomposeAlgorithm`. If None set, the default used is
@@ -220,13 +221,13 @@ class ISLRecompiler(ApproximateRecompiler):
 
         self.initial_single_qubit_layer = initial_single_qubit_layer
 
-        if self.is_aer_mps_backend and self.isl_config.rotosolve_frequency == 0:
-            self.save_previous_layer_mps_aer = True
+        if self.is_aer_mps_backend:
             # As variational gates will be absorbed into one large MPS instruction, we need to
             # separately keep track of ansatz gates to return a compiled solution.
-            self.ref_circuit_as_gates = self.full_circuit.copy()
-        else:
-            self.save_previous_layer_mps_aer = False
+            self.layers_saved_to_mps = self.full_circuit.copy()
+            del self.layers_saved_to_mps.data[1:]
+            # Keep track of which layers have not been absorbed into the MPS
+            self.layers_as_gates = []
 
         if self.is_cuquantum_backend and self.isl_config.rotosolve_frequency == 0:
             self.save_previous_layer_mps_cuquantum = True
@@ -343,6 +344,7 @@ class ISLRecompiler(ApproximateRecompiler):
                     "ISL successfully found approximate circuit using provided ansatz only"
                 )
 
+
         for layer_count in range(self.isl_config.max_layers):
             if initial_ansatz_already_successful:
                 break
@@ -351,22 +353,15 @@ class ISLRecompiler(ApproximateRecompiler):
             cost = self._add_layer(layer_count)
             cost_history.append(cost)
 
-            if self.save_previous_layer_mps_aer:
-                self._add_last_layer_to_ref_circuit(layer_count)
-                self._debug_log_optimised_layer(layer_count)
-                self._absorb_layer_into_mps_aer()
-                # Don't call remove_unnecessary_gates_from_circuit because no gates to remove
-                num_2q_gates, num_1q_gates = co.find_num_gates(
-                    self.ref_circuit_as_gates, gate_range=g_range(self.ref_circuit_as_gates)
-                )
-            else:
-                self._debug_log_optimised_layer(layer_count)
-                if self.remove_unnecessary_gates:
-                    co.remove_unnecessary_gates_from_circuit(self.full_circuit, False, False, gate_range=g_range())
-                num_2q_gates, num_1q_gates = co.find_num_gates(
-                    self.full_circuit, gate_range=g_range()
-                )
-            
+            # Caching layers as MPS requires that the number of gates remain constant
+            if self.remove_unnecessary_gates and not self.is_aer_mps_backend:
+                co.remove_unnecessary_gates_from_circuit(self.full_circuit, False, False, gate_range=g_range())
+
+            num_2q_gates, num_1q_gates = co.find_num_gates(
+                circuit = self.ref_circuit_as_gates if self.is_aer_mps_backend else self.full_circuit,
+                gate_range=g_range(self.ref_circuit_as_gates if self.is_aer_mps_backend else None)
+            )
+
             if self.save_previous_layer_mps_cuquantum:
                 self._absorb_layer_into_mps_cuquantum(layer_count)
 
@@ -410,7 +405,7 @@ class ISLRecompiler(ApproximateRecompiler):
                 alg_kwargs={"seek_global_minimum": False},
             )
 
-        if self.save_previous_layer_mps_aer:
+        if self.is_aer_mps_backend:
             # Replace full_circuit with ref_circuit_as_gates, otherwise no way to remove unnecessary gates
             self.full_circuit = self.ref_circuit_as_gates
 
@@ -459,7 +454,7 @@ class ISLRecompiler(ApproximateRecompiler):
             logger.debug(f'Qubit pair history: \n{self.qubit_pair_history}')
 
             if self.debug_log_full_ansatz:
-                if self.save_previous_layer_mps_aer:
+                if self.is_aer_mps_backend:
                     ansatz = self.ref_circuit_as_gates.copy()
                 else:
                     ansatz = self.full_circuit.copy()
@@ -485,18 +480,6 @@ class ISLRecompiler(ApproximateRecompiler):
                         logging.error(
                             "Final ansatz layer logging not implemented for custom ansatz or functionalities "
                             "placing more gates after trainable ansatz")
-
-    def _add_last_layer_to_ref_circuit(self, layer_count):
-        # Find the layer which has just been added, and add to ref_circuit_as_gates
-        layer_added = self._get_layer_added(layer_count)
-        if self.starting_circuit is not None:
-            # Add the layer between the previous layer and starting_circuit
-            co.add_to_circuit(self.ref_circuit_as_gates, layer_added,
-                              location=len(self.ref_circuit_as_gates.data) - len(
-                                  self.starting_circuit))
-        else:
-            # Add the layer to the end of the ansatz
-            co.add_to_circuit(self.ref_circuit_as_gates, layer_added)
 
     def _add_layer(self, index):
         """
@@ -539,7 +522,51 @@ class ISLRecompiler(ApproximateRecompiler):
                 algorithm_kind=vconstants.ALG_PYBOBYQA,
                 alg_kwargs={"seek_global_minimum": True},
             )
+
+        if self.is_aer_mps_backend:
+            self.layers_as_gates.append(index)
+
+            num_layers_to_absorb = self._calculate_num_layers_to_absorb(index)
+
+            # Absorb appropriate layers into MPS, and add their gates to layers_saved_to_mps
+            if num_layers_to_absorb > 0:
+                includes_isql = self.layers_as_gates[0] == 0 and self.initial_single_qubit_layer
+
+                # Absorb layers into MPS, then add those layers to layers_saved_to_mps
+                layers_absorbed = self._absorb_n_layers_into_mps(num_layers_to_absorb, includes_isql)
+                co.add_to_circuit(self.layers_saved_to_mps, layers_absorbed)
+
+                # Update layers_as_gates
+                del self.layers_as_gates[:num_layers_to_absorb]
+
+            self._update_reference_circuit()
+
+        self._debug_log_optimised_layer(index)
+
         return cost
+
+    def _calculate_num_layers_to_absorb(self, index):
+
+        layers_since_solve = index % self.isl_config.rotosolve_frequency
+        layers_to_next_solve = self.isl_config.rotosolve_frequency - layers_since_solve
+        next_rotosolve_layer = index + layers_to_next_solve
+
+        # Compute the index of the leftmost layer to be modified in the next Rotosolve
+        lowest_index = next_rotosolve_layer - self.isl_config.max_layers_to_modify + 1
+
+        # All layers with indices below lowest_index can be absorbed
+        num_layers_to_absorb = len([i for i in self.layers_as_gates if i < lowest_index])
+
+        return num_layers_to_absorb
+
+    def _update_reference_circuit(self):
+        # These are the layers now in circuit form, which are needed to update the reference circuit
+        layers_not_saved_to_mps = self.full_circuit.copy()
+        del layers_not_saved_to_mps.data[0]
+
+        # Update ref_circuit_as_gates = layers_saved_to_mps + layers_not_saved_to_mps
+        self.ref_circuit_as_gates = self.layers_saved_to_mps.copy()
+        co.add_to_circuit(self.ref_circuit_as_gates, layers_not_saved_to_mps)
 
     def _calculate_rotosolve_indices(self, ansatz_start_index):
         num_entangling_layers = (
@@ -673,7 +700,7 @@ class ISLRecompiler(ApproximateRecompiler):
 
     def _find_best_heuristic_qubit_pair(self):
         """
-        Choose the qubit pair to be the one with the largest expectation value priority multiplied by the reuse 
+        Choose the qubit pair to be the one with the largest expectation value priority multiplied by the reuse
         priority of that pair.
         @return: The pair of qubits with the highest multiplied e_val priority and reuse priority.
         """
@@ -685,7 +712,7 @@ class ISLRecompiler(ApproximateRecompiler):
         e_val_sums = self._get_all_qubit_pair_e_val_sums(e_vals)
         logger.debug(f"Summed σ_z expectation values of pairs {e_val_sums}")
 
-        # Mapping from the σz expectation values {1, -1} to the range {0, 1} to make an expectation value based
+        # Mapping from the σz expectation values {1, -1} to the range {0, 2} to make an expectation value based
         # priority. This ensures that the argmax of the list favours qubits close to the |1> state (eigenvalue -1)
         # to apply the next layer to.
         e_val_priorities = [2 - e_val for e_val in e_val_sums]
@@ -716,8 +743,6 @@ class ISLRecompiler(ApproximateRecompiler):
         else:
             self.circ_mps = None
         for control, target in self.coupling_map:
-            if not self.is_statevector_backend:
-                logger.debug(f"Computing entanglement for pair {(control, target)}")
             this_entanglement_measure = calculate_entanglement_measure(
                 self.entanglement_measure_method,
                 self.full_circuit,
@@ -845,35 +870,6 @@ class ISLRecompiler(ApproximateRecompiler):
         self.qubit_pair_history.append((None, None))
         self.pair_selection_method_history.append(None)
 
-    def _absorb_layer_into_mps_aer(self):
-        """
-        Takes the circuit:
-        -|0>--|mps(V†(n-1)U|0>)|--|layer_n_gates|--|starting_circuit_inverse|-
-        and returns:
-        -|0>--|mps(V†(n)U|0>)|--|starting_circuit_inverse|-
-
-        Where mps(V†(k)U|0>) is the set_matrix_product_state instruction representing the state after k layers
-        have been added, and layer_n_gates are the optimised gates added in the nth layer.
-        """
-        # Get full_circuit without starting_circuit on the end
-        full_without_starting_circuit = self.full_circuit.copy()
-        if self.starting_circuit is not None:
-            del full_without_starting_circuit.data[-len(self.starting_circuit):]
-
-        # Get MPS of full_circuit without starting_circuit
-        full_circuit_mps = mpsops.mps_from_circuit(full_without_starting_circuit, sim=self.backend)
-
-        # Create circuit with MPS instruction found above, with same registers as full_circuit
-        mps_circuit = QuantumCircuit(self.full_circuit.qregs[0])
-        mps_circuit.set_matrix_product_state(full_circuit_mps)
-
-        # Replace non-starting_circuit part of full_circuit with its MPS instruction
-        if self.starting_circuit is not None:
-            del self.full_circuit.data[:-len(self.starting_circuit)]
-        else:
-            del self.full_circuit.data[:]
-        self.full_circuit.data.insert(0, mps_circuit.data[0])
-
     def _absorb_layer_into_mps_cuquantum(self, index):
         """
         Takes the circuit:
@@ -881,7 +877,7 @@ class ISLRecompiler(ApproximateRecompiler):
         and returns:
         -|0>--|mps(V†(n)U|0>)|--|starting_circuit_inverse|-
 
-        Overwrites self.cu_cached_mps with MPS calculated using 
+        Overwrites self.cu_cached_mps with MPS calculated using
         cuquantum with new optimised layer.
 
         """
@@ -892,11 +888,11 @@ class ISLRecompiler(ApproximateRecompiler):
         self.cu_cached_mps = full_circuit_mps
 
     def _get_layer_added(self, layer_count):
-        layer_added = self.full_circuit.copy()
+        layer_added = self.ref_circuit_as_gates.copy() if self.is_aer_mps_backend else self.full_circuit.copy()
         len_layer_added = len(self.layer_2q_gate)
         # Remove starting_circuit from end of ansatz, if there is one
         if self.starting_circuit is not None:
-            del layer_added.data[-len(self.starting_circuit.data):]  
+            del layer_added.data[-len(self.starting_circuit.data):]
         if self.initial_single_qubit_layer == True and layer_count == 0:
             del layer_added.data[:-layer_added.num_qubits]
             return layer_added
@@ -904,3 +900,48 @@ class ISLRecompiler(ApproximateRecompiler):
             # Delete all gates apart from the 5 from the added layer
             del layer_added.data[:-len_layer_added]
             return layer_added
+
+    def _absorb_n_layers_into_mps(self, n, includes_isql):
+        """
+        Takes full_circuit, which consists of a set_matrix_product_state instruction, followed by some number of ISL
+        layers and absorbs the first n of these layers (immediately after set_matrix_product_state) into the
+        set_matrix_product_state instruction. Also returns a copy of the layers absorbed as a QuantumCircuit.
+
+        In other words it converts full_circuit from this:
+        -|0>--|mps(V†(k)U|0>)|--|N ISL layers as gates|--|starting_circuit_inverse|-
+        To this:
+        -|0>--|mps(V†(k+n)U|0>)|--|N-n ISL layers as gates|--|starting_circuit_inverse|-
+
+        Where mps(V†(k)U|0>) is the set_matrix_product_state instruction representing the state after k layers
+        have been added.
+
+        :param n: Number of layers to absorb.
+        :param includes_isql: True if one of the layers to absorb is the initial single qubit layer, False otherwise.
+        :return: QuantumCircuit containing a copy of the layers which were absorbed.
+        """
+
+        # Get full_circuit up to and including layers to be absorbed
+        circ_to_absorb = self.full_circuit.copy()
+        num_gates_to_absorb = len(self.layer_2q_gate) * (n - int(includes_isql)) + circ_to_absorb.num_qubits * int(includes_isql) + 1
+        del circ_to_absorb.data[num_gates_to_absorb:]
+
+        # Keep a copy of what was absorbed to add to the reference circuit
+        layers_absorbed = circ_to_absorb.copy()
+        del layers_absorbed.data[0]
+
+        # Get MPS of circ_to_absorb
+        circ_to_absorb_mps = mpsops.mps_from_circuit(circ_to_absorb, sim=self.backend)
+
+        # Create circuit with MPS instruction found above, with same registers as full_circuit
+        mps_circuit = QuantumCircuit(self.full_circuit.qregs[0])
+        mps_circuit.set_matrix_product_state(circ_to_absorb_mps)
+
+        # Replace absorbed part of full_circuit with its MPS instruction
+        num_gates_not_absorbed = len(self.full_circuit.data) - num_gates_to_absorb
+        if num_gates_not_absorbed != 0:
+            del self.full_circuit.data[:-num_gates_not_absorbed]
+        else:
+            del self.full_circuit.data[:]
+        self.full_circuit.data.insert(0, mps_circuit.data[0])
+
+        return layers_absorbed
