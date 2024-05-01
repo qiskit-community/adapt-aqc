@@ -37,54 +37,54 @@ class ISLConfig:
         max_layers_to_modify=100,
         method="ISL",
         bad_qubit_pair_memory=10,
+        entanglement_reuse_exponent=0,
+        heuristic_reuse_exponent=1,
+        reuse_priority_mode="pair",
         rotosolve_frequency=1,
         rotoselect_tol=1e-5,
         rotosolve_tol=1e-3,
         entanglement_threshold=1e-8,
-        entanglement_reuse_exponent=0,
-        heuristic_reuse_exponent=1,
-        reuse_priority_mode="pair"
     ):
         """
-        Termination criteria:
-        :param max_layers: Maximum number of layers where each layer has a
-        thinly dressed cnot gate
-        :param sufficient_cost: ISL will terminate if the cost (1-overlap)
-        reaches below this value
-        :param max_2q_gates: ISL will terminate if the number of 2 qubit
-        gates reaches this value
-        :param cost_improvement_num_layers: The number of layer costs to
-        consider when evaluating cost improvement
-        :param cost_improvement_tol: The minimum relative cost improvement
-        to continue adding layers
+        ISL termination criteria.
+        :param max_layers: ISL will terminate if the number of ansatz layers reaches this value.
+        :param sufficient_cost: ISL will terminate if the cost reaches below this value.
+        :param max_2q_gates: ISL will terminate if the number of 2 qubit gates reaches this value.
+        :param cost_improvement_num_layers: The number of layer costs to consider when evaluating
+        if the cost is decreasing fast enough.
+        :param cost_improvement_tol: ISL will terminate if in the last cost_improvement_num_layers,
+        the cost has not decreased by this value on average per layer.
 
         Add layer criteria:
-        :param max_layers_to_modify: Only the last max_layers_to_modify
-        layers will be modified when Rotosolve is called
-        :param method: Method to choose qubit pair for 2-qubit gates.
-            One of 'ISL', 'random', 'heuristic','basic'
+        :param max_layers_to_modify: The number of layers to modify, counting from the back of
+        the ansatz, when Rotosolve is used.
+        :param method: Method by which a qubit pair is prioritised for the next layer. One of:
+         'ISL' - Largest pairwise entanglement as defined by ISLRecompiler.entanglement_measure
+         'heuristic' - Smallest combined σz expectation values (i.e., closest to min value of -2)
+         'basic' - Pair not picked in the longest time
+         'random' - Pair selected randomly
+        :param bad_qubit_pair_memory: For the ISL method, if acting on a qubit pair leads to
+        entanglement increasing, it is labelled a "bad pair". After this, for a number of layers
+        corresponding to the bad_qubit_pair_memory, this pair will not be selected.
+        :param entanglement_reuse_exponent: For the ISL method, this
+        controls how much priority should be given to picking qubits not recently acted on. If 0,
+        the priority system is turned off and all qubits have the same reuse priority when adding
+        a new layer. Note ISL never reuses the same pair of qubits regardless of this setting.
+        :param heuristic_reuse_exponent: Same as above but for the heuristic method.
+        :param reuse_priority_mode: For the priority system, given qubit pair (q1, q2) has been used
+        before, should priority be given to:
+        (a) not reusing the same pair of qubits (q1, q2) (set param to "pair")
+        (b) not reusing the qubits q1 OR q2 (set param to "qubit")
 
         Other parameters:
-        :param bad_qubit_pair_memory: If acting on a qubit pair leads to entanglement increasing,
-        it is labelled a "bad pair". This argument controls how many bad pairs should be remembered.
-        :param rotosolve_frequency: How often rotosolve is used (if n, rotosolve will be used after
+        :param rotosolve_frequency: How often Rotosolve is used (if n, rotosolve will be used after
         every n layers).
         :param rotoselect_tol: How much does the cost need to decrease by each iteration to continue
          Rotoselect.
         :param rotosolve_tol: How much does the cost need to decrease by each iteration to continue
          Rotosolve.
-        :param entanglement_threshold: Entanglement below this value is treated as zero.
-
-        :param entanglement_reuse_exponent: When :param method == "ISL",
-        controls how much priority should be given to picking qubits not recently acted on. If 0,
-        the priority system is turned off and all qubits have the same priority when adding a new
-        layer. Note ISL never reuses the same pair of qubits regardless of this setting.
-
-        :param heuristic_reuse_exponent: See above, but for when :param method == "heuristic".
-        :param reuse_priority_mode: For the priority system, given qubit pair (a, b) has been used
-        before, should priority be given to:
-        (a) not reusing the same pair of qubits (a, b) (set param to "pair")
-        (b) not reusing the qubits a OR b (set param to "qubit")
+        :param entanglement_threshold: For the ISL method, entanglement below this value is treated
+         as zero in terms of picking the next layer.
         """
         self.bad_qubit_pair_memory = bad_qubit_pair_memory
         self.max_layers = max_layers
@@ -139,30 +139,32 @@ class ISLRecompiler(ApproximateRecompiler):
         """
         :param target: Circuit or MPS that is to be recompiled
         :param entanglement_measure: The entanglement measurement method to
-        use for quantifying local entanglement
-        :param backend: Backend to run circuits on
+        use for quantifying local entanglement. Valid options are defined in
+        entanglement_measures.py.
+        :param backend: Backend to run circuits on. Valid options are defined in
+        circuit_operations_running.py.
+        :param execute_kwargs: keyword arguments passed onto AerBackend.run
         :param coupling_map: 2-qubit gate coupling map to use
         :param isl_config: ISLConfig object
         :param general_initial_state: Recompile circuit for an arbitrary
-        initial state
-        :param custom_layer_2q_gate: Entangling gate to use (default is
-        thinly dressed CNOT)
+        initial state.
+        :param custom_layer_2q_gate: A two-qubit QuantumCircuit which will be used as the ansatz
+        layers.
         :param save_circuit_history: Option to regularly save circuit output as a QASM string to
         results object each time a block is added and optimised
         :param starting_circuit: This circuit will be used as a set of initial fixed gates for the
         recompiled solution. This means that during ISL, the inverse of this circuit will be added
         to the end of V†. WARNING: Using an entangled circuit will lead to worse ISL performance
         because it disrupts the measurement of local entanglement between qubits.
-        :param use_roto_algos: Whether to use rotoselect and rotosolve
-        for cost minimisation.
-            Disable if custom_layer_2q_gate does not support rotosolve
+        :param use_roto_algos: Whether to use rotoselect and rotosolve for cost minimisation.
+        Disable if custom_layer_2q_gate does not support rotosolve
         :param perform_final_minimisation: Perform a final cost minimisation
         once ISL has ended
-        :param local_cost_function: Use LLET cost function as defined in
-        (arXiv:1908.04416)
-        :param execute_kwargs: keyword arguments passed into circuit runs (
-        excluding backend)
-            e.g. {'noise_model:NoiseModel, 'shots':10000}
+        :param local_cost_function: Use LLET cost function as defined in (arXiv:1908.04416)
+        :param debug_log_full_ansatz: When True, debug logging will print the entire ansatz at
+        every step, as opposed to just the most recently optimised layer.
+        :param initial_single_qubit_layer: When True, the first layer of the ISL ansatz will be
+        a trainable single-qubit rotation on each qubit.
         :param cu_algorithm: If using the cuquantum backend, this specifies the contract and
         decompose algorithm to use for gate application. Can be either a `dict` or a
         `ContractDecomposeAlgorithm`. If None set, the default used is
@@ -545,7 +547,7 @@ class ISLRecompiler(ApproximateRecompiler):
         num_layers_to_absorb = len([i for i in self.layers_as_gates if i < lowest_index])
 
         return num_layers_to_absorb
-    
+
     def _update_reference_circuit(self):
         # These are the layers now in circuit form, which are needed to update the reference circuit
         layers_not_saved_to_mps = self.full_circuit.copy()
@@ -699,7 +701,7 @@ class ISLRecompiler(ApproximateRecompiler):
         e_val_sums = self._get_all_qubit_pair_e_val_sums(e_vals)
         logger.debug(f"Summed σ_z expectation values of pairs {e_val_sums}")
 
-        # Mapping from the σz expectation values {1, -1} to the range {0, 1} to make an expectation value based
+        # Mapping from the σz expectation values {1, -1} to the range {0, 2} to make an expectation value based
         # priority. This ensures that the argmax of the list favours qubits close to the |1> state (eigenvalue -1)
         # to apply the next layer to.
         e_val_priorities = [2 - e_val for e_val in e_val_sums]

@@ -55,8 +55,7 @@ class ApproximateRecompiler(ABC):
         """
         :param target: Circuit or MPS that is to be recompiled
         :param backend: Backend that is to be used
-        :param execute_kwargs: keyword arguments passed into circuit runs (
-        excluding backend)
+        :param execute_kwargs: keyword arguments passed down to Qiskit AerBackend.run
         e.g. {'noise_model:NoiseModel, shots=10000}
 
         :param initial_state: Can be used to define an initial state to compile with respect to
