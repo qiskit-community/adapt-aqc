@@ -674,7 +674,7 @@ class TestISLCuquantum(TestCase):
 
     @patch('isl.utils.cuquantum_functions.mps_from_circuit_and_starting_mps')
     def test_given_cuquantum_backend_when_get_entanglement_then_correct_mps_from_circuit_called(self, mock_cuquantum_mps_from_circuit):
-        qc = co.create_random_initial_state_circuit(3, seed=1)
+        qc = co.create_random_initial_state_circuit(3)
         qc = co.unroll_to_basis_gates(qc)
         stubbed_mps = [np.random.rand(1, 2, 2), np.random.rand(2, 2, 2), np.random.rand(2, 2, 1)]
         mock_cuquantum_mps_from_circuit.return_value = stubbed_mps
@@ -685,7 +685,7 @@ class TestISLCuquantum(TestCase):
         mock_cuquantum_mps_from_circuit.assert_called_once()
 
     def test_given_cuquantum_backend_when_recompile_then_works(self):
-        qc = co.create_random_initial_state_circuit(3, seed=1)
+        qc = co.create_random_initial_state_circuit(3)
         config = ISLConfig(rotosolve_tol=1e-1)
         recompiler = ISLRecompiler(qc, backend=CUQUANTUM_SIM, isl_config=config)
         result = recompiler.recompile()
@@ -693,7 +693,7 @@ class TestISLCuquantum(TestCase):
         self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
 
     def test_given_cuquantum_backend_when_recompile_with_starting_circuit_then_works(self):
-        qc = co.create_random_initial_state_circuit(3, seed=1)
+        qc = co.create_random_initial_state_circuit(3)
         starting_circuit = QuantumCircuit(3)
         starting_circuit.x([0, 1])
         config = ISLConfig(rotosolve_tol=1e-1)
@@ -705,7 +705,7 @@ class TestISLCuquantum(TestCase):
         self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
 
     def test_given_cuquantum_backend_when_recompile_and_save_previous_layer_mps_then_works(self):
-        qc = co.create_random_initial_state_circuit(3, seed=1)
+        qc = co.create_random_initial_state_circuit(3)
         starting_circuit = QuantumCircuit(3)
         starting_circuit.x([0, 1])
         config = ISLConfig(rotosolve_frequency=0)
@@ -719,7 +719,7 @@ class TestISLCuquantum(TestCase):
                 self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
 
     def test_given_cuquantum_when_add_layers_then_mps_same_with_and_without_layer_caching(self):
-        qc = co.create_random_initial_state_circuit(3, seed=1)
+        qc = co.create_random_initial_state_circuit(3)
         starting_circuit = QuantumCircuit(3)
         starting_circuit.x([0, 1])
         config1 = ISLConfig(rotosolve_frequency=1e5)
@@ -740,7 +740,7 @@ class TestISLCuquantum(TestCase):
             self.assertAlmostEqual(abs(mps_dot(mps_1, mps_2, already_preprocessed=True))**2, 1, 1)
 
     def test_given_cuquantum_when_caching_previous_layers_then_faster(self):
-        qc = co.create_random_initial_state_circuit(3, seed=1)
+        qc = co.create_random_initial_state_circuit(3)
         config1 = ISLConfig(rotosolve_frequency=1e5)
         config2 = ISLConfig(rotosolve_frequency=0)
 
