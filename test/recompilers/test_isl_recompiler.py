@@ -232,6 +232,7 @@ class TestISL(TestCase):
         recompiler = ISLRecompiler(qc, starting_circuit=starting_ansatz_circuit)
 
         recompiler.recompile()
+        logging.getLogger('isl').setLevel(logging.WARNING)
 
     def test_given_starting_circuit_when_recompile_then_solution_starts_with_it(self):
 
