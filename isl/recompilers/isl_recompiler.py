@@ -354,7 +354,7 @@ class ISLRecompiler(ApproximateRecompiler):
             cost_history.append(cost)
 
             # Caching layers as MPS requires that the number of gates remain constant
-            if self.remove_unnecessary_gates and not self.is_aer_mps_backend:
+            if self.remove_unnecessary_gates and not (self.is_aer_mps_backend or self.save_previous_layer_mps_cuquantum):
                 co.remove_unnecessary_gates_from_circuit(self.full_circuit, False, False, gate_range=g_range())
 
             num_2q_gates, num_1q_gates = co.find_num_gates(
