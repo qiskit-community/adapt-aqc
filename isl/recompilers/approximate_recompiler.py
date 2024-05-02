@@ -85,7 +85,8 @@ class ApproximateRecompiler(ABC):
             try:
                 import cupy
                 import cuquantum
-                self.cu_cached_target_tensor = None
+                self.cu_target_mps = None
+                self.cu_cached_mps = None
             except ModuleNotFoundError as e:
                 logger.error(e)
                 raise ModuleNotFoundError("cuquantum not installed. Try a different backend.")
@@ -117,6 +118,8 @@ class ApproximateRecompiler(ABC):
 
         # Count number of cost evaluations
         self.cost_evaluation_counter = 0
+
+        self.compiling_finished = False
 
     def prepare_circuit(self):
         """
@@ -156,8 +159,9 @@ class ApproximateRecompiler(ABC):
                 logger.info("Pre-computing target circuit as MPS")
                 # Here we cache the target MPS but don't return a circuit since we can't smuggle a
                 # CuQuantum MPS inside a Qiskit QuantumCircuit
-                self.cu_cached_target_tensor = (
+                self.cu_target_mps = (
                     cu.mps_from_circuit(prepared_circuit, algorithm=self.cu_algorithm))
+                self.cu_cached_mps = self.cu_target_mps.copy()
             return prepared_circuit
 
     def parse_default_execute_kwargs(self, execute_kwargs):
@@ -214,6 +218,24 @@ class ApproximateRecompiler(ABC):
         if circuit == None:
             circuit = self.full_circuit
         return self.lhs_gate_count, len(circuit.data) - self.rhs_gate_count
+
+    def rhs_range(self):
+        return self.lhs_gate_count, len(self.full_circuit.data)
+    
+    def layer_added_and_starting_circuit_range(self):
+        ansatz = co.extract_inner_circuit(self.full_circuit, self.variational_circuit_range())
+        if ansatz.depth() == 1 and len(ansatz) == ansatz.width():
+            gates_in_last_layer = ansatz.width()
+        else:
+            gates_in_last_layer = len(self.layer_2q_gate)
+        end = len(self.full_circuit)
+        start = end - gates_in_last_layer - self.rhs_gate_count
+        return start, end
+
+    def _starting_circuit_range(self):
+        end = len(self.full_circuit.data)
+        start = end - self.rhs_gate_count
+        return start, end
 
     @abstractmethod
     def recompile(self) -> dict:
@@ -440,15 +462,14 @@ class ApproximateRecompiler(ABC):
             return self._evaluate_local_cost_sv()
         else:
             return self._evaluate_local_cost_counts()
-        
+
     def _evaluate_local_cost_mps(self):
-        circ = self.full_circuit.copy()
         if self.is_cuquantum_backend:
-            ansatz_circ = co.extract_inner_circuit(circ, self.variational_circuit_range())
-            mps = cu.mps_from_circuit_and_starting_mps(ansatz_circ, self.cu_cached_target_tensor, self.cu_algorithm)
+            mps = self._get_full_circ_mps_using_cu()
             e_vals = [(mpsops.mps_expectation(mps, 'Z', i, already_preprocessed=True))
                       for i in range(len(mps))]
         else:
+            circ = self.full_circuit.copy()
             e_vals = expectation_value_of_qubits_mps(circ, self.backend)
 
         cost = 0.5 * (1 - np.mean(e_vals))
@@ -499,22 +520,34 @@ class ApproximateRecompiler(ABC):
             return self._evaluate_global_cost_sv()
         else:
             return self._evaluate_global_cost_counts()
-        
+
     def _evaluate_global_cost_mps(self):
         if self.is_cuquantum_backend:
-            ansatz_circ = co.extract_inner_circuit(self.full_circuit, self.variational_circuit_range())
-            circ_mps = cu.mps_from_circuit_and_starting_mps(
-                ansatz_circ, self.cu_cached_target_tensor, self.cu_algorithm)
+            circ_mps = self._get_full_circ_mps_using_cu()
         else:
             circ = self.full_circuit.copy()
             circ_mps = mpsops.mps_from_circuit(circ, return_preprocessed=True, sim=self.backend)
         if self.zero_mps is None:
-            logger.debug("Evaluating cost function directly from MPS without sampling")
-            self.zero_mps = mpsops.mps_from_circuit(QuantumCircuit(self.total_num_qubits), return_preprocessed=True, sim=self.backend)
+            sim = self.backend if self.is_aer_mps_backend else None
+            self.zero_mps = mpsops.mps_from_circuit(QuantumCircuit(self.total_num_qubits),
+                                                    return_preprocessed=True, sim=sim)
 
         cost = 1 - np.absolute(
             mpsops.mps_dot(circ_mps, self.zero_mps, already_preprocessed=True))**2
         return cost
+
+    def _get_full_circ_mps_using_cu(self):
+        # TODO We use ISL specific logic, so this and where it's called should be in ISLRecompiler
+        if self.isl_config.rotosolve_frequency == 0 and not self.compiling_finished:
+            # Contract the most recent layer and starting circuit (if using)
+            gates_to_contract = co.extract_inner_circuit(self.full_circuit, self.layer_added_and_starting_circuit_range())
+            circ_mps = cu.mps_from_circuit_and_starting_mps(gates_to_contract, self.cu_cached_mps,
+                                                            self.cu_algorithm)
+        else:
+            ansatz_circ = co.extract_inner_circuit(self.full_circuit, self.rhs_range())
+            circ_mps = cu.mps_from_circuit_and_starting_mps(ansatz_circ, self.cu_target_mps,
+                                                            self.cu_algorithm)
+        return cu.cu_mps_to_aer_mps(circ_mps)
 
     def _evaluate_global_cost_sv(self):
         sv1 = self._run_full_circuit(return_statevector=True)

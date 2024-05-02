@@ -46,7 +46,8 @@ class TestCuquantumFunctions(TestCase):
         state_tensor = cp.asarray([0, 1], dtype='complex128').reshape(1,2,1)
         mps_tensors = [state_tensor] * 4
         actual = cu.mps_from_circuit_and_starting_mps(qc, mps_tensors)
+        actual_aer_mps = cu.cu_mps_to_aer_mps(actual)
         expected = cu._get_initial_mps(4)
-        overlap = mpsops.mps_dot(actual, cu.cu_mps_to_aer_mps(expected), already_preprocessed=True)
+        overlap = mpsops.mps_dot(actual_aer_mps, cu.cu_mps_to_aer_mps(expected), already_preprocessed=True)
         self.assertAlmostEqual(overlap, 1)
         

@@ -11,6 +11,7 @@ import isl.utils.constants as vconstants
 import isl.utils.cuquantum_functions as cu
 from isl.recompilers.approximate_recompiler import ApproximateRecompiler
 from isl.utils import circuit_operations as co
+from isl.utils import cuquantum_functions as cu
 from isl.utils.constants import CMAP_FULL, generate_coupling_map
 from isl.utils.entanglement_measures import (
     EM_TOMOGRAPHY_CONCURRENCE,
@@ -228,6 +229,11 @@ class ISLRecompiler(ApproximateRecompiler):
             # Keep track of which layers have not been absorbed into the MPS
             self.layers_as_gates = []
 
+        if self.is_cuquantum_backend and self.isl_config.rotosolve_frequency == 0:
+            self.save_previous_layer_mps_cuquantum = True
+        else:
+            self.save_previous_layer_mps_cuquantum = False
+
     def construct_layer_2q_gate(self, custom_layer_2q_gate):
         if custom_layer_2q_gate is None:
             qc = QuantumCircuit(2)
@@ -311,8 +317,8 @@ class ISLRecompiler(ApproximateRecompiler):
         circuit_history = []
         g_range = self.variational_circuit_range
 
-        already_successful = False
         # If an initial ansatz has been provided, add that and run minimization
+        initial_ansatz_already_successful = False
         if initial_ansatz is not None:
             co.add_to_circuit(
                 self.full_circuit,
@@ -333,15 +339,14 @@ class ISLRecompiler(ApproximateRecompiler):
                     alg_kwargs={"seek_global_minimum": True},
                 )
             if cost < self.isl_config.sufficient_cost:
-                already_successful = True
+                initial_ansatz_already_successful = True
                 logger.debug(
                     "ISL successfully found approximate circuit using provided ansatz only"
                 )
 
 
         for layer_count in range(self.isl_config.max_layers):
-            # Make sure recompilation already hasn't been completed using initial ansatz
-            if already_successful:
+            if initial_ansatz_already_successful:
                 break
 
             logger.info(f"Cost before adding layer: {cost}")
@@ -349,13 +354,16 @@ class ISLRecompiler(ApproximateRecompiler):
             cost_history.append(cost)
 
             # Caching layers as MPS requires that the number of gates remain constant
-            if self.remove_unnecessary_gates and not self.is_aer_mps_backend:
+            if self.remove_unnecessary_gates and not (self.is_aer_mps_backend or self.save_previous_layer_mps_cuquantum):
                 co.remove_unnecessary_gates_from_circuit(self.full_circuit, False, False, gate_range=g_range())
 
             num_2q_gates, num_1q_gates = co.find_num_gates(
                 circuit = self.ref_circuit_as_gates if self.is_aer_mps_backend else self.full_circuit,
                 gate_range=g_range(self.ref_circuit_as_gates if self.is_aer_mps_backend else None)
             )
+
+            if self.save_previous_layer_mps_cuquantum:
+                self._absorb_layer_into_mps_cuquantum(layer_count)
 
             if self.save_circuit_history:
                 if not self.is_aer_mps_backend:
@@ -372,10 +380,12 @@ class ISLRecompiler(ApproximateRecompiler):
                 cost_history[-1 * cinl:], cit
             ):
                 logger.warning("ISL stopped improving")
+                self.compiling_finished = True
                 break
 
             if cost < self.isl_config.sufficient_cost:
                 logger.info("ISL successfully found approximate circuit")
+                self.compiling_finished = True
                 break
             elif num_2q_gates >= self.isl_config.max_2q_gates:
                 logger.warning("ISL MAX_2Q_GATES reached. Using ROTOSOLVE one last time")
@@ -385,6 +395,7 @@ class ISLRecompiler(ApproximateRecompiler):
                     tol=1e-5,
                     stop_val=self.isl_config.sufficient_cost,
                 )
+                self.compiling_finished = True
                 break
 
         # Perform a final optimisation
@@ -722,10 +733,13 @@ class ISLRecompiler(ApproximateRecompiler):
             circ = self.full_circuit.copy()
             self.circ_mps = mpsops.mps_from_circuit(circ, return_preprocessed=True, sim=self.backend)
         elif self.is_cuquantum_backend:
-            ansatz_circuit = co.extract_inner_circuit(self.full_circuit, self.variational_circuit_range())
-            self.circ_mps = cu.mps_from_circuit_and_starting_mps(
-                ansatz_circuit, self.cu_cached_target_tensor,
-                self.cu_algorithm)
+            if self.starting_circuit is not None:
+                self.circ_mps = cu.mps_from_circuit_and_starting_mps(
+                    self.starting_circuit, self.cu_cached_mps,
+                    self.cu_algorithm)
+                self.circ_mps = cu.cu_mps_to_aer_mps(self.circ_mps)
+            else:
+                self.circ_mps = cu.cu_mps_to_aer_mps(self.cu_cached_mps)
         else:
             self.circ_mps = None
         for control, target in self.coupling_map:
@@ -830,10 +844,13 @@ class ISLRecompiler(ApproximateRecompiler):
         if self.is_aer_mps_backend:
             return expectation_value_of_qubits_mps(self.full_circuit, self.backend)
         if self.is_cuquantum_backend:
-            ansatz_circuit = co.extract_inner_circuit(self.full_circuit, self.variational_circuit_range())
-            mps = cu.mps_from_circuit_and_starting_mps(
-                ansatz_circuit, self.cu_cached_target_tensor,
-                self.cu_algorithm)
+            if self.starting_circuit is not None:
+                mps = cu.mps_from_circuit_and_starting_mps(
+                    self.starting_circuit, self.cu_cached_mps,
+                    self.cu_algorithm)
+                mps = cu.cu_mps_to_aer_mps(mps)
+            else:
+                mps = cu.cu_mps_to_aer_mps(self.cu_cached_mps)
             return [(mpsops.mps_expectation(mps, 'Z', i, already_preprocessed=True))
                       for i in range(len(mps))]
         elif self.local_cost_function:
@@ -853,8 +870,26 @@ class ISLRecompiler(ApproximateRecompiler):
         self.qubit_pair_history.append((None, None))
         self.pair_selection_method_history.append(None)
 
+    def _absorb_layer_into_mps_cuquantum(self, index):
+        """
+        Takes the circuit:
+        -|0>--|mps(V†(n-1)U|0>)|--|layer_n_gates|--|starting_circuit_inverse|-
+        and returns:
+        -|0>--|mps(V†(n)U|0>)|--|starting_circuit_inverse|-
+
+        Overwrites self.cu_cached_mps with MPS calculated using
+        cuquantum with new optimised layer.
+
+        """
+        # Get MPS of full_circuit without starting_circuit
+        layer_added = self._get_layer_added(index)
+        full_circuit_mps = cu.mps_from_circuit_and_starting_mps(layer_added, self.cu_cached_mps, self.cu_algorithm)
+        # Replace self.cu_cached_mps with new layer added
+        self.cu_cached_mps = full_circuit_mps
+
     def _get_layer_added(self, layer_count):
         layer_added = self.ref_circuit_as_gates.copy() if self.is_aer_mps_backend else self.full_circuit.copy()
+        len_layer_added = len(self.layer_2q_gate)
         # Remove starting_circuit from end of ansatz, if there is one
         if self.starting_circuit is not None:
             del layer_added.data[-len(self.starting_circuit.data):]
@@ -863,7 +898,7 @@ class ISLRecompiler(ApproximateRecompiler):
             return layer_added
         else:
             # Delete all gates apart from the 5 from the added layer
-            del layer_added.data[:-5]
+            del layer_added.data[:-len_layer_added]
             return layer_added
 
     def _absorb_n_layers_into_mps(self, n, includes_isql):

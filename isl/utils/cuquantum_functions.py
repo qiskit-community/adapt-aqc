@@ -106,7 +106,7 @@ def mps_from_circuit_and_starting_mps(circuit, starting_mps, algorithm=DEFAULT_C
     # Copy the starting mps in case it's not intended to be modified in place
     mps_tensors = copy(starting_mps)
     contract_mps_tensors_with_circuit(circuit, mps_tensors, algorithm)
-    return cu_mps_to_aer_mps(mps_tensors)
+    return mps_tensors
 
 
 def mps_from_circuit(circuit, algorithm=DEFAULT_CU_ALGORITHM):
