@@ -47,12 +47,10 @@ def add_gate(
 ):
     if gate_index is None:
         gate_index = len(circuit.data)
-    qubits = (
-        [circuit.qubits[i] for i in qubit_indexes] if qubit_indexes is not None else []
-    )
-    clbits = (
-        [circuit.clbits[i] for i in clbit_indexes] if clbit_indexes is not None else []
-    )
+    qubits = ([circuit.qubits[i] for i in qubit_indexes]
+              if qubit_indexes is not None else [])
+    clbits = ([circuit.clbits[i] for i in clbit_indexes]
+              if clbit_indexes is not None else [])
     circuit.data.insert(gate_index, (gate, qubits, clbits))
 
 
@@ -79,7 +77,9 @@ def replace_1q_gate(circuit, gate_index, gate_name, angle):
     elif "@" in gate_name:
         raise ValueError("Cant replace dependent parameterised gate")
     else:
-        circuit.data[gate_index] = (create_1q_gate(gate_name, angle), qargs, cargs)
+        circuit.data[gate_index] = (
+            create_1q_gate(gate_name, angle),
+            qargs, cargs)
 
 
 def replace_2q_gate(circuit, gate_index, control, target, gate_name="cx"):
@@ -108,6 +108,19 @@ def is_supported_1q_gate(gate):
     if "#" in gate_name:
         gate_name = gate_name.split("#")[0]
     return gate_name in SUPPORTED_1Q_GATES
+
+
+def add_appropriate_gates(circuit, qubit, thinly_dressed, loc):
+    ry_gate = create_1q_gate("ry", 0)
+    rz_gate = create_1q_gate("rz", 0)
+    add_gate(circuit, rz_gate.copy(), loc, [qubit])
+    loc += 1
+    if not thinly_dressed:
+        add_gate(circuit, ry_gate.copy(), loc, [qubit])
+        loc += 1
+        add_gate(circuit, rz_gate.copy(), loc, [qubit])
+        loc += 1
+    return loc
 
 
 def add_dressed_cnot(
@@ -139,31 +152,22 @@ def add_dressed_cnot(
     if gate_index is None:
         gate_index = len(circuit.data)
 
-    rz_gate = create_1q_gate("rz", 0)
-    ry_gate = create_1q_gate("ry", 0)
     cx_gate = create_2q_gate("cx")
 
-    def add_appropriate_gates(qubit, loc):
-        add_gate(circuit, rz_gate.copy(), loc, [qubit])
-        loc += 1
-        if not thinly_dressed:
-            add_gate(circuit, ry_gate.copy(), loc, [qubit])
-            loc += 1
-            add_gate(circuit, rz_gate.copy(), loc, [qubit])
-            loc += 1
-        return loc
-
     if v1:
-        gate_index = add_appropriate_gates(control, gate_index)
+        gate_index = add_appropriate_gates(
+            circuit, control, thinly_dressed, gate_index)
     if v2:
-        gate_index = add_appropriate_gates(target, gate_index)
+        gate_index = add_appropriate_gates(
+            circuit, target, thinly_dressed, gate_index)
 
     add_gate(circuit, cx_gate.copy(), gate_index, [control, target])
     gate_index += 1
     if v3:
-        gate_index = add_appropriate_gates(control, gate_index)
+        gate_index = add_appropriate_gates(
+            circuit, control, thinly_dressed, gate_index)
     if v4:
-        add_appropriate_gates(target, gate_index)
+        add_appropriate_gates(circuit, target, thinly_dressed, gate_index)
 
 
 def random_1q_gate():
@@ -178,8 +182,10 @@ def random_1q_gate():
 
 SUPPORTED_1Q_GATES = ["rx", "ry", "rz"]
 SUPPORTED_2Q_GATES = ["cx", "cz"]
-BASIS_GATES = ["u3", "cx", "cz", "rx", "ry", "rz", "x", "y", "z", "XY", "ZZ", "h"]
-DEFAULT_GATES = ["rz", "rx", "ry", "u1", "u2", "u3", "cx", "id", "measure", "reset"]
+BASIS_GATES = ["u3", "cx", "cz", "rx", "ry",
+               "rz", "x", "y", "z", "XY", "ZZ", "h"]
+DEFAULT_GATES = ["rz", "rx", "ry", "u1", "u2",
+                 "u3", "cx", "id", "measure", "reset"]
 
 
 def create_independent_parameterised_gate(gate_type, variable_name, angle=0):

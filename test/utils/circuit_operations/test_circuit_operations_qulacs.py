@@ -16,7 +16,7 @@ except ImportError:
 class TestQulacs(TestCase):
     def setUp(self):
         if module_failed:
-            self.skipTest('Skipping as qulacs is not installed')
+            self.skipTest("Skipping as qulacs is not installed")
 
     def test_simple_circuit_u1_u2_u3_cx_gives_same_result_as_qiskit(self):
         qc = QuantumCircuit(2)
@@ -35,7 +35,7 @@ class TestQulacs(TestCase):
         sv_qiskit = co.run_circuit_without_transpilation(
             qc, co.SV_SIM, return_statevector=True
         )
-        assert np.allclose(sv_qiskit, sv_qulacs, 1e-10)
+        self.assertTrue(np.allclose(sv_qiskit, sv_qulacs, 1e-10))
 
     def test_simple_circuit_rx_ry_cx_h_gives_same_result_as_qiskit(self):
         qc = QuantumCircuit(2)
@@ -60,7 +60,7 @@ class TestQulacs(TestCase):
         sv_qiskit = co.run_circuit_without_transpilation(
             qc, co.SV_SIM, return_statevector=True
         )
-        assert np.allclose(sv_qiskit, sv_qulacs, 1e-10)
+        self.assertTrue(np.allclose(sv_qiskit, sv_qulacs, 1e-10))
 
     def test_simple_circuit_h_y_z_cz_gives_same_result_as_qiskit(self):
         qc = QuantumCircuit(2)
@@ -81,4 +81,4 @@ class TestQulacs(TestCase):
         sv_qiskit = co.run_circuit_without_transpilation(
             qc, co.SV_SIM, return_statevector=True
         )
-        assert np.allclose(sv_qiskit, sv_qulacs, 1e-10)
+        self.assertTrue(np.allclose(sv_qiskit, sv_qulacs, 1e-10))

@@ -29,9 +29,8 @@ def find_previous_gate_on_qubit(circuit, gate_index):
 
 def index_of_bit_in_circuit(bit, circuit):
     """
-    Calculate the index of the qubit/clbit in the circuit. Location of clbit
-    is number of qubits + relative location of
-    clbit
+    Calculate the index of the qubit/clbit in the circuit.
+    Qubit/clbit index is relative to Quantum/ClassicalRegister
     :param bit: Qubit or Clbit
     :param circuit: QuantumCircuit
     :return:
@@ -48,10 +47,10 @@ def calculate_next_gate_indexes(
     current_next_gate_indexes, circuit, gate_qargs, gate_cargs
 ):
     """
-    Updates the position (in bit wire) at which a gate on that bit will
-    occur. For multi-bit gates, all the bits
-    involved in that gate will have the same index which is 1 + the largest
-    position in the list of relevant bits
+    Pre-emptively calculates the index at which gates yet to applied will
+    be placed in the circuit. For n > 1 bit gates, all bits involved in
+    that gate action will have the same index, calculated as 1 + the 
+    largest position for the list of relevant bits.
     :param circuit: QuantumCircuit
     :param current_next_gate_indexes: Current next_gate_indexes
     :param gate_qargs: Qubits the gate acts on
