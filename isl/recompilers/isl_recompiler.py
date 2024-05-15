@@ -131,7 +131,7 @@ class ISLRecompiler(ApproximateRecompiler):
         starting_circuit=None,
         use_roto_algos=True,
         perform_final_minimisation=False,
-        local_cost_function=False,
+        optimise_local_cost=False,
         debug_log_full_ansatz=False,
         initial_single_qubit_layer=False,
         cu_algorithm=None,
@@ -160,7 +160,7 @@ class ISLRecompiler(ApproximateRecompiler):
         Disable if custom_layer_2q_gate does not support rotosolve
         :param perform_final_minimisation: Perform a final cost minimisation
         once ISL has ended
-        :param local_cost_function: Use LLET cost function as defined in (arXiv:1908.04416)
+        :param optimise_local_cost: Optimise layers with respect to the LLET cost function (arXiv:1908.04416). ISL will still use the global cost function when deciding if compiling is completed.
         :param debug_log_full_ansatz: When True, debug logging will print the entire ansatz at
         every step, as opposed to just the most recently optimised layer.
         :param initial_single_qubit_layer: When True, the first layer of the ISL ansatz will be
@@ -177,7 +177,7 @@ class ISLRecompiler(ApproximateRecompiler):
             execute_kwargs=execute_kwargs,
             general_initial_state=general_initial_state,
             starting_circuit=starting_circuit,
-            local_cost_function=local_cost_function,
+            optimise_local_cost=optimise_local_cost,
             cu_algorithm=cu_algorithm
         )
 
@@ -266,6 +266,7 @@ class ISLRecompiler(ApproximateRecompiler):
         if not modify_ansatz:
             self.lhs_gate_count = old_vcr[0] + len(ansatz_inv.data)
 
+        # NOTE this may need changing to use a different stop_val when using local cost
         self.minimizer.minimize_cost(
             algorithm_kind=vconstants.ALG_ROTOSOLVE,
             tol=1e-5,
@@ -301,8 +302,9 @@ class ISLRecompiler(ApproximateRecompiler):
         'overlap':overlap(float),
         'num_1q_gates':number of rotation gates in circuit(int),
         'num_2q_gates':number of entangling gates in circuit(int)}
-        'circuit_progression': list of circuits as qasm strings after each block is added and optimised
-        'cost_progression': list of costs after each layer is added
+        'circuit_history': list of circuits as qasm strings after each block is added and optimised
+        'global_cost_history': list of global costs after each layer is added
+        'local_cost_history': list of local costs after each layer is added, if optimising local cost
         'time_taken': total time taken for recompilation
         'circuit_qasm': QASM string of the resulting circuit
         """
@@ -310,9 +312,11 @@ class ISLRecompiler(ApproximateRecompiler):
         logger.debug(f"ISL coupling map {self.coupling_map}")
         start_time = timeit.default_timer()
         self.cost_evaluation_counter = 0
-        cost, num_1q_gates, num_2q_gates = None, None, None
+        global_cost, local_cost, num_1q_gates, num_2q_gates = None, None, None, None
 
-        cost_history = []
+        global_cost_history = []
+        if self.optimise_local_cost:
+            local_cost_history = []
         circuit_history = []
         g_range = self.variational_circuit_range
 
@@ -326,6 +330,7 @@ class ISLRecompiler(ApproximateRecompiler):
                 transpile_before_adding=True,
             )
             if self.use_roto_algos:
+                # NOTE this may need changing to use a different stop_val when using local cost
                 cost = self.minimizer.minimize_cost(
                     algorithm_kind=vconstants.ALG_ROTOSOLVE,
                     tol=1e-3,
@@ -347,9 +352,15 @@ class ISLRecompiler(ApproximateRecompiler):
             if initial_ansatz_already_successful:
                 break
 
-            logger.info(f"Cost before adding layer: {cost}")
-            cost = self._add_layer(layer_count)
-            cost_history.append(cost)
+            logger.info(f"Global cost before adding layer: {global_cost}")
+            if self.optimise_local_cost:
+                logger.info(f"Local cost before adding layer: {local_cost}")
+                local_cost = self._add_layer(layer_count)
+                global_cost = self._evaluate_global_cost()
+                local_cost_history.append(local_cost)
+            else:
+                global_cost = self._add_layer(layer_count)
+            global_cost_history.append(global_cost)
 
             # Caching layers as MPS requires that the number of gates remain constant
             if self.remove_unnecessary_gates_during_isl and not (
@@ -375,17 +386,20 @@ class ISLRecompiler(ApproximateRecompiler):
 
             cinl = self.isl_config.cost_improvement_num_layers
             cit = self.isl_config.cost_improvement_tol
-            if len(cost_history) >= cinl and has_stopped_improving(cost_history[-1 * cinl:], cit):
+            if len(global_cost_history) >= cinl and has_stopped_improving(
+                global_cost_history[-1 * cinl:], cit
+            ):
                 logger.warning("ISL stopped improving")
                 self.compiling_finished = True
                 break
 
-            if cost < self.isl_config.sufficient_cost:
+            if global_cost < self.isl_config.sufficient_cost:
                 logger.info("ISL successfully found approximate circuit")
                 self.compiling_finished = True
                 break
             elif num_2q_gates >= self.isl_config.max_2q_gates:
                 logger.warning("ISL MAX_2Q_GATES reached. Using ROTOSOLVE one last time")
+                # NOTE this may need changing to use a different stop_val when using local cost
                 self.minimizer.minimize_cost(
                     algorithm_kind=vconstants.ALG_ROTOSOLVE,
                     max_cycles=10,
@@ -410,7 +424,8 @@ class ISLRecompiler(ApproximateRecompiler):
             self.full_circuit, True, True, gate_range=g_range()
         )
 
-        final_cost = self.evaluate_cost()
+        final_global_cost = self._evaluate_global_cost()
+        logger.info(f"Final global cost: {final_global_cost}")
         end_time = timeit.default_timer()
 
         recompiled_circuit = self.get_recompiled_circuit()
@@ -424,13 +439,14 @@ class ISLRecompiler(ApproximateRecompiler):
             )
         result_dict = {
             "circuit": recompiled_circuit,
-            "overlap": 1 - final_cost,
+            "overlap": 1 - final_global_cost,
             "exact_overlap": exact_overlap,
             "num_1q_gates": num_1q_gates,
             "num_2q_gates": num_2q_gates,
-            "cost_progression": cost_history,
-            "circuit_progression": circuit_history,
-            "entanglement_measures_progression": self.entanglement_measures_history,
+            "global_cost_history": global_cost_history,
+            "local_cost_history": local_cost_history if self.optimise_local_cost else None,
+            "circuit_history": circuit_history,
+            "entanglement_measures_history": self.entanglement_measures_history,
             "e_val_history": self.e_val_history,
             "qubit_pair_history": self.qubit_pair_history,
             "method_history": self.pair_selection_method_history,
@@ -490,12 +506,17 @@ class ISLRecompiler(ApproximateRecompiler):
         else:
             rotoselect_gate_indexes = self._add_entangling_layer(index)
 
+        if self.optimise_local_cost:
+            stop_val = 0
+        else:
+            stop_val = self.isl_config.sufficient_cost
+
         if self.use_roto_algos:
             # Do Rotoselect
             cost = self.minimizer.minimize_cost(
                 algorithm_kind=vconstants.ALG_ROTOSELECT,
                 tol=self.isl_config.rotoselect_tol,
-                stop_val=self.isl_config.sufficient_cost,
+                stop_val=stop_val,
                 indexes_to_modify=rotoselect_gate_indexes,
             )
             # Do Rotosolve
@@ -505,7 +526,7 @@ class ISLRecompiler(ApproximateRecompiler):
                 cost = self.minimizer.minimize_cost(
                     algorithm_kind=vconstants.ALG_ROTOSOLVE,
                     tol=self.isl_config.rotosolve_tol,
-                    stop_val=self.isl_config.sufficient_cost,
+                    stop_val=stop_val,
                     indexes_to_modify=rotosolve_gate_indexes,
                 )
         else:
@@ -843,8 +864,8 @@ class ISLRecompiler(ApproximateRecompiler):
             else:
                 mps = cu.cu_mps_to_aer_mps(self.cu_cached_mps)
             return [(mpsops.mps_expectation(mps, 'Z', i, already_preprocessed=True))
-                    for i in range(len(mps))]
-        elif self.local_cost_function:
+                      for i in range(len(mps))]
+        elif self.optimise_local_cost:
 
             output = self._run_full_circuit(add_measurements=not self.is_statevector_backend)
 

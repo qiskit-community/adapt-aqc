@@ -118,7 +118,7 @@ class TestISL(TestCase):
         isl_config = ISLConfig(cost_improvement_num_layers=10)
 
         isl_recompiler = ISLRecompiler(
-            qc, local_cost_function=True, backend=SV_SIM, isl_config=isl_config
+            qc, optimise_local_cost=True, backend=SV_SIM, isl_config=isl_config
         )
         result = isl_recompiler.recompile()
         cost = isl_recompiler.evaluate_cost()
@@ -308,8 +308,8 @@ class TestISL(TestCase):
         isl_recompiler = ISLRecompiler(qc, backend=MPS_SIM, execute_kwargs={'shots': shots}, save_circuit_history=True)
 
         result = isl_recompiler.recompile()
-        self.assertTrue(len(result["circuit_progression"]) == len(result["cost_progression"]))
-        self.assertTrue(len(result["circuit_progression"][-1]) > len(result["circuit_progression"][-2]))
+        self.assertTrue(len(result["circuit_history"]) == len(result["global_cost_history"]))
+        self.assertTrue(len(result["circuit_history"][-1]) > len(result["circuit_history"][-2]))
 
     def test_circuit_output_not_saved_when_not_flagged(self):
         qc = co.create_random_initial_state_circuit(3, seed=1)
@@ -319,7 +319,7 @@ class TestISL(TestCase):
         isl_recompiler = ISLRecompiler(qc, backend=MPS_SIM, execute_kwargs={'shots': shots})
 
         result = isl_recompiler.recompile()
-        self.assertFalse(len(result["circuit_progression"]))
+        self.assertFalse(len(result["circuit_history"]))
 
     # TODO See above
     def test_given_circuit_with_one_measurement_when_recompiling_then_preserve_measurement(self):
@@ -382,8 +382,8 @@ class TestISL(TestCase):
         qc = QuantumCircuit(3)
         recompiler = ISLRecompiler(qc, initial_single_qubit_layer=True)
         result = recompiler.recompile()
-        self.assertTrue(len(result.get("cost_progression"))
-                        == len(result.get("entanglement_measures_progression"))
+        self.assertTrue(len(result.get("global_cost_history"))
+                        == len(result.get("entanglement_measures_history"))
                         == len(result.get("e_val_history"))
                         == len(result.get("qubit_pair_history"))
                         == len(result.get("method_history")))
@@ -611,6 +611,25 @@ class TestISL(TestCase):
             actual_num_gates.append(len(recompiler.full_circuit.data) - 1)
     
         np.testing.assert_equal(actual_num_gates, expected_num_gates)
+
+    def test_given_optimise_local_cost_when_recompile_then_global_cost_converged(self):
+        qc = co.create_random_initial_state_circuit(3)
+        recompiler = ISLRecompiler(qc, optimise_local_cost=True)
+        result = recompiler.recompile()
+        circuit = result["circuit"]
+        overlap = co.calculate_overlap_between_circuits(qc, circuit)
+        self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
+
+    def test_given_optimise_local_cost_when_recompile_then_global_and_local_cost_histories_correct(self):
+        # Tests that:
+        # a) local and global cost histories are the same length
+        # b) every global cost is greater than its corresponding local cost
+        qc = co.create_random_initial_state_circuit(3)
+        recompiler = ISLRecompiler(qc, optimise_local_cost=True)
+        result = recompiler.recompile()
+        self.assertEqual(len(result["global_cost_history"]), len(result["local_cost_history"]))
+        for global_cost, local_cost in zip(result["global_cost_history"], result["local_cost_history"]):
+            self.assertGreaterEqual(global_cost, local_cost)
 
 
 try:

@@ -32,7 +32,7 @@ class RotoselectRecompiler(ApproximateRecompiler):
         execute_kwargs=None,
         general_initial_state=False,
         starting_circuit=None,
-        local_cost_function=False,
+        optimise_local_cost=False,
     ):
         """
         :param max_gpqpl: Maximum number of rotation Gates Per Qubit Per
@@ -54,7 +54,7 @@ class RotoselectRecompiler(ApproximateRecompiler):
             execute_kwargs=execute_kwargs,
             general_initial_state=general_initial_state,
             starting_circuit=starting_circuit,
-            local_cost_function=local_cost_function,
+            optimise_local_cost=optimise_local_cost,
         )
 
         self.max_gpqpl = max_gpqpl

@@ -49,7 +49,7 @@ class ApproximateRecompiler(ABC):
             qubit_subset=None,
             general_initial_state=False,
             starting_circuit=None,
-            local_cost_function=False,
+            optimise_local_cost=False,
             cu_algorithm=None,
     ):
         """
@@ -105,7 +105,7 @@ class ApproximateRecompiler(ABC):
         self.general_initial_state = general_initial_state
         self.starting_circuit = starting_circuit
         self.zero_mps = None
-        self.local_cost_function = local_cost_function
+        self.optimise_local_cost = optimise_local_cost
 
         if initial_state is not None and general_initial_state:
             raise ValueError(
@@ -427,7 +427,7 @@ class ApproximateRecompiler(ABC):
                 qc.h(qubit)
 
         if self.backend == QASM_SIM:
-            if self.local_cost_function:
+            if self.optimise_local_cost:
                 register_size = 2 if self.general_initial_state else 1
                 qc.add_register(
                     ClassicalRegister(register_size, name="recompiler_creg")
@@ -450,7 +450,7 @@ class ApproximateRecompiler(ABC):
         """
         self.cost_evaluation_counter += 1
 
-        if self.local_cost_function:
+        if self.optimise_local_cost:
             return self._evaluate_local_cost()
         else:
             return self._evaluate_global_cost()

@@ -47,19 +47,19 @@ class TestApproximateRecompiler(TestCase):
         mock.assert_called_once()
 
     def test_given_local_cost_and_SV_backend_when_evaluate_cost_then_correct_function_called(self):
-        compiler = ApproximateRecompiler(QuantumCircuit(1), SV_SIM, local_cost_function=True)
+        compiler = ApproximateRecompiler(QuantumCircuit(1), SV_SIM, optimise_local_cost=True)
         with patch.object(compiler, '_evaluate_local_cost_sv') as mock:
             compiler.evaluate_cost()
         mock.assert_called_once()
 
     def test_given_local_cost_and_MPS_backend_when_evaluate_cost_then_correct_function_called(self):
-        compiler = ApproximateRecompiler(QuantumCircuit(1), MPS_SIM, local_cost_function=True)
+        compiler = ApproximateRecompiler(QuantumCircuit(1), MPS_SIM, optimise_local_cost=True)
         with patch.object(compiler, '_evaluate_local_cost_mps') as mock:
             compiler.evaluate_cost()
         mock.assert_called_once()
 
     def test_given_local_cost_and_QASM_backend_when_evaluate_cost_then_correct_function_called(self):
-        compiler = ApproximateRecompiler(QuantumCircuit(1), QASM_SIM, local_cost_function=True)
+        compiler = ApproximateRecompiler(QuantumCircuit(1), QASM_SIM, optimise_local_cost=True)
         with patch.object(compiler, '_evaluate_local_cost_counts') as mock:
             compiler.evaluate_cost()
         mock.assert_called_once()
@@ -67,9 +67,9 @@ class TestApproximateRecompiler(TestCase):
     def test_given_random_circuit_when_evaluate_local_cost_all_three_methods_return_same_cost(self):
         qc = co.create_random_initial_state_circuit(4)
 
-        recompiler_sv = ISLRecompiler(qc, backend=SV_SIM, local_cost_function=True)
-        recompiler_mps = ISLRecompiler(qc, backend=MPS_SIM, local_cost_function=True)
-        recompiler_qasm = ISLRecompiler(qc, backend=QASM_SIM, local_cost_function=True)
+        recompiler_sv = ISLRecompiler(qc, backend=SV_SIM, optimise_local_cost=True)
+        recompiler_mps = ISLRecompiler(qc, backend=MPS_SIM, optimise_local_cost=True)
+        recompiler_qasm = ISLRecompiler(qc, backend=QASM_SIM, optimise_local_cost=True)
 
         cost_sv = recompiler_sv.evaluate_cost()
         cost_mps = recompiler_mps.evaluate_cost()
@@ -123,8 +123,8 @@ class TestApproximateRecompiler(TestCase):
         circuits = [zero, neel, ghz, hadamard]
 
         for circuit in circuits:
-            for local_cost_function in [False, True]:
-                recompiler = ISLRecompiler(circuit, backend=SV_SIM, local_cost_function=local_cost_function)
+            for optimise_local_cost in [False, True]:
+                recompiler = ISLRecompiler(circuit, backend=SV_SIM, optimise_local_cost=optimise_local_cost)
                 cost = recompiler.evaluate_cost()
                 isl_costs.append(cost)
 
@@ -133,7 +133,7 @@ class TestApproximateRecompiler(TestCase):
     def test_given_random_circuit_when_calculate_cost_local_less_or_equal_to_global(self):
         qc = co.create_random_initial_state_circuit(4)
 
-        recompiler_local = ISLRecompiler(qc, backend=SV_SIM, local_cost_function=True)
+        recompiler_local = ISLRecompiler(qc, backend=SV_SIM, optimise_local_cost=True)
         recompiler_global = ISLRecompiler(qc, backend=SV_SIM)
 
         cost_local = recompiler_local.evaluate_cost()

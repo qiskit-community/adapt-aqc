@@ -33,7 +33,7 @@ class FixedAnsatzRecompiler(ApproximateRecompiler):
         execute_kwargs=None,
         general_initial_state=False,
         starting_circuit=None,
-        local_cost_function=False,
+        optimise_local_cost=False,
     ):
         """
         :param ansatz_circuit: The ansatz circuit that is to be recompiled to.
@@ -57,7 +57,7 @@ class FixedAnsatzRecompiler(ApproximateRecompiler):
             execute_kwargs=execute_kwargs,
             general_initial_state=general_initial_state,
             starting_circuit=starting_circuit,
-            local_cost_function=local_cost_function,
+            optimise_local_cost=optimise_local_cost,
         )
         self.optimization_algorithm_kwargs = optimization_algorithm_kwargs
         self.optimization_algorithm_kind = optimization_algorithm_kind
