@@ -8,7 +8,6 @@ import numpy as np
 from qiskit import QuantumCircuit, qasm2
 
 import isl.utils.constants as vconstants
-import isl.utils.cuquantum_functions as cu
 from isl.recompilers.approximate_recompiler import ApproximateRecompiler
 from isl.utils import circuit_operations as co
 from isl.utils import cuquantum_functions as cu
@@ -194,7 +193,7 @@ class ISLRecompiler(ApproximateRecompiler):
         # If custom layer gate is provided, do not remove gate during ISL
         # because individual gates
         # might depend on each other.
-        self.remove_unnecessary_gates = custom_layer_2q_gate is None
+        self.remove_unnecessary_gates_during_isl = custom_layer_2q_gate is None
         self.use_roto_algos = use_roto_algos
         self.perform_final_minimisation = perform_final_minimisation
         self.layer_2q_gate = self.construct_layer_2q_gate(custom_layer_2q_gate)
@@ -344,7 +343,6 @@ class ISLRecompiler(ApproximateRecompiler):
                     "ISL successfully found approximate circuit using provided ansatz only"
                 )
 
-
         for layer_count in range(self.isl_config.max_layers):
             if initial_ansatz_already_successful:
                 break
@@ -354,11 +352,12 @@ class ISLRecompiler(ApproximateRecompiler):
             cost_history.append(cost)
 
             # Caching layers as MPS requires that the number of gates remain constant
-            if self.remove_unnecessary_gates and not (self.is_aer_mps_backend or self.save_previous_layer_mps_cuquantum):
+            if self.remove_unnecessary_gates_during_isl and not (
+                self.is_aer_mps_backend or self.save_previous_layer_mps_cuquantum):
                 co.remove_unnecessary_gates_from_circuit(self.full_circuit, False, False, gate_range=g_range())
 
             num_2q_gates, num_1q_gates = co.find_num_gates(
-                circuit = self.ref_circuit_as_gates if self.is_aer_mps_backend else self.full_circuit,
+                circuit=self.ref_circuit_as_gates if self.is_aer_mps_backend else self.full_circuit,
                 gate_range=g_range(self.ref_circuit_as_gates if self.is_aer_mps_backend else None)
             )
 
@@ -376,9 +375,7 @@ class ISLRecompiler(ApproximateRecompiler):
 
             cinl = self.isl_config.cost_improvement_num_layers
             cit = self.isl_config.cost_improvement_tol
-            if len(cost_history) >= cinl and has_stopped_improving(
-                cost_history[-1 * cinl:], cit
-            ):
+            if len(cost_history) >= cinl and has_stopped_improving(cost_history[-1 * cinl:], cit):
                 logger.warning("ISL stopped improving")
                 self.compiling_finished = True
                 break
@@ -409,10 +406,9 @@ class ISLRecompiler(ApproximateRecompiler):
             # Replace full_circuit with ref_circuit_as_gates, otherwise no way to remove unnecessary gates
             self.full_circuit = self.ref_circuit_as_gates
 
-        if self.remove_unnecessary_gates:
-            co.remove_unnecessary_gates_from_circuit(
-                self.full_circuit, True, True, gate_range=g_range()
-            )
+        co.remove_unnecessary_gates_from_circuit(
+            self.full_circuit, True, True, gate_range=g_range()
+        )
 
         final_cost = self.evaluate_cost()
         end_time = timeit.default_timer()
@@ -445,7 +441,7 @@ class ISLRecompiler(ApproximateRecompiler):
         }
         if self.save_circuit_history and self.is_aer_mps_backend:
             logger.warning("When using MPS backend, circuit history will not contain the"
-                                   " set_matrix_product_state instruction at the start of the circuit")
+                           " set_matrix_product_state instruction at the start of the circuit")
         logger.info("ISL completed")
         return result_dict
 
@@ -469,17 +465,12 @@ class ISLRecompiler(ApproximateRecompiler):
                 for qubit in range(layer_added.num_qubits - 1, -1, -1):
                     if qubit not in self.qubit_pair_history[-1]:
                         del layer_added.qubits[qubit]
-                if not (layer_added.data[2][0].name == 'cx'):
+                try:
+                    logger.debug(f'Optimised layer added: \n{layer_added}')
+                except ValueError:
                     logging.error(
                         "Final ansatz layer logging not implemented for custom ansatz or functionalities "
                         "placing more gates after trainable ansatz")
-                else:
-                    try:
-                        logger.debug(f'Optimised layer added: \n{layer_added}')
-                    except ValueError:
-                        logging.error(
-                            "Final ansatz layer logging not implemented for custom ansatz or functionalities "
-                            "placing more gates after trainable ansatz")
 
     def _add_layer(self, index):
         """
@@ -772,7 +763,7 @@ class ISLRecompiler(ApproximateRecompiler):
             elif self.isl_config.reuse_priority_mode == "qubit":
                 priorities.append(self._get_qubit_reuse_priority(qp, k))
             else:
-                raise ValueError(f"Reuse priority mode must be one of: {['pair','qubit']}")
+                raise ValueError(f"Reuse priority mode must be one of: {['pair', 'qubit']}")
         logger.debug(f"Reuse priorities of pairs: {priorities}")
         return priorities
 
@@ -824,8 +815,8 @@ class ISLRecompiler(ApproximateRecompiler):
         """
         # Hard code that previous pair has priority -1
         if (
-            len(self.qubit_pair_history) > 0 + int(self.initial_single_qubit_layer)
-            and qubit_pair == self.qubit_pair_history[-1]
+                len(self.qubit_pair_history) > 0 + int(self.initial_single_qubit_layer)
+                and qubit_pair == self.qubit_pair_history[-1]
         ):
             return -1
         # If not previous pair, then use exponential disfavouring
@@ -852,7 +843,7 @@ class ISLRecompiler(ApproximateRecompiler):
             else:
                 mps = cu.cu_mps_to_aer_mps(self.cu_cached_mps)
             return [(mpsops.mps_expectation(mps, 'Z', i, already_preprocessed=True))
-                      for i in range(len(mps))]
+                    for i in range(len(mps))]
         elif self.local_cost_function:
 
             output = self._run_full_circuit(add_measurements=not self.is_statevector_backend)
@@ -922,7 +913,8 @@ class ISLRecompiler(ApproximateRecompiler):
 
         # Get full_circuit up to and including layers to be absorbed
         circ_to_absorb = self.full_circuit.copy()
-        num_gates_to_absorb = len(self.layer_2q_gate) * (n - int(includes_isql)) + circ_to_absorb.num_qubits * int(includes_isql) + 1
+        num_gates_to_absorb = len(self.layer_2q_gate) * (
+                n - int(includes_isql)) + circ_to_absorb.num_qubits * int(includes_isql) + 1
         del circ_to_absorb.data[num_gates_to_absorb:]
 
         # Keep a copy of what was absorbed to add to the reference circuit
