@@ -22,6 +22,7 @@ from isl.utils.utilityfunctions import (
     has_stopped_improving,
     remove_permutations_from_coupling_map,
 )
+import isl.utils.ansatzes as ans
 
 logger = logging.getLogger(__name__)
 
@@ -130,6 +131,7 @@ class ISLRecompiler(ApproximateRecompiler):
         save_circuit_history=False,
         starting_circuit=None,
         use_roto_algos=True,
+        use_rotoselect=True,
         perform_final_minimisation=False,
         optimise_local_cost=False,
         debug_log_full_ansatz=False,
@@ -158,6 +160,8 @@ class ISLRecompiler(ApproximateRecompiler):
         because it disrupts the measurement of local entanglement between qubits.
         :param use_roto_algos: Whether to use rotoselect and rotosolve for cost minimisation.
         Disable if custom_layer_2q_gate does not support rotosolve
+        :param use_rotoselect: Whether to use rotoselect for cost minimisation. Disable if 
+        not appropriate for chosen ansatz.
         :param perform_final_minimisation: Perform a final cost minimisation
         once ISL has ended
         :param optimise_local_cost: Optimise layers with respect to the LLET cost function (arXiv:1908.04416). ISL will still use the global cost function when deciding if compiling is completed.
@@ -195,6 +199,14 @@ class ISLRecompiler(ApproximateRecompiler):
         # might depend on each other.
         self.remove_unnecessary_gates_during_isl = custom_layer_2q_gate is None
         self.use_roto_algos = use_roto_algos
+        self.use_rotoselect = use_rotoselect
+        if self.use_rotoselect and (custom_layer_2q_gate == ans.u4() or
+                                    custom_layer_2q_gate == ans.fully_dressed_cnot()):
+            logger.warning("Rotoselect may cause chosen ansatz layer gates to become non-universal")
+        if not self.use_rotoselect and (custom_layer_2q_gate == ans.thinly_dressed_cnot() or
+                                        custom_layer_2q_gate == ans.identity_resolvable() or
+                                        custom_layer_2q_gate is None):
+            logger.warning("Rotoselect is necessary for convergence of chosen ansatz")
         self.perform_final_minimisation = perform_final_minimisation
         self.layer_2q_gate = self.construct_layer_2q_gate(custom_layer_2q_gate)
 
@@ -205,7 +217,7 @@ class ISLRecompiler(ApproximateRecompiler):
             (q1, q2)
             for (q1, q2) in self.coupling_map
             if q1 in self.qubit_subset_to_recompile
-            and q2 in self.qubit_subset_to_recompile
+           and q2 in self.qubit_subset_to_recompile
         ]
         # Used to avoid adding thinly dressed CNOTs to the same qubit pair
         self.qubit_pair_history = []
@@ -243,6 +255,9 @@ class ISLRecompiler(ApproximateRecompiler):
                 co.add_dressed_cnot(qc, 0, 1, True)
             return qc
         else:
+            for gate in custom_layer_2q_gate:
+                if gate[0].label is None and gate[0].name in co.SUPPORTED_1Q_GATES:
+                    gate[0].label = gate[0].name
             return custom_layer_2q_gate
 
     def get_layer_2q_gate(self, layer_index):
@@ -490,8 +505,8 @@ class ISLRecompiler(ApproximateRecompiler):
 
     def _add_layer(self, index):
         """
-        Adds a dressed CNOT gate to the qubits with the highest local
-        entanglement. If all qubit pairs have no
+        Adds a dressed CNOT gate or other ansatz layer to the qubits with the 
+        highest local entanglement. If all qubit pairs have no
         local entanglement, adds a dressed CNOT gate to the qubit pair with
         the highest sum of expectation values
         (computational basis).
@@ -502,9 +517,9 @@ class ISLRecompiler(ApproximateRecompiler):
         # Define first layer differently when initial_single_qubit_layer=True
         if self.initial_single_qubit_layer and index == 0:
             logger.debug("Starting with first layer comprising of only single qubit rotations")
-            rotoselect_gate_indexes = self._add_rotation_to_all_qubits(ansatz_start_index)
+            layer_added_optimisation_indexes = self._add_rotation_to_all_qubits(ansatz_start_index)
         else:
-            rotoselect_gate_indexes = self._add_entangling_layer(index)
+            layer_added_optimisation_indexes = self._add_entangling_layer(index)
 
         if self.optimise_local_cost:
             stop_val = 0
@@ -512,22 +527,33 @@ class ISLRecompiler(ApproximateRecompiler):
             stop_val = self.isl_config.sufficient_cost
 
         if self.use_roto_algos:
-            # Do Rotoselect
+            # Optimise layer currently being added
+            # For normal layers, use Rotoselect/Rotosolve if self.use_rotoselect=True/False
+            # For the initial_single_qubit_layer, use Rotoselect
+
+            if self.use_rotoselect or (self.initial_single_qubit_layer and index == 0):
+                ALG = vconstants.ALG_ROTOSELECT
+            else:
+                ALG = vconstants.ALG_ROTOSOLVE
+
             cost = self.minimizer.minimize_cost(
-                algorithm_kind=vconstants.ALG_ROTOSELECT,
+                algorithm_kind=ALG,
                 tol=self.isl_config.rotoselect_tol,
                 stop_val=stop_val,
-                indexes_to_modify=rotoselect_gate_indexes,
+                indexes_to_modify=layer_added_optimisation_indexes,
             )
-            # Do Rotosolve
+            # Do Rotosolve on previous max_layers_to_modify layers, when appropriate
             if self.isl_config.rotosolve_frequency != 0 and index > 0 and index % self.isl_config.rotosolve_frequency == 0:
-                rotosolve_gate_indexes = self._calculate_rotosolve_indices(ansatz_start_index)
-
+                multi_layer_optimisation_indexes = (
+                    self._calculate_multi_layer_optimisation_indices(
+                        ansatz_start_index
+                    )
+                )
                 cost = self.minimizer.minimize_cost(
                     algorithm_kind=vconstants.ALG_ROTOSOLVE,
                     tol=self.isl_config.rotosolve_tol,
                     stop_val=stop_val,
-                    indexes_to_modify=rotosolve_gate_indexes,
+                    indexes_to_modify=multi_layer_optimisation_indexes,
                 )
         else:
             cost = self.minimizer.minimize_cost(
@@ -580,7 +606,7 @@ class ISLRecompiler(ApproximateRecompiler):
         self.ref_circuit_as_gates = self.layers_saved_to_mps.copy()
         co.add_to_circuit(self.ref_circuit_as_gates, layers_not_saved_to_mps)
 
-    def _calculate_rotosolve_indices(self, ansatz_start_index):
+    def _calculate_multi_layer_optimisation_indices(self, ansatz_start_index):
         num_entangling_layers = (
             self.isl_config.max_layers_to_modify - int(self.initial_single_qubit_layer))
         # This assumes first layer has n gates
@@ -598,11 +624,11 @@ class ISLRecompiler(ApproximateRecompiler):
         first_layer_end_index = ansatz_start_index + num_gates_in_non_entangling_layer
         if ansatz_start_index < rotosolve_gate_start_index < first_layer_end_index:
             rotosolve_gate_start_index = first_layer_end_index
-        rotosolve_gate_indexes = (
+        multi_layer_optimisation_indexes = (
             rotosolve_gate_start_index,
             (self.variational_circuit_range()[1]),
         )
-        return rotosolve_gate_indexes
+        return multi_layer_optimisation_indexes
 
     def _add_entangling_layer(self, index):
         logger.debug("Finding best qubit pair")
@@ -615,12 +641,12 @@ class ISLRecompiler(ApproximateRecompiler):
             qubit_subset=[control, target],
         )
         self.qubit_pair_history.append((control, target))
-        # Rotoselect is applied to most recent layer
-        rotoselect_gate_indexes = (
+        # Rotoselect or Rotosolve is applied to most recent layer
+        layer_added_optimisation_indexes = (
             self.variational_circuit_range()[1] - len(self.layer_2q_gate.data),
             (self.variational_circuit_range()[1]),
         )
-        return rotoselect_gate_indexes
+        return layer_added_optimisation_indexes
 
     def _add_rotation_to_all_qubits(self, ansatz_start_index):
         first_layer = QuantumCircuit(self.full_circuit.num_qubits)
@@ -628,11 +654,11 @@ class ISLRecompiler(ApproximateRecompiler):
         co.add_to_circuit(self.full_circuit, first_layer, self.variational_circuit_range()[1])
         self._first_layer_increment_results_dict()
         # Gate indices in the initial layer
-        rotoselect_gate_indexes = (
+        initial_layer_optimisation_indexes = (
             ansatz_start_index,
             (self.variational_circuit_range()[1]),
         )
-        return rotoselect_gate_indexes
+        return initial_layer_optimisation_indexes
 
     def _find_appropriate_qubit_pair(self):
         if self.isl_config.method == "random":

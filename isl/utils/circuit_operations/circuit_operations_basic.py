@@ -217,7 +217,7 @@ def reevaluate_dependent_parameterised_gates(
         if gate.label is not None and "@" in gate.label:
             equation = gate.label.split("@")[1]
             result = parse_expr(equation, independent_variable_values)
-            angle = np.float(result)
+            angle = float(result)
             gate.params[0] = angle
 
 
