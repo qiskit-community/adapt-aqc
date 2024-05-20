@@ -1,11 +1,12 @@
 from unittest import TestCase
 
+from aqc_research.model_sp_lhs.trotter.trotter import trotter_circuit
 from qiskit import QuantumCircuit
 
 import isl.utils.circuit_operations as co
 from isl import ISLRecompiler
 from isl.recompilers import ISLConfig
-from isl.utils.ansatzes import u4, identity_resolvable, fully_dressed_cnot, thinly_dressed_cnot
+from isl.utils.ansatzes import u4, identity_resolvable, fully_dressed_cnot, thinly_dressed_cnot, heisenberg
 from isl.utils.circuit_operations import MPS_SIM, SV_SIM
 from isl.utils.constants import DEFAULT_SUFFICIENT_COST
 
@@ -13,7 +14,7 @@ from isl.utils.constants import DEFAULT_SUFFICIENT_COST
 class TestAnsatzes(TestCase):
 
     def setUp(self):
-        self.ansatz_list = [u4, thinly_dressed_cnot, fully_dressed_cnot, identity_resolvable]
+        self.ansatz_list = [u4, thinly_dressed_cnot, fully_dressed_cnot, identity_resolvable, heisenberg]
 
     def test_given_custom_ansatz_when_compile(self):
         for ansatz in self.ansatz_list:
@@ -138,16 +139,22 @@ class TestAnsatzes(TestCase):
                     self.assertEqual(gate[0].name, ansatz().data[i][0].name)
 
     def test_given_u4_or_fully_dressed_when_recompile_without_rotoselect_then_works(self):
-        for ansatz in self.ansatz_list:
-            if ansatz == thinly_dressed_cnot or ansatz == identity_resolvable:
-                # These ansatzes don't work without rotoselect
-                pass
-            else:
-                with self.subTest(ansatz):
-                    qc = co.create_random_initial_state_circuit(3)
-                    qc = co.unroll_to_basis_gates(qc)
-                    isl_recompiler = ISLRecompiler(qc, custom_layer_2q_gate=ansatz(),
-                                                use_rotoselect=False)
-                    result = isl_recompiler.recompile()
-                    overlap = co.calculate_overlap_between_circuits(qc, result['circuit'])
-                    self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
+        for ansatz in [u4, fully_dressed_cnot]:
+            with self.subTest(ansatz):
+                qc = co.create_random_initial_state_circuit(3)
+                qc = co.unroll_to_basis_gates(qc)
+                isl_recompiler = ISLRecompiler(qc, custom_layer_2q_gate=ansatz(),
+                                            use_rotoselect=False)
+                result = isl_recompiler.recompile()
+                overlap = co.calculate_overlap_between_circuits(qc, result['circuit'])
+                self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
+
+    def test_given_xxx_state_and_heisenberg_ansatz_when_compile_without_rotoselect_then_works(self):
+        qc = QuantumCircuit(4)
+        qc.x([0, 2])
+        qc = trotter_circuit(qc, dt=0.1, delta=1.0, num_trotter_steps=2, second_order=False)
+        isl_recompiler = ISLRecompiler(qc, custom_layer_2q_gate=heisenberg(), use_rotoselect=False)
+        result = isl_recompiler.recompile()
+        overlap = co.calculate_overlap_between_circuits(qc, result['circuit'])
+        self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
+

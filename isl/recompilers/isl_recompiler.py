@@ -200,9 +200,9 @@ class ISLRecompiler(ApproximateRecompiler):
         self.remove_unnecessary_gates_during_isl = custom_layer_2q_gate is None
         self.use_roto_algos = use_roto_algos
         self.use_rotoselect = use_rotoselect
-        if self.use_rotoselect and (custom_layer_2q_gate == ans.u4() or
-                                    custom_layer_2q_gate == ans.fully_dressed_cnot()):
-            logger.warning("Rotoselect may cause chosen ansatz layer gates to become non-universal")
+        if self.use_rotoselect and custom_layer_2q_gate in [ans.u4(), ans.fully_dressed_cnot(), ans.heisenberg()]:
+            logger.warning("For ansatz designed to perform physically motivated or universal operations Rotoselect may "
+                           "cause change from expected behaviour")
         if not self.use_rotoselect and (custom_layer_2q_gate == ans.thinly_dressed_cnot() or
                                         custom_layer_2q_gate == ans.identity_resolvable() or
                                         custom_layer_2q_gate is None):
