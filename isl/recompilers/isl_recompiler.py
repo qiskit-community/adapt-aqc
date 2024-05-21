@@ -245,6 +245,8 @@ class ISLRecompiler(ApproximateRecompiler):
         else:
             self.save_previous_layer_mps_cuquantum = False
 
+        self.resume_from_layer = None
+
     def construct_layer_2q_gate(self, custom_layer_2q_gate):
         if custom_layer_2q_gate is None:
             qc = QuantumCircuit(2)
@@ -306,7 +308,7 @@ class ISLRecompiler(ApproximateRecompiler):
         res["circuit_qasm"] = qasm2.dumps(recompiled_circuit)
         return res
 
-    def recompile(self, initial_ansatz: QuantumCircuit = None, save_point=None, start_point=0):
+    def recompile(self, initial_ansatz: QuantumCircuit = None, save_frequency=0):
         """
         Perform recompilation algorithm.
         :param initial_ansatz: A trial ansatz to start the recompilation
@@ -323,7 +325,8 @@ class ISLRecompiler(ApproximateRecompiler):
         'time_taken': total time taken for recompilation
         'circuit_qasm': QASM string of the resulting circuit
         """
-        if start_point == 0:
+        if self.resume_from_layer is None:
+            start_point = 0
             logger.info("ISL started")
             logger.debug(f"ISL coupling map {self.coupling_map}")
             self.start_time = timeit.default_timer()
@@ -363,6 +366,9 @@ class ISLRecompiler(ApproximateRecompiler):
                     logger.debug(
                         "ISL successfully found approximate circuit using provided ansatz only"
                     )
+        else:
+            start_point = self.resume_from_layer
+            logger.info(f"ISL resuming from layer: {start_point}")
         
 
         for layer_count in range(start_point, self.isl_config.max_layers):
@@ -426,8 +432,9 @@ class ISLRecompiler(ApproximateRecompiler):
                 self.compiling_finished = True
                 break
 
-            if save_point is not None and layer_count == save_point:
-                return (self, layer_count + 1)
+            if save_frequency != 0 and layer_count != 0 and layer_count % save_frequency == 0:
+                self.resume_from_layer = layer_count + 1
+                np.save(f"recompiler_after_layer_{layer_count}", np.array([self], dtype=object))
 
         # Perform a final optimisation
         if self.perform_final_minimisation:
