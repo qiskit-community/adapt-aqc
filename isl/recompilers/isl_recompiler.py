@@ -306,7 +306,7 @@ class ISLRecompiler(ApproximateRecompiler):
         res["circuit_qasm"] = qasm2.dumps(recompiled_circuit)
         return res
 
-    def recompile(self, initial_ansatz: QuantumCircuit = None):
+    def recompile(self, initial_ansatz: QuantumCircuit = None, save_point=None, start_point=0):
         """
         Perform recompilation algorithm.
         :param initial_ansatz: A trial ansatz to start the recompilation
@@ -323,68 +323,70 @@ class ISLRecompiler(ApproximateRecompiler):
         'time_taken': total time taken for recompilation
         'circuit_qasm': QASM string of the resulting circuit
         """
-        logger.info("ISL started")
-        logger.debug(f"ISL coupling map {self.coupling_map}")
-        start_time = timeit.default_timer()
-        self.cost_evaluation_counter = 0
-        global_cost, local_cost, num_1q_gates, num_2q_gates = None, None, None, None
+        if start_point == 0:
+            logger.info("ISL started")
+            logger.debug(f"ISL coupling map {self.coupling_map}")
+            self.start_time = timeit.default_timer()
+            self.cost_evaluation_counter = 0
+            self.global_cost, self.local_cost, num_1q_gates, num_2q_gates = None, None, None, None
 
-        global_cost_history = []
-        if self.optimise_local_cost:
-            local_cost_history = []
-        circuit_history = []
-        g_range = self.variational_circuit_range
+            self.global_cost_history = []
+            if self.optimise_local_cost:
+                self.local_cost_history = []
+            self.circuit_history = []
+            self.g_range = self.variational_circuit_range
 
-        # If an initial ansatz has been provided, add that and run minimization
-        initial_ansatz_already_successful = False
-        if initial_ansatz is not None:
-            co.add_to_circuit(
-                self.full_circuit,
-                co.circuit_by_inverting_circuit(initial_ansatz),
-                g_range()[1],
-                transpile_before_adding=True,
-            )
-            if self.use_roto_algos:
-                # NOTE this may need changing to use a different stop_val when using local cost
-                cost = self.minimizer.minimize_cost(
-                    algorithm_kind=vconstants.ALG_ROTOSOLVE,
-                    tol=1e-3,
-                    stop_val=self.isl_config.sufficient_cost,
-                    indexes_to_modify=g_range(),
+            # If an initial ansatz has been provided, add that and run minimization
+            self.initial_ansatz_already_successful = False
+            if initial_ansatz is not None:
+                co.add_to_circuit(
+                    self.full_circuit,
+                    co.circuit_by_inverting_circuit(initial_ansatz),
+                    self.g_range()[1],
+                    transpile_before_adding=True,
                 )
-            else:
-                cost = self.minimizer.minimize_cost(
-                    algorithm_kind=vconstants.ALG_PYBOBYQA,
-                    alg_kwargs={"seek_global_minimum": True},
-                )
-            if cost < self.isl_config.sufficient_cost:
-                initial_ansatz_already_successful = True
-                logger.debug(
-                    "ISL successfully found approximate circuit using provided ansatz only"
-                )
+                if self.use_roto_algos:
+                    # NOTE this may need changing to use a different stop_val when using local cost
+                    cost = self.minimizer.minimize_cost(
+                        algorithm_kind=vconstants.ALG_ROTOSOLVE,
+                        tol=1e-3,
+                        stop_val=self.isl_config.sufficient_cost,
+                        indexes_to_modify=self.g_range(),
+                    )
+                else:
+                    cost = self.minimizer.minimize_cost(
+                        algorithm_kind=vconstants.ALG_PYBOBYQA,
+                        alg_kwargs={"seek_global_minimum": True},
+                    )
+                if cost < self.isl_config.sufficient_cost:
+                    self.initial_ansatz_already_successful = True
+                    logger.debug(
+                        "ISL successfully found approximate circuit using provided ansatz only"
+                    )
+        
 
-        for layer_count in range(self.isl_config.max_layers):
-            if initial_ansatz_already_successful:
+        for layer_count in range(start_point, self.isl_config.max_layers):
+            if self.initial_ansatz_already_successful:
                 break
 
-            logger.info(f"Global cost before adding layer: {global_cost}")
+            logger.info(f"Global cost before adding layer: {self.global_cost}")
             if self.optimise_local_cost:
-                logger.info(f"Local cost before adding layer: {local_cost}")
-                local_cost = self._add_layer(layer_count)
-                global_cost = self._evaluate_global_cost()
-                local_cost_history.append(local_cost)
+                logger.info(f"Local cost before adding layer: {self.local_cost}")
+                self.local_cost = self._add_layer(layer_count)
+                self.global_cost = self._evaluate_global_cost()
+                self.local_cost_history.append(self.local_cost)
             else:
-                global_cost = self._add_layer(layer_count)
-            global_cost_history.append(global_cost)
+                self.global_cost = self._add_layer(layer_count)
+            self.global_cost_history.append(self.global_cost)
 
             # Caching layers as MPS requires that the number of gates remain constant
             if self.remove_unnecessary_gates_during_isl and not (
                 self.is_aer_mps_backend or self.save_previous_layer_mps_cuquantum):
-                co.remove_unnecessary_gates_from_circuit(self.full_circuit, False, False, gate_range=g_range())
+                co.remove_unnecessary_gates_from_circuit(self.full_circuit, False, False, gate_range=self.g_range())
 
             num_2q_gates, num_1q_gates = co.find_num_gates(
                 circuit=self.ref_circuit_as_gates if self.is_aer_mps_backend else self.full_circuit,
-                gate_range=g_range(self.ref_circuit_as_gates if self.is_aer_mps_backend else None)
+                gate_range=self.g_range(self.ref_circuit_as_gates if self.is_aer_mps_backend else None)
             )
 
             if self.save_previous_layer_mps_cuquantum:
@@ -397,18 +399,18 @@ class ISLRecompiler(ApproximateRecompiler):
                     circuit_copy = self.full_circuit.copy()
                     del circuit_copy.data[0]
                     circuit_qasm_string = qasm2.dumps(circuit_copy)
-                circuit_history.append(circuit_qasm_string)
+                self.circuit_history.append(circuit_qasm_string)
 
             cinl = self.isl_config.cost_improvement_num_layers
             cit = self.isl_config.cost_improvement_tol
-            if len(global_cost_history) >= cinl and has_stopped_improving(
-                global_cost_history[-1 * cinl:], cit
+            if len(self.global_cost_history) >= cinl and has_stopped_improving(
+                self.global_cost_history[-1 * cinl:], cit
             ):
                 logger.warning("ISL stopped improving")
                 self.compiling_finished = True
                 break
 
-            if global_cost < self.isl_config.sufficient_cost:
+            if self.global_cost < self.isl_config.sufficient_cost:
                 logger.info("ISL successfully found approximate circuit")
                 self.compiling_finished = True
                 break
@@ -424,6 +426,9 @@ class ISLRecompiler(ApproximateRecompiler):
                 self.compiling_finished = True
                 break
 
+            if save_point is not None and layer_count == save_point:
+                return (self, layer_count + 1)
+
         # Perform a final optimisation
         if self.perform_final_minimisation:
             self.minimizer.minimize_cost(
@@ -436,7 +441,7 @@ class ISLRecompiler(ApproximateRecompiler):
             self.full_circuit = self.ref_circuit_as_gates
 
         co.remove_unnecessary_gates_from_circuit(
-            self.full_circuit, True, True, gate_range=g_range()
+            self.full_circuit, True, True, gate_range=self.g_range()
         )
 
         final_global_cost = self._evaluate_global_cost()
@@ -458,14 +463,14 @@ class ISLRecompiler(ApproximateRecompiler):
             "exact_overlap": exact_overlap,
             "num_1q_gates": num_1q_gates,
             "num_2q_gates": num_2q_gates,
-            "global_cost_history": global_cost_history,
-            "local_cost_history": local_cost_history if self.optimise_local_cost else None,
-            "circuit_history": circuit_history,
+            "global_cost_history": self.global_cost_history,
+            "local_cost_history": self.local_cost_history if self.optimise_local_cost else None,
+            "circuit_history": self.circuit_history,
             "entanglement_measures_history": self.entanglement_measures_history,
             "e_val_history": self.e_val_history,
             "qubit_pair_history": self.qubit_pair_history,
             "method_history": self.pair_selection_method_history,
-            "time_taken": end_time - start_time,
+            "time_taken": end_time - self.start_time,
             "cost_evaluations": self.cost_evaluation_counter,
             "coupling_map": self.coupling_map,
             "circuit_qasm": qasm2.dumps(recompiled_circuit)
