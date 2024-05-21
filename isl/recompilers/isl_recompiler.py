@@ -2,6 +2,7 @@
 
 import logging
 import timeit
+import os
 
 import aqc_research.mps_operations as mpsops
 import numpy as np
@@ -308,7 +309,7 @@ class ISLRecompiler(ApproximateRecompiler):
         res["circuit_qasm"] = qasm2.dumps(recompiled_circuit)
         return res
 
-    def recompile(self, initial_ansatz: QuantumCircuit = None, save_frequency=0):
+    def recompile(self, initial_ansatz: QuantumCircuit = None, save_frequency=0, delete_previous_file=False):
         """
         Perform recompilation algorithm.
         :param initial_ansatz: A trial ansatz to start the recompilation
@@ -370,6 +371,7 @@ class ISLRecompiler(ApproximateRecompiler):
             start_point = self.resume_from_layer
             logger.info(f"ISL resuming from layer: {start_point}")
         
+        file_to_delete = None
 
         for layer_count in range(start_point, self.isl_config.max_layers):
             if self.initial_ansatz_already_successful:
@@ -434,7 +436,12 @@ class ISLRecompiler(ApproximateRecompiler):
 
             if save_frequency != 0 and layer_count != 0 and layer_count % save_frequency == 0:
                 self.resume_from_layer = layer_count + 1
-                np.save(f"recompiler_after_layer_{layer_count}", np.array([self], dtype=object))
+                file_name = f"recompiler_after_layer_{layer_count}.npy"
+                np.save(file_name, np.array([self], dtype=object))
+                if file_to_delete is not None:
+                    os.remove(file_to_delete)
+                file_to_delete = file_name if delete_previous_file else None
+
 
         # Perform a final optimisation
         if self.perform_final_minimisation:
