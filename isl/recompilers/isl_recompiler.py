@@ -314,6 +314,10 @@ class ISLRecompiler(ApproximateRecompiler):
         Perform recompilation algorithm.
         :param initial_ansatz: A trial ansatz to start the recompilation
         with instead of starting from scratch
+        :param save_frequency: If save_frequency = n != 0, recompiler object will be saved to a file
+        after layers n, 2n, 3n, ... have been added.
+        :param delete_previous_file: If True and save_frequency != 0, delete previous saved
+        recompiler object each time a new one is saved.
         Termination criteria: SUFFICIENT_COST reached; max_layers reached;
         std(last_5_costs)/avg(last_5_costs) < TOL
         :return: {'circuit':resulting circuit(Instruction),
@@ -326,6 +330,9 @@ class ISLRecompiler(ApproximateRecompiler):
         'time_taken': total time taken for recompilation
         'circuit_qasm': QASM string of the resulting circuit
         """
+        # self.resume_from_layer is None when ISLRecompiler is first instantiated. If the recompiler
+        # is saved part-way through recompilation and re-loaded, self.resume_from_layer tells
+        # ISLRecompiler.recompile() where to resume from.
         if self.resume_from_layer is None:
             start_point = 0
             logger.info("ISL started")
@@ -371,6 +378,7 @@ class ISLRecompiler(ApproximateRecompiler):
             start_point = self.resume_from_layer
             logger.info(f"ISL resuming from layer: {start_point}")
         
+        # Only relevant if save_frequency != 0 and delete_previous_file=True
         file_to_delete = None
 
         for layer_count in range(start_point, self.isl_config.max_layers):
@@ -434,6 +442,7 @@ class ISLRecompiler(ApproximateRecompiler):
                 self.compiling_finished = True
                 break
 
+            # If required, save the recompiler object to a .npy file, to resume recompilation later
             if save_frequency != 0 and layer_count != 0 and layer_count % save_frequency == 0:
                 self.resume_from_layer = layer_count + 1
                 file_name = f"recompiler_after_layer_{layer_count}.npy"
