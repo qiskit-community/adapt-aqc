@@ -1,4 +1,5 @@
 import logging
+import os
 from unittest import TestCase
 from unittest.mock import patch
 
@@ -630,6 +631,29 @@ class TestISL(TestCase):
         self.assertEqual(len(result["global_cost_history"]), len(result["local_cost_history"]))
         for global_cost, local_cost in zip(result["global_cost_history"], result["local_cost_history"]):
             self.assertGreaterEqual(global_cost, local_cost)
+
+    def test_given_save_and_resume_recompilation_then_results_equal(self):
+
+        qc = co.create_random_initial_state_circuit(3)
+
+        # Recompile and save after layer 1, 2, ...
+        recompiler = ISLRecompiler(qc)
+        result = recompiler.recompile(save_frequency=1)
+
+        # Load recompiler after layer 1
+        recompiler_1 = np.load("recompiler_after_layer_1.npy", allow_pickle=True)[0]
+        result_1 = recompiler_1.recompile()
+
+        # Remove file created by test
+        cwd = os.getcwd()
+        for fname in os.listdir(cwd):
+            if fname.startswith("recompiler_after_layer"):
+                os.remove(os.path.join(cwd, fname))
+
+        # Compare both results, NOTE time_taken is currently not working
+        for key in result.keys():
+            if key != "time_taken":
+                self.assertEqual(result[key], result_1[key])
 
 
 try:

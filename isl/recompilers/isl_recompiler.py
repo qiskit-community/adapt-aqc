@@ -493,7 +493,7 @@ class ISLRecompiler(ApproximateRecompiler):
             "e_val_history": self.e_val_history,
             "qubit_pair_history": self.qubit_pair_history,
             "method_history": self.pair_selection_method_history,
-            "time_taken": end_time - self.start_time,
+            "time_taken": end_time - self.start_time,       # TODO fix this
             "cost_evaluations": self.cost_evaluation_counter,
             "coupling_map": self.coupling_map,
             "circuit_qasm": qasm2.dumps(recompiled_circuit)
