@@ -652,9 +652,9 @@ class TestISL(TestCase):
                 os.remove(os.path.join(cwd, fname))
 
         # Compare both results, NOTE time_taken is currently not working
-        for key in result.keys():
+        for key in result.__dict__.keys():
             if key != "time_taken":
-                self.assertEqual(result[key], result_1[key])
+                self.assertEqual(result.__dict__[key], result_1.__dict__[key])
 
 
 try:
