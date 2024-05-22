@@ -31,6 +31,26 @@ from isl.utils.utilityfunctions import is_statevector_backend, is_aer_mps_backen
 logger = logging.getLogger(__name__)
 
 
+class RecompileInPartsResult:
+    def __init__(
+        self,
+        circuit,
+        overlap,
+        individual_results,
+        time_taken,
+    ):
+        """
+        :param circuit: Resulting circuit.
+        :param overlap: 1 - final_global_cost.
+        :param individual_results: List of result objects for each sub-recompilation.
+        :param time_taken: Total time taken for recompilation.
+        """
+        self.circuit = circuit
+        self.overlap = overlap
+        self.individual_results = individual_results
+        self.time_taken = time_taken
+
+
 class ApproximateRecompiler(ABC):
     """
     Variational hybrid quantum-classical algorithm that recompiles a given
@@ -238,13 +258,12 @@ class ApproximateRecompiler(ABC):
         return start, end
 
     @abstractmethod
-    def recompile(self) -> dict:
+    def recompile(self):
         """
         Run the recompilation algorithm
-        :return: Dictionary object containing the resulting circuit,
-        the overlap between original and resulting circuit,
-        and other optional entries (such as circuit parameters). {
-        'circuit':Instruction, 'overlap': float}
+        :return: Result object (ISLResult, FixedAnsatzResult, RotoselectResult) containing the
+        resulting circuit, the overlap between original and resulting circuit, and other optional
+        entries (such as circuit parameters).
         """
         raise NotImplementedError(
             "A recompiler must provide implementation for the recompile() " "method"
@@ -259,10 +278,7 @@ class ApproximateRecompiler(ABC):
         of (approx_circuit_for_first_m_subcircuits + (m+1)th subcircuit)
         :param max_depth_per_block: The maximum allowed depth of each of the
         n subcircuits
-        :return: Dictionary object containing the resulting circuit, overlap
-        between original and approximate circuit,
-        and other entries (such as circuit parameters). {
-        'circuit':Instruction, 'overlap': float}
+        :return: RecompileInPartsResult object
         """
         logger.info("Started partial recompilation")
         start_time = timeit.default_timer()
@@ -291,8 +307,8 @@ class ApproximateRecompiler(ABC):
                 {"backend": self.backend},
             )
             partial_recompilation_result = self.recompile()
-            last_recompiled_subcircuit = partial_recompilation_result["circuit"]
-            del partial_recompilation_result["circuit"]
+            last_recompiled_subcircuit = partial_recompilation_result.circuit
+            partial_recompilation_result.circuit = None
             individual_results.append(partial_recompilation_result)
             percentage = (
                     100 * (1 + all_subcircuits.index(subcircuit)) / len(all_subcircuits)
@@ -300,18 +316,20 @@ class ApproximateRecompiler(ABC):
             logger.info(f"Completed {percentage}%  of recompilation")
 
         end_time = timeit.default_timer()
-        result_dict = {
-            "circuit": last_recompiled_subcircuit,
-            "overlap": co.calculate_overlap_between_circuits(
+
+        result = RecompileInPartsResult(
+            circuit=last_recompiled_subcircuit,
+            overlap=co.calculate_overlap_between_circuits(
                 last_recompiled_subcircuit,
                 self.circuit_to_recompile,
                 self.initial_state_circuit,
                 self.qubit_subset_to_recompile,
             ),
-            "individual_results": individual_results,
-            "time_taken": end_time - start_time,
-        }
-        return result_dict
+            individual_results=individual_results,
+            time_taken=end_time - start_time,
+        )
+
+        return result
 
     def get_recompiled_circuit(self):
         recompiled_circuit = co.circuit_by_inverting_circuit(

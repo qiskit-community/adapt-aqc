@@ -22,7 +22,7 @@ qc.ccx(2, 1, 0)
 # Recompile
 recompiler = ISLRecompiler(qc)
 result = recompiler.recompile()
-recompiled_circuit = result['circuit']
+recompiled_circuit = result.circuit
 
 # See the recompiled output
 print(f'{"-" * 10} ORIGINAL CIRCUIT {"-" * 10}')
@@ -41,7 +41,7 @@ config = ISLConfig(sufficient_cost=1e-2)
 recompiler = ISLRecompiler(qc, entanglement_measure=EM_TOMOGRAPHY_CONCURRENCE, isl_config=config)
 result = recompiler.recompile()
 print(result)
-recompiled_circuit = result['circuit']
+recompiled_circuit = result.circuit
 
 # See the original circuit
 print(f'{"-" * 10} ORIGINAL CIRCUIT {"-" * 10}')

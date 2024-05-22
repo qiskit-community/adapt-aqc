@@ -111,6 +111,62 @@ class ISLConfig:
         return representation_str
 
 
+class ISLResult:
+    def __init__(
+        self,
+        circuit,
+        overlap,
+        exact_overlap,
+        num_1q_gates,
+        num_2q_gates,
+        global_cost_history,
+        local_cost_history,
+        circuit_history,
+        entanglement_measures_history,
+        e_val_history,
+        qubit_pair_history,
+        method_history,
+        time_taken,
+        cost_evaluations,
+        coupling_map,
+        circuit_qasm,
+    ):
+        """
+        :param circuit: Resulting circuit.
+        :param overlap: 1 - final_global_cost.
+        :param exact_overlap: Only computable with SV backend.
+        :param num_1q_gates: Number of rotation gates in circuit.
+        :param num_2q_gates: Number of entangling gates in circuit.
+        :param global_cost_history: List of global costs after each layer.
+        :param local_cost_history: List of local costs after each layer (if applicable).
+        :param circuit_history: List of circuits as qasm strings after each layer (if applicable).
+        :param entanglement_measures_history: List of pairwise entanglements after each layer.
+        :param e_val_history: List of single-qubit sigma_z expectation values after each layer.
+        :param qubit_pair_history: List of qubit pair acted on in each layer.
+        :param method_history: List of methods used to select qubit pairs for each layer.
+        :param time_taken: Total time taken for recompilation.
+        :param cost_evaluations: Total number of cost evalutions during recompilation.
+        :param coupling_map: List of allowed qubit connections.
+        :param circuit_qasm: QASM string of the resulting circuit.
+        """
+        self.circuit = circuit
+        self.overlap = overlap
+        self.exact_overlap = exact_overlap
+        self.num_1q_gates = num_1q_gates
+        self.num_2q_gates = num_2q_gates
+        self.global_cost_history = global_cost_history
+        self.local_cost_history = local_cost_history
+        self.circuit_history = circuit_history
+        self.entanglement_measures_history = entanglement_measures_history
+        self.e_val_history = e_val_history
+        self.qubit_pair_history = qubit_pair_history
+        self.method_history = method_history
+        self.time_taken = time_taken
+        self.cost_evaluations = cost_evaluations
+        self.coupling_map = coupling_map
+        self.circuit_qasm = circuit_qasm
+
+
 class ISLRecompiler(ApproximateRecompiler):
     """
     Structure learning algorithm that incrementally builds a circuit that
@@ -299,11 +355,11 @@ class ISLRecompiler(ApproximateRecompiler):
             self.full_circuit, gate_range=vcr()
         )
 
-        res["circuit"] = recompiled_circuit
-        res["exact_overlap"] = exact_overlap
-        res["num_1q_gates"] = num_1q_gates
-        res["num_2q_gates"] = num_2q_gates
-        res["circuit_qasm"] = qasm2.dumps(recompiled_circuit)
+        res.circuit = recompiled_circuit
+        res.exact_overlap = exact_overlap
+        res.num_1q_gates = num_1q_gates
+        res.num_2q_gates = num_2q_gates
+        res.circuit_qasm = qasm2.dumps(recompiled_circuit)
         return res
 
     def recompile(self, initial_ansatz: QuantumCircuit = None):
@@ -313,15 +369,7 @@ class ISLRecompiler(ApproximateRecompiler):
         with instead of starting from scratch
         Termination criteria: SUFFICIENT_COST reached; max_layers reached;
         std(last_5_costs)/avg(last_5_costs) < TOL
-        :return: {'circuit':resulting circuit(Instruction),
-        'overlap':overlap(float),
-        'num_1q_gates':number of rotation gates in circuit(int),
-        'num_2q_gates':number of entangling gates in circuit(int)}
-        'circuit_history': list of circuits as qasm strings after each block is added and optimised
-        'global_cost_history': list of global costs after each layer is added
-        'local_cost_history': list of local costs after each layer is added, if optimising local cost
-        'time_taken': total time taken for recompilation
-        'circuit_qasm': QASM string of the resulting circuit
+        :return: ISLResult object
         """
         logger.info("ISL started")
         logger.debug(f"ISL coupling map {self.coupling_map}")
@@ -452,29 +500,31 @@ class ISLRecompiler(ApproximateRecompiler):
             exact_overlap = co.calculate_overlap_between_circuits(
                 self.circuit_to_recompile, co.make_quantum_only_circuit(recompiled_circuit)
             )
-        result_dict = {
-            "circuit": recompiled_circuit,
-            "overlap": 1 - final_global_cost,
-            "exact_overlap": exact_overlap,
-            "num_1q_gates": num_1q_gates,
-            "num_2q_gates": num_2q_gates,
-            "global_cost_history": global_cost_history,
-            "local_cost_history": local_cost_history if self.optimise_local_cost else None,
-            "circuit_history": circuit_history,
-            "entanglement_measures_history": self.entanglement_measures_history,
-            "e_val_history": self.e_val_history,
-            "qubit_pair_history": self.qubit_pair_history,
-            "method_history": self.pair_selection_method_history,
-            "time_taken": end_time - start_time,
-            "cost_evaluations": self.cost_evaluation_counter,
-            "coupling_map": self.coupling_map,
-            "circuit_qasm": qasm2.dumps(recompiled_circuit)
-        }
+
+        result = ISLResult(
+            circuit=recompiled_circuit,
+            overlap=1 - final_global_cost,
+            exact_overlap=exact_overlap,
+            num_1q_gates=num_1q_gates,
+            num_2q_gates=num_2q_gates,
+            global_cost_history=global_cost_history,
+            local_cost_history=local_cost_history if self.optimise_local_cost else None,
+            circuit_history=circuit_history,
+            entanglement_measures_history=self.entanglement_measures_history,
+            e_val_history=self.e_val_history,
+            qubit_pair_history=self.qubit_pair_history,
+            method_history=self.pair_selection_method_history,
+            time_taken=end_time - start_time,
+            cost_evaluations=self.cost_evaluation_counter,
+            coupling_map=self.coupling_map,
+            circuit_qasm=qasm2.dumps(recompiled_circuit),
+        )
+
         if self.save_circuit_history and self.is_aer_mps_backend:
             logger.warning("When using MPS backend, circuit history will not contain the"
                            " set_matrix_product_state instruction at the start of the circuit")
         logger.info("ISL completed")
-        return result_dict
+        return result
 
     def _debug_log_optimised_layer(self, layer_count):
         if logger.getEffectiveLevel() == 10:

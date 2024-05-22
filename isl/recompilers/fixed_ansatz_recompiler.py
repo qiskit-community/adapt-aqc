@@ -14,6 +14,38 @@ from isl.recompilers.approximate_recompiler import ApproximateRecompiler
 logger = logging.getLogger(__name__)
 
 
+class FixedAnsatzResult:
+    def __init__(
+        self,
+        circuit,
+        overlap,
+        exact_overlap,
+        num_1q_gates,
+        num_2q_gates,
+        params,
+        time_taken,
+        cost_evaluations,
+    ):
+        """
+        :param circuit: Resulting circuit.
+        :param overlap: 1 - final_global_cost.
+        :param exact_overlap: Only computable with SV backend.
+        :param num_1q_gates: Number of rotation gates in circuit.
+        :param num_2q_gates: Number of entangling gates in circuit.
+        :param params: Final parameters in the resulting circuit.
+        :param time_taken: Total time taken for recompilation.
+        :param cost_evaluations: Total number of cost evalutions during recompilation.
+        """
+        self.circuit = circuit
+        self.overlap = overlap
+        self.exact_overlap = exact_overlap
+        self.num_1q_gates = num_1q_gates
+        self.num_2q_gates = num_2q_gates
+        self.params = params
+        self.time_taken = time_taken
+        self.cost_evaluations = cost_evaluations
+
+
 class FixedAnsatzRecompiler(ApproximateRecompiler):
     """
     Recompiling algorithm that performs recompilation using a fixed ansatz
@@ -86,12 +118,7 @@ class FixedAnsatzRecompiler(ApproximateRecompiler):
     def recompile(self):
         """
         Perform recompilation algorithm
-        :return: {'circuit':resulting circuit(Instruction),
-        'overlap':overlap(float),
-        'num_1q_gates':number of rotation gates in circuit(int),
-        'num_2q_gates':number of entangling gates in circuit(int)
-        'params':final angles of variational circuit [float]}
-        'time_taken': total time taken for recompilation
+        :return: FixedAnsatzResult object
         """
         logger.info("Fixed ansatz recompilation started")
         start_time = timeit.default_timer()
@@ -122,15 +149,16 @@ class FixedAnsatzRecompiler(ApproximateRecompiler):
             qubit_subset=self.qubit_subset_to_recompile,
         )
 
-        result_dict = {
-            "circuit": recompiled_circuit,
-            "overlap": 1 - final_cost,
-            "exact_overlap": exact_overlap,
-            "num_1q_gates": num_1q_gates,
-            "num_2q_gates": num_2q_gates,
-            "params": final_angles_inv,
-            "time_taken": end_time - start_time,
-            "cost_evaluations": self.cost_evaluation_counter,
-        }
+        result = FixedAnsatzResult(
+            circuit=recompiled_circuit,
+            overlap=1 - final_cost,
+            exact_overlap=exact_overlap,
+            num_1q_gates=num_1q_gates,
+            num_2q_gates=num_2q_gates,
+            params=final_angles_inv,
+            time_taken=end_time - start_time,
+            cost_evaluations=self.cost_evaluation_counter,
+        )
+
         logger.info("Fixed ansatz recompilation completed")
-        return result_dict
+        return result

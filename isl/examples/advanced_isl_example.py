@@ -47,8 +47,8 @@ isl_recompiler = ISLRecompiler(
 )
 
 result = isl_recompiler.recompile()
-approx_circuit = result["circuit"]
-print(f"Overlap between circuits is {result['overlap']}")
+approx_circuit = result.circuit
+print(f"Overlap between circuits is {result.overlap}")
 
 # Transpile the original circuits to the common basis set with maximum Qiskit optimization
 qc_in_basis_gates = transpile(

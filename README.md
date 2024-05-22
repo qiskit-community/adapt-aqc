@@ -55,7 +55,7 @@ qc.ccx(2,1,0)
 # Recompile
 recompiler = ISLRecompiler(qc)
 result = recompiler.recompile()
-recompiled_circuit = result['circuit']
+recompiled_circuit = result.circuit
 
 # See the recompiled output
 print(recompiled_circuit)
@@ -81,7 +81,7 @@ for i, (instr, _, _) in enumerate(qc.data):
 config = ISLConfig(sufficient_cost=1e-2, max_2q_gates=25)
 recompiler = ISLRecompiler(qc, entanglement_measure='EM_TOMOGRAPHY_CONCURRENCE', isl_config=config)
 result = recompiler.recompile()
-recompiled_circuit = result['circuit']
+recompiled_circuit = result.circuit
 
 # See the original circuit
 print(qc)

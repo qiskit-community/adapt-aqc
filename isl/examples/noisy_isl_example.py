@@ -35,10 +35,10 @@ isl_recompiler = ISLRecompiler(
 )
 
 result = isl_recompiler.recompile()
-approx_circuit = result["circuit"]
+approx_circuit = result.circuit
 print(approx_circuit)
-print(f"Overlap between circuits is {result['exact_overlap']}")
-print(result["cost_evaluations"])
+print(f"Overlap between circuits is {result.exact_overlap}")
+print(result.cost_evaluations)
 qc.measure_all()
 approx_circuit.measure_all()
 exact_counts = co.run_circuit_with_transpilation(
