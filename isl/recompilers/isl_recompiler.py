@@ -247,6 +247,7 @@ class ISLRecompiler(ApproximateRecompiler):
             self.save_previous_layer_mps_cuquantum = False
 
         self.resume_from_layer = None
+        self.time_taken_before_current_load = 0
 
     def construct_layer_2q_gate(self, custom_layer_2q_gate):
         if custom_layer_2q_gate is None:
@@ -330,6 +331,7 @@ class ISLRecompiler(ApproximateRecompiler):
         'time_taken': total time taken for recompilation
         'circuit_qasm': QASM string of the resulting circuit
         """
+        start_time = timeit.default_timer()
         # self.resume_from_layer is None when ISLRecompiler is first instantiated. If the recompiler
         # is saved part-way through recompilation and re-loaded, self.resume_from_layer tells
         # ISLRecompiler.recompile() where to resume from.
@@ -337,7 +339,6 @@ class ISLRecompiler(ApproximateRecompiler):
             start_point = 0
             logger.info("ISL started")
             logger.debug(f"ISL coupling map {self.coupling_map}")
-            self.start_time = timeit.default_timer()
             self.cost_evaluation_counter = 0
             self.global_cost, self.local_cost, num_1q_gates, num_2q_gates = None, None, None, None
 
@@ -376,6 +377,7 @@ class ISLRecompiler(ApproximateRecompiler):
                     )
         else:
             start_point = self.resume_from_layer
+            self.time_taken_before_current_load += self.time_taken_between_load_and_save
             logger.info(f"ISL resuming from layer: {start_point}")
         
         # Only relevant if save_frequency != 0 and delete_previous_file=True
@@ -445,6 +447,7 @@ class ISLRecompiler(ApproximateRecompiler):
             # If required, save the recompiler object to a .npy file, to resume recompilation later
             if save_frequency != 0 and layer_count != 0 and layer_count % save_frequency == 0:
                 self.resume_from_layer = layer_count + 1
+                self.time_taken_between_load_and_save = timeit.default_timer() - start_time
                 file_name = f"recompiler_after_layer_{layer_count}.npy"
                 np.save(file_name, np.array([self], dtype=object))
                 if file_to_delete is not None:
@@ -493,7 +496,7 @@ class ISLRecompiler(ApproximateRecompiler):
             "e_val_history": self.e_val_history,
             "qubit_pair_history": self.qubit_pair_history,
             "method_history": self.pair_selection_method_history,
-            "time_taken": end_time - self.start_time,       # TODO fix this
+            "time_taken": end_time - start_time + self.time_taken_before_current_load,  # NOTE still not entirely working
             "cost_evaluations": self.cost_evaluation_counter,
             "coupling_map": self.coupling_map,
             "circuit_qasm": qasm2.dumps(recompiled_circuit)
