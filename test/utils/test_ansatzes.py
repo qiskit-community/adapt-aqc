@@ -26,7 +26,7 @@ class TestAnsatzes(TestCase):
 
                 result = isl_recompiler.recompile()
 
-                approx_circuit = result["circuit"]
+                approx_circuit = result.circuit
 
                 overlap = co.calculate_overlap_between_circuits(approx_circuit, qc)
                 assert overlap > 1 - DEFAULT_SUFFICIENT_COST
@@ -49,7 +49,7 @@ class TestAnsatzes(TestCase):
 
                 result = isl_recompiler.recompile()
 
-                approx_circuit = result["circuit"]
+                approx_circuit = result.circuit
 
                 overlap = co.calculate_overlap_between_circuits(approx_circuit, qc)
                 assert overlap > 1 - DEFAULT_SUFFICIENT_COST
@@ -120,7 +120,7 @@ class TestAnsatzes(TestCase):
                                               custom_layer_2q_gate=thinly_dressed_cnot())
         custom_result = custom_isl_recompiler.recompile()
 
-        self.assertEqual(default_result.get("overlap"), custom_result.get("overlap"))
+        self.assertEqual(default_result.overlap, custom_result.overlap)
 
     def test_given_use_rotoselect_false_when_add_layer_then_rotation_axes_unchanged(self):
         for ansatz in self.ansatz_list:
@@ -146,7 +146,7 @@ class TestAnsatzes(TestCase):
                 isl_recompiler = ISLRecompiler(qc, custom_layer_2q_gate=ansatz(),
                                             use_rotoselect=False)
                 result = isl_recompiler.recompile()
-                overlap = co.calculate_overlap_between_circuits(qc, result['circuit'])
+                overlap = co.calculate_overlap_between_circuits(qc, result.circuit)
                 self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
 
     def test_given_xxx_state_and_heisenberg_ansatz_when_compile_without_rotoselect_then_works(self):
@@ -155,6 +155,6 @@ class TestAnsatzes(TestCase):
         qc = trotter_circuit(qc, dt=0.1, delta=1.0, num_trotter_steps=2, second_order=False)
         isl_recompiler = ISLRecompiler(qc, custom_layer_2q_gate=heisenberg(), use_rotoselect=False)
         result = isl_recompiler.recompile()
-        overlap = co.calculate_overlap_between_circuits(qc, result['circuit'])
+        overlap = co.calculate_overlap_between_circuits(qc, result.circuit)
         self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
 

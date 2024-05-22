@@ -27,7 +27,7 @@ class TestISL(TestCase):
                                        isl_config=ISLConfig(sufficient_cost=1e-2))
 
         result = isl_recompiler.recompile()
-        approx_circuit = result["circuit"]
+        approx_circuit = result.circuit
 
         overlap = co.calculate_overlap_between_circuits(approx_circuit, qc)
         assert overlap > 1 - DEFAULT_SUFFICIENT_COST
@@ -40,7 +40,7 @@ class TestISL(TestCase):
         isl_recompiler_qasm = ISLRecompiler(qc, backend=QASM_SIM, execute_kwargs={'shots': shots})
 
         result_qasm = isl_recompiler_qasm.recompile()
-        approx_circuit_qasm = result_qasm["circuit"]
+        approx_circuit_qasm = result_qasm.circuit
         overlap = co.calculate_overlap_between_circuits(approx_circuit_qasm, qc)
         assert overlap > 1 - DEFAULT_SUFFICIENT_COST - 5 / np.sqrt(shots)
 
@@ -52,7 +52,7 @@ class TestISL(TestCase):
         isl_recompiler_mps = ISLRecompiler(qc, backend=MPS_SIM, execute_kwargs={'shots': shots})
 
         result_mps = isl_recompiler_mps.recompile()
-        approx_circuit_mps = result_mps["circuit"]
+        approx_circuit_mps = result_mps.circuit
 
         overlap = co.calculate_overlap_between_circuits(approx_circuit_mps, qc)
         assert overlap > 1 - DEFAULT_SUFFICIENT_COST - 5 / np.sqrt(shots)
@@ -66,7 +66,7 @@ class TestISL(TestCase):
         recompiler = ISLRecompiler(mps, backend=MPS_SIM)
 
         result = recompiler.recompile()
-        approx_circuit = result["circuit"]
+        approx_circuit = result.circuit
 
         overlap = co.calculate_overlap_between_circuits(approx_circuit, qc)
         assert overlap > 1 - DEFAULT_SUFFICIENT_COST
@@ -84,7 +84,7 @@ class TestISL(TestCase):
                                        isl_config=ISLConfig(sufficient_cost=1e-2))
 
         result = isl_recompiler.recompile()
-        approx_circuit = result["circuit"]
+        approx_circuit = result.circuit
 
         overlap = co.calculate_overlap_between_circuits(approx_circuit, qc)
         assert overlap > 1 - DEFAULT_SUFFICIENT_COST
@@ -96,9 +96,9 @@ class TestISL(TestCase):
         isl_recompiler = ISLRecompiler(qc)
 
         result = isl_recompiler.recompile()
-        approx_circuit = result["circuit"]
-        approx_overlap = result["overlap"]
-        exact_overlap = result["exact_overlap"]
+        approx_circuit = result.circuit
+        approx_overlap = result.overlap
+        exact_overlap = result.exact_overlap
         self.assertAlmostEquals(approx_overlap, exact_overlap, delta=1e-2)
 
     def test_exact_overlap_calculated_correctly(self):
@@ -108,8 +108,8 @@ class TestISL(TestCase):
         isl_recompiler = ISLRecompiler(qc)
 
         result = isl_recompiler.recompile()
-        approx_circuit = result["circuit"]
-        exact_overlap1 = result["exact_overlap"]
+        approx_circuit = result.circuit
+        exact_overlap1 = result.exact_overlap
         exact_overlap2 = co.calculate_overlap_between_circuits(approx_circuit, qc)
         self.assertAlmostEquals(exact_overlap1, exact_overlap2, delta=1e-2)
 
@@ -154,7 +154,7 @@ class TestISL(TestCase):
         )
 
         result = isl_recompiler.recompile()
-        approx_circuit = result["circuit"]
+        approx_circuit = result.circuit
 
         overlap = co.calculate_overlap_between_circuits(approx_circuit, qc)
         assert overlap > 1 - DEFAULT_SUFFICIENT_COST
@@ -172,7 +172,7 @@ class TestISL(TestCase):
         isl_recompiler = ISLRecompiler(qc_mod)
 
         result = isl_recompiler.recompile_using_initial_ansatz(qc)
-        approx_circuit = result["circuit"]
+        approx_circuit = result.circuit
 
         overlap = co.calculate_overlap_between_circuits(approx_circuit, qc_mod)
         assert overlap > 1 - DEFAULT_SUFFICIENT_COST
@@ -184,7 +184,7 @@ class TestISL(TestCase):
 
         isl_recompiler = ISLRecompiler(qc, isl_config=config)
         result = isl_recompiler.recompile()
-        approx_circuit = result["circuit"]
+        approx_circuit = result.circuit
         overlap = co.calculate_overlap_between_circuits(approx_circuit, qc)
         assert overlap > 1 - DEFAULT_SUFFICIENT_COST
 
@@ -195,7 +195,7 @@ class TestISL(TestCase):
 
         isl_recompiler = ISLRecompiler(qc, isl_config=config)
         result = isl_recompiler.recompile()
-        approx_circuit = result["circuit"]
+        approx_circuit = result.circuit
         overlap = co.calculate_overlap_between_circuits(approx_circuit, qc)
         assert overlap > 1 - DEFAULT_SUFFICIENT_COST
 
@@ -206,7 +206,7 @@ class TestISL(TestCase):
 
         isl_recompiler = ISLRecompiler(qc, isl_config=config)
         result = isl_recompiler.recompile()
-        approx_circuit = result["circuit"]
+        approx_circuit = result.circuit
         overlap = co.calculate_overlap_between_circuits(approx_circuit, qc)
         assert overlap > 1 - DEFAULT_SUFFICIENT_COST
 
@@ -247,7 +247,7 @@ class TestISL(TestCase):
             recompiler = ISLRecompiler(qc, starting_circuit=starting_ansatz_circuit, initial_single_qubit_layer=boolean)
 
             result = recompiler.recompile()
-            compiled_qc: QuantumCircuit = result.get("circuit")
+            compiled_qc: QuantumCircuit = result.circuit
             del compiled_qc.data[1:]
             overlap = np.abs(np.dot(Statevector(compiled_qc).conjugate(),
                                     Statevector(starting_ansatz_circuit))) ** 2
@@ -269,7 +269,7 @@ class TestISL(TestCase):
         qc.x(3)
         recompiler = ISLRecompiler(qc)
         result = recompiler.recompile()
-        final_circuit = result.get("circuit")
+        final_circuit = result.circuit
         assert final_circuit.qregs == qc.qregs
 
     def test_given_circuit_with_cregs_when_recompiling_then_no_error(self):
@@ -287,7 +287,7 @@ class TestISL(TestCase):
 
         recompiler = ISLRecompiler(qc)
         result = recompiler.recompile()
-        final_circuit = result.get("circuit")
+        final_circuit = result.circuit
         assert final_circuit.cregs == qc.cregs
 
     # TODO this test fails when if setting initial_single_qubit_layer=True
@@ -309,8 +309,8 @@ class TestISL(TestCase):
         isl_recompiler = ISLRecompiler(qc, backend=MPS_SIM, execute_kwargs={'shots': shots}, save_circuit_history=True)
 
         result = isl_recompiler.recompile()
-        self.assertTrue(len(result["circuit_history"]) == len(result["global_cost_history"]))
-        self.assertTrue(len(result["circuit_history"][-1]) > len(result["circuit_history"][-2]))
+        self.assertTrue(len(result.circuit_history) == len(result.global_cost_history))
+        self.assertTrue(len(result.circuit_history[-1]) > len(result.circuit_history[-2]))
 
     def test_circuit_output_not_saved_when_not_flagged(self):
         qc = co.create_random_initial_state_circuit(3, seed=1)
@@ -320,7 +320,7 @@ class TestISL(TestCase):
         isl_recompiler = ISLRecompiler(qc, backend=MPS_SIM, execute_kwargs={'shots': shots})
 
         result = isl_recompiler.recompile()
-        self.assertFalse(len(result["circuit_history"]))
+        self.assertFalse(len(result.circuit_history))
 
     # TODO See above
     def test_given_circuit_with_one_measurement_when_recompiling_then_preserve_measurement(self):
@@ -331,7 +331,7 @@ class TestISL(TestCase):
         qc.measure(0, 0)
         recompiler = ISLRecompiler(qc, initial_single_qubit_layer=False)
         result = recompiler.recompile()
-        assert result["circuit"].data[-1] == qc.data[-1]
+        assert result.circuit.data[-1] == qc.data[-1]
 
     # TODO See above
     def test_given_circuit_with_multi_measurement_when_recompiling_then_preserve_measurement(self):
@@ -344,7 +344,7 @@ class TestISL(TestCase):
             qc.measure(i, i)
         recompiler = ISLRecompiler(qc, initial_single_qubit_layer=False)
         result = recompiler.recompile()
-        assert result["circuit"].data[-num_measurements:] == qc.data[-num_measurements:]
+        assert result.circuit.data[-num_measurements:] == qc.data[-num_measurements:]
 
     def test_given_recompiler_when_float_cost_improvement_num_layers_then_no_error(self):
         qc = co.create_random_initial_state_circuit(3)
@@ -356,7 +356,7 @@ class TestISL(TestCase):
         qc = co.create_random_initial_state_circuit(3)
         recompiler = ISLRecompiler(qc, initial_single_qubit_layer=True)
         result = recompiler.recompile()
-        approx_circuit = result["circuit"]
+        approx_circuit = result.circuit
         overlap = co.calculate_overlap_between_circuits(approx_circuit, qc)
         self.assertTrue(overlap > 1 - DEFAULT_SUFFICIENT_COST)
 
@@ -364,7 +364,7 @@ class TestISL(TestCase):
         qc = QuantumCircuit(3)
         recompiler = ISLRecompiler(qc, initial_single_qubit_layer=True)
         result = recompiler.recompile()
-        approx_circuit = result["circuit"]
+        approx_circuit = result.circuit
         self.assertEqual(approx_circuit.depth(), 0, "Depth of solution should be zero")
 
     def test_given_isql_when_compiling_then_ansatz_starts_with_n_single_qubit_gates(self):
@@ -379,15 +379,15 @@ class TestISL(TestCase):
         for instr in ansatz[:n]:
             self.assertIn(instr[0].name, ["rx", "ry", "rz"])
 
-    def test_given_isql_when_compiling_then_results_dict_elements_correct_length(self):
+    def test_given_isql_when_compiling_then_results_object_elements_correct_length(self):
         qc = QuantumCircuit(3)
         recompiler = ISLRecompiler(qc, initial_single_qubit_layer=True)
         result = recompiler.recompile()
-        self.assertTrue(len(result.get("global_cost_history"))
-                        == len(result.get("entanglement_measures_history"))
-                        == len(result.get("e_val_history"))
-                        == len(result.get("qubit_pair_history"))
-                        == len(result.get("method_history")))
+        self.assertTrue(len(result.global_cost_history)
+                        == len(result.entanglement_measures_history)
+                        == len(result.e_val_history)
+                        == len(result.qubit_pair_history)
+                        == len(result.method_history))
 
     def test_given_isl_mode_when_compile_circuit_with_very_small_entanglement_then_heuristic_method_used(self):
         qc = QuantumCircuit(2)
@@ -396,7 +396,7 @@ class TestISL(TestCase):
 
         recompiler = ISLRecompiler(qc, entanglement_measure=EM_TOMOGRAPHY_NEGATIVITY)
         result = recompiler.recompile()
-        self.assertTrue("heuristic" in result.get("method_history"))
+        self.assertTrue("heuristic" in result.method_history)
 
     @patch.object(ISLRecompiler, '_measure_qubit_expectation_values')
     def test_given_entanglement_when_find_highest_entanglement_pair_then_evals_not_evaluated(self, mock_get_evals):
@@ -447,13 +447,13 @@ class TestISL(TestCase):
 
         num_1q_gates = 0
         num_2q_gates = 0
-        for instr in result['circuit'].data:
+        for instr in result.circuit.data:
             if instr.operation.name == 'cx':
                 num_2q_gates += 1
             elif instr.operation.name == 'rx' or 'ry' or 'rz':
                 num_1q_gates += 1
 
-        self.assertEqual((num_1q_gates, num_2q_gates), (result['num_1q_gates'], result['num_2q_gates']))
+        self.assertEqual((num_1q_gates, num_2q_gates), (result.num_1q_gates, result.num_2q_gates))
 
     def test_given_wrong_reuse_prio_mode_when_compile_then_error(self):
         qc = co.create_random_initial_state_circuit(4)
@@ -575,7 +575,7 @@ class TestISL(TestCase):
                     initial_single_qubit_layer=isql,
                 )
                 result = recompiler.recompile()
-                overlap = co.calculate_overlap_between_circuits(qc, result["circuit"])
+                overlap = co.calculate_overlap_between_circuits(qc, result.circuit)
 
                 self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
 
@@ -617,7 +617,7 @@ class TestISL(TestCase):
         qc = co.create_random_initial_state_circuit(3)
         recompiler = ISLRecompiler(qc, optimise_local_cost=True)
         result = recompiler.recompile()
-        circuit = result["circuit"]
+        circuit = result.circuit
         overlap = co.calculate_overlap_between_circuits(qc, circuit)
         self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
 
@@ -628,9 +628,10 @@ class TestISL(TestCase):
         qc = co.create_random_initial_state_circuit(3)
         recompiler = ISLRecompiler(qc, optimise_local_cost=True)
         result = recompiler.recompile()
-        self.assertEqual(len(result["global_cost_history"]), len(result["local_cost_history"]))
-        for global_cost, local_cost in zip(result["global_cost_history"], result["local_cost_history"]):
-            self.assertGreaterEqual(global_cost, local_cost)
+        self.assertEqual(len(result.global_cost_history), len(result.local_cost_history))
+        for global_cost, local_cost in zip(result.global_cost_history, result.local_cost_history):
+            self.assertGreaterEqual(np.round(global_cost, 15), np.round(local_cost, 15))
+
 
     def test_given_save_and_resume_recompilation_then_results_equal(self):
 
@@ -678,7 +679,7 @@ class TestISLQulacs(TestCase):
         isl_recompiler = ISLRecompiler(qc, backend="qulacs", isl_config=config)
 
         result = isl_recompiler.recompile()
-        approx_circuit = result["circuit"]
+        approx_circuit = result.circuit
 
         overlap = co.calculate_overlap_between_circuits(approx_circuit, qc)
         assert overlap > 1 - DEFAULT_SUFFICIENT_COST
@@ -699,7 +700,7 @@ class TestISLQulacs(TestCase):
         isl_recompiler = ISLRecompiler(qc, backend="qulacs")
         result = isl_recompiler.recompile(qc.copy())
         num_2q_before = co.find_num_gates(qc)[0]
-        num_2q_after = co.find_num_gates(result["circuit"])[0]
+        num_2q_after = co.find_num_gates(result.circuit)[0]
         self.assertLessEqual(num_2q_after, num_2q_before)
 
 try:
@@ -732,7 +733,7 @@ class TestISLCuquantum(TestCase):
         config = ISLConfig(rotosolve_tol=1e-1)
         recompiler = ISLRecompiler(qc, backend=CUQUANTUM_SIM, isl_config=config)
         result = recompiler.recompile()
-        overlap = co.calculate_overlap_between_circuits(qc, result['circuit'])
+        overlap = co.calculate_overlap_between_circuits(qc, result.circuit)
         self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
 
     def test_given_cuquantum_backend_when_recompile_with_starting_circuit_then_works(self):
@@ -744,7 +745,7 @@ class TestISLCuquantum(TestCase):
             qc, backend=CUQUANTUM_SIM, starting_circuit=starting_circuit, isl_config=config
         )
         result = recompiler.recompile()
-        overlap = co.calculate_overlap_between_circuits(qc, result['circuit'])
+        overlap = co.calculate_overlap_between_circuits(qc, result.circuit)
         self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
 
     def test_given_cuquantum_backend_when_recompile_and_save_previous_layer_mps_then_works(self):
@@ -758,7 +759,7 @@ class TestISLCuquantum(TestCase):
                     qc, backend=CUQUANTUM_SIM, isl_config=config, starting_circuit=sc,
                     initial_single_qubit_layer=isql)
                 result = recompiler.recompile()
-                overlap = co.calculate_overlap_between_circuits(qc, result['circuit'])
+                overlap = co.calculate_overlap_between_circuits(qc, result.circuit)
                 self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
 
     def test_given_cuquantum_when_add_layers_then_mps_same_with_and_without_layer_caching(self):

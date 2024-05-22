@@ -13,6 +13,6 @@ qc = co.unroll_to_basis_gates(qc)
 isl_recompiler = ISLRecompiler(qc)
 
 result = isl_recompiler.recompile_in_parts(20)
-approx_circuit = result["circuit"]
+approx_circuit = result.circuit
 print(approx_circuit)
-print(f"Overlap between circuits is {result['overlap']}")
+print(f"Overlap between circuits is {result.overlap}")

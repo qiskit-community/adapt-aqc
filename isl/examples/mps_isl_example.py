@@ -31,7 +31,7 @@ qc.h(range(4, n))
 isl_recompiler = ISLRecompiler(qc, backend=MPS_SIM, initial_single_qubit_layer=True)
 
 result = isl_recompiler.recompile()
-print(f"Overlap between circuits is {result['overlap']}")
+print(f"Overlap between circuits is {result.overlap}")
 
 # --------------------------------------------------------------------------------
 # Extra MPS features
@@ -49,4 +49,4 @@ mps = rand_mps_vec(4)
 isl_recompiler = ISLRecompiler(target=mps, backend=mps_backend)
 
 result = isl_recompiler.recompile()
-print(f"Overlap between circuits is {result['overlap']}")
+print(f"Overlap between circuits is {result.overlap}")

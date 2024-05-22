@@ -22,6 +22,6 @@ result_4 = recompiler_4.recompile()
 
 
 # Comparison
-print(result["time_taken"])
-print(result_4["time_taken"])
-print(co.calculate_overlap_between_circuits(result["circuit"], result_4["circuit"]))
+print(result.time_taken)
+print(result_4.time_taken)
+print(co.calculate_overlap_between_circuits(result.circuit, result_4.circuit))

@@ -13,6 +13,35 @@ from isl.utils.constants import coupling_map_linear
 logger = logging.getLogger(__name__)
 
 
+class RotoselectResult:
+    def __init__(
+        self,
+        circuit,
+        overlap,
+        exact_overlap,
+        num_1q_gates,
+        num_2q_gates,
+        time_taken,
+        cost_evaluations,
+    ):
+        """
+        :param circuit: Resulting circuit.
+        :param overlap: 1 - final_global_cost.
+        :param exact_overlap: Only computable with SV backend.
+        :param num_1q_gates: Number of rotation gates in circuit.
+        :param num_2q_gates: Number of entangling gates in circuit.
+        :param time_taken: Total time taken for recompilation.
+        :param cost_evaluations: Total number of cost evalutions during recompilation.
+        """
+        self.circuit = circuit
+        self.overlap = overlap
+        self.exact_overlap = exact_overlap
+        self.num_1q_gates = num_1q_gates
+        self.num_2q_gates = num_2q_gates
+        self.time_taken = time_taken
+        self.cost_evaluations = cost_evaluations
+
+
 class RotoselectRecompiler(ApproximateRecompiler):
     """
     Structural learning algorithm that performs recompilation using the
@@ -69,11 +98,7 @@ class RotoselectRecompiler(ApproximateRecompiler):
     def recompile(self, gap_between_minima=None, first_minima_loc=None):
         """
         Perform recompilation algorithm
-        :return: {'circuit':resulting circuit(Instruction),
-        'overlap':overlap(float),
-        'num_1q_gates':number of rotation gates in circuit(int),
-        'num_2q_gates':number of entangling gates in circuit(int)}
-        'time_taken': total time taken for recompilation
+        :return: RotoselectResult object
         """
         logger.info("ROTOSELECT recompilation started")
         start_time = timeit.default_timer()
@@ -119,17 +144,18 @@ class RotoselectRecompiler(ApproximateRecompiler):
             qubit_subset=self.qubit_subset_to_recompile,
         )
 
-        result_dict = {
-            "circuit": self.get_recompiled_circuit(),
-            "overlap": 1 - final_cost,
-            "exact_overlap": exact_overlap,
-            "num_1q_gates": num_1q_gates,
-            "num_2q_gates": num_2q_gates,
-            "time_taken": end_time - start_time,
-            "cost_evaluations": self.cost_evaluation_counter,
-        }
+        result = RotoselectResult(
+            circuit=self.get_recompiled_circuit(),
+            overlap=1 - final_cost,
+            exact_overlap=exact_overlap,
+            num_1q_gates=num_1q_gates,
+            num_2q_gates=num_2q_gates,
+            time_taken=end_time - start_time,
+            cost_evaluations=self.cost_evaluation_counter,
+        )
+
         logger.info("ROTOSELECT recompilation completed")
-        return result_dict
+        return result
 
     def prepare_rotoselect_circuit(self):
         variational_circuit = QuantumCircuit(len(self.qubit_subset_to_recompile))

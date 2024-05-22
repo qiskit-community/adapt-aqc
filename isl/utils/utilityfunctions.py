@@ -270,3 +270,13 @@ def has_stopped_improving(cost_history, rel_tol=1e-2):
         return grad > -1 * rel_tol
     except np.linalg.LinAlgError:
         return False
+
+
+def multi_qubit_gate_depth(qc: QuantumCircuit) -> int:
+    """
+    Return the multi-qubit gate depth.
+    
+    When the circuit has been transpiled for IBM Quantum hardware
+    this will be equivalent to the CNOT depth.
+    """
+    return qc.depth(filter_function=lambda instr: len(instr.qubits) > 1)

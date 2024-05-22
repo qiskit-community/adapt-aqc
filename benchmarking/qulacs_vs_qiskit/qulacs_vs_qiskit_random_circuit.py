@@ -34,12 +34,12 @@ def run_random_circuits(n_max, depth, backend, n_repeats):
                                        backend=backend, execute_kwargs={})
             result = recompiler.recompile()
 
-            overlap = result['overlap']
+            overlap = result.overlap
             if 1 - overlap > DEFAULT_SUFFICIENT_COST:
                 # This is our marker for an aborted run
                 time = -1
             else:
-                time = result['time_taken']
+                time = result.time_taken
             times_per_repeat.append(time)
         times_per_qubit.append(times_per_repeat)
 

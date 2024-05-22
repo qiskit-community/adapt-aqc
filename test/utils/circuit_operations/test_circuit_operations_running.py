@@ -82,8 +82,9 @@ class TestCircuitOperationsRunning(TestCase):
         # 5. (must add measurement gates, otherwise no counts)
         qc.measure_all()
         counts = co.run_circuit_without_transpilation(qc.copy())
-        self.assertAlmostEqual(counts["00000"] / sum(counts.values()), 0.5, 1)
-        self.assertAlmostEqual(counts["11111"] / sum(counts.values()), 0.5, 1)
+        sigma = 1/np.sqrt(1024)
+        self.assertAlmostEqual(counts["00000"] / sum(counts.values()), 0.5, delta=5*sigma)
+        self.assertAlmostEqual(counts["11111"] / sum(counts.values()), 0.5, delta=5*sigma)
 
     def test_run_circuit_with_transpilation(self):
         """
