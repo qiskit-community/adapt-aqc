@@ -1,8 +1,10 @@
 """Contains ISLRecompiler"""
 
 import logging
+import pickle
 import timeit
 import os
+from pathlib import Path
 
 import aqc_research.mps_operations as mpsops
 import numpy as np
@@ -284,7 +286,7 @@ class ISLRecompiler(ApproximateRecompiler):
         self.pair_selection_method_history = []
         self.entanglement_measures_history = []
         self.e_val_history = []
-
+        self.time_taken = None
         self.debug_log_full_ansatz = debug_log_full_ansatz
 
         self.initial_single_qubit_layer = initial_single_qubit_layer
@@ -303,7 +305,7 @@ class ISLRecompiler(ApproximateRecompiler):
             self.save_previous_layer_mps_cuquantum = False
 
         self.resume_from_layer = None
-        self.time_taken_before_current_load = 0
+        self.prev_checkpoint_time_taken = None
 
     def construct_layer_2q_gate(self, custom_layer_2q_gate):
         if custom_layer_2q_gate is None:
@@ -366,24 +368,26 @@ class ISLRecompiler(ApproximateRecompiler):
         res.circuit_qasm = qasm2.dumps(recompiled_circuit)
         return res
 
-    def recompile(self, initial_ansatz: QuantumCircuit = None, save_frequency=0, delete_previous_file=False):
+    def recompile(self, initial_ansatz: QuantumCircuit = None, checkpoint_every=0,
+                  checkpoint_dir='checkpoint/', delete_previous_file=False):
         """
         Perform recompilation algorithm.
         :param initial_ansatz: A trial ansatz to start the recompilation
         with instead of starting from scratch
-        :param save_frequency: If save_frequency = n != 0, recompiler object will be saved to a file
-        after layers n, 2n, 3n, ... have been added.
-        :param delete_previous_file: If True and save_frequency != 0, delete previous saved
+        :param checkpoint_every: If checkpoint_every = n != 0, recompiler object will be saved to a
+        file after layers n, 2n, 3n, ... have been added.
+        :param checkpoint_dir: Directory to place checkpoints in. Will be created if not already
+        existing.
+        :param delete_previous_file: If True and checkpoint_every != 0, delete previous saved
         recompiler object each time a new one is saved.
         Termination criteria: SUFFICIENT_COST reached; max_layers reached;
         std(last_5_costs)/avg(last_5_costs) < TOL
         :return: ISLResult object
         """
+
         start_time = timeit.default_timer()
-        # self.resume_from_layer is None when ISLRecompiler is first instantiated. If the recompiler
-        # is saved part-way through recompilation and re-loaded, self.resume_from_layer tells
-        # ISLRecompiler.recompile() where to resume from.
         if self.resume_from_layer is None:
+            self.time_taken = 0
             start_point = 0
             logger.info("ISL started")
             logger.debug(f"ISL coupling map {self.coupling_map}")
@@ -425,11 +429,12 @@ class ISLRecompiler(ApproximateRecompiler):
                     )
         else:
             start_point = self.resume_from_layer
-            self.time_taken_before_current_load += self.time_taken_between_load_and_save
+            self.time_taken = self.prev_checkpoint_time_taken
             logger.info(f"ISL resuming from layer: {start_point}")
         
-        # Only relevant if save_frequency != 0 and delete_previous_file=True
-        file_to_delete = None
+        if checkpoint_every > 0:
+            file_to_delete = None
+            Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
 
         for layer_count in range(start_point, self.isl_config.max_layers):
             if self.initial_ansatz_already_successful:
@@ -492,16 +497,16 @@ class ISLRecompiler(ApproximateRecompiler):
                 self.compiling_finished = True
                 break
 
-            # If required, save the recompiler object to a .npy file, to resume recompilation later
-            if save_frequency != 0 and layer_count != 0 and layer_count % save_frequency == 0:
+            if checkpoint_every > 0 and layer_count % checkpoint_every == 0:
                 self.resume_from_layer = layer_count + 1
-                self.time_taken_between_load_and_save = timeit.default_timer() - start_time
-                file_name = f"recompiler_after_layer_{layer_count}.npy"
-                np.save(file_name, np.array([self], dtype=object))
+                current_chkpt_time_taken = timeit.default_timer() - start_time
+                self.prev_checkpoint_time_taken = self.time_taken + current_chkpt_time_taken
+                file_name = str(layer_count)
+                with open(os.path.join(checkpoint_dir, file_name), 'wb') as f:
+                    pickle.dump(self, f)
                 if file_to_delete is not None:
                     os.remove(file_to_delete)
                 file_to_delete = file_name if delete_previous_file else None
-
 
         # Perform a final optimisation
         if self.perform_final_minimisation:
@@ -545,7 +550,7 @@ class ISLRecompiler(ApproximateRecompiler):
             e_val_history=self.e_val_history,
             qubit_pair_history=self.qubit_pair_history,
             method_history=self.pair_selection_method_history,
-            time_taken=end_time - start_time + self.time_taken_before_current_load,  # NOTE still not entirely working
+            time_taken=self.time_taken + (timeit.default_timer() - start_time),
             cost_evaluations=self.cost_evaluation_counter,
             coupling_map=self.coupling_map,
             circuit_qasm=qasm2.dumps(recompiled_circuit),

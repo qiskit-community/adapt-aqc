@@ -1,20 +1,20 @@
 import logging
 import os
+import pickle
+import tempfile
 from unittest import TestCase
 from unittest.mock import patch
 
 import numpy as np
-from qiskit import ClassicalRegister, QuantumCircuit, QuantumRegister, qasm2
+from aqc_research.mps_operations import mps_from_circuit, mps_dot
+from qiskit import ClassicalRegister, QuantumCircuit, QuantumRegister
 from qiskit.quantum_info import Statevector
 
 import isl.utils.circuit_operations as co
-import isl.utils.cuquantum_functions as cu
 from isl.recompilers import ISLConfig, ISLRecompiler
 from isl.utils.circuit_operations import QASM_SIM, SV_SIM, MPS_SIM, CUQUANTUM_SIM
 from isl.utils.constants import DEFAULT_SUFFICIENT_COST
 from isl.utils.entanglement_measures import EM_TOMOGRAPHY_NEGATIVITY
-
-from aqc_research.mps_operations import mps_from_circuit, mps_dot
 
 
 class TestISL(TestCase):
@@ -632,30 +632,26 @@ class TestISL(TestCase):
         for global_cost, local_cost in zip(result.global_cost_history, result.local_cost_history):
             self.assertGreaterEqual(np.round(global_cost, 15), np.round(local_cost, 15))
 
-
-    def test_given_save_and_resume_recompilation_then_results_equal(self):
-
+    def test_given_save_and_resume_recompilation_then_non_time_results_equal(self):
         qc = co.create_random_initial_state_circuit(3)
-
-        # Recompile and save after layer 1, 2, ...
         recompiler = ISLRecompiler(qc)
-        result = recompiler.recompile(save_frequency=1)
-
-        # Load recompiler after layer 1
-        recompiler_1 = np.load("recompiler_after_layer_1.npy", allow_pickle=True)[0]
-        result_1 = recompiler_1.recompile()
-
-        # Remove file created by test
-        cwd = os.getcwd()
-        for fname in os.listdir(cwd):
-            if fname.startswith("recompiler_after_layer"):
-                os.remove(os.path.join(cwd, fname))
-
-        # Compare both results, NOTE time_taken is currently not working
-        for key in result.__dict__.keys():
-            if key != "time_taken":
+        with tempfile.TemporaryDirectory() as d:
+            result = recompiler.recompile(checkpoint_every=1, checkpoint_dir=d)
+            with open(os.path.join(d, "1"), 'rb') as myfile:
+                loaded_recompiler = pickle.load(myfile)
+            result_1 = loaded_recompiler.recompile()
+            for key in result.__dict__.keys():
                 self.assertEqual(result.__dict__[key], result_1.__dict__[key])
 
+    def test_given_save_and_resume_recompilation_then_time_taken_within_1second(self):
+        qc = co.create_random_initial_state_circuit(4)
+        recompiler = ISLRecompiler(qc)
+        with tempfile.TemporaryDirectory() as d:
+            result = recompiler.recompile(checkpoint_every=1, checkpoint_dir=d)
+            with open(os.path.join(d, "1"), 'rb') as myfile:
+                loaded_recompiler = pickle.load(myfile)
+            result_1 = loaded_recompiler.recompile()
+            self.assertAlmostEqual(result.time_taken, result_1.time_taken, delta=1)
 
 try:
     import qulacs
