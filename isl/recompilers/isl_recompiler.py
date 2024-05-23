@@ -432,7 +432,6 @@ class ISLRecompiler(ApproximateRecompiler):
             logger.info(f"ISL resuming from layer: {start_point}")
         
         if checkpoint_every > 0:
-            self.chkpt_to_delete = None
             Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
 
         for layer_count in range(start_point, self.isl_config.max_layers):
@@ -497,7 +496,8 @@ class ISLRecompiler(ApproximateRecompiler):
                 break
 
             if checkpoint_every > 0 and layer_count % checkpoint_every == 0:
-                self.checkpoint(checkpoint_dir, delete_prev_chkpt, layer_count, start_time)
+                self.checkpoint(checkpoint_every, checkpoint_dir, delete_prev_chkpt, layer_count,
+                                start_time)
 
         # Perform a final optimisation
         if self.perform_final_minimisation:
@@ -517,8 +517,8 @@ class ISLRecompiler(ApproximateRecompiler):
         final_global_cost = self._evaluate_global_cost()
         logger.info(f"Final global cost: {final_global_cost}")
         if checkpoint_every > 0:
-            self.checkpoint(checkpoint_dir, delete_prev_chkpt, len(self.qubit_pair_history) - 1,
-                            start_time)
+            self.checkpoint(checkpoint_every, checkpoint_dir, delete_prev_chkpt,
+                            len(self.qubit_pair_history) - 1, start_time)
         recompiled_circuit = self.get_recompiled_circuit()
 
         num_2q_gates, num_1q_gates = co.find_num_gates(recompiled_circuit)
@@ -554,7 +554,7 @@ class ISLRecompiler(ApproximateRecompiler):
         logger.info("ISL completed")
         return result
 
-    def checkpoint(self, checkpoint_dir, delete_prev_chkpt, layer_count,
+    def checkpoint(self, checkpoint_every, checkpoint_dir, delete_prev_chkpt, layer_count,
                    start_time):
         self.resume_from_layer = layer_count + 1
         current_chkpt_time_taken = timeit.default_timer() - start_time
@@ -562,9 +562,11 @@ class ISLRecompiler(ApproximateRecompiler):
         file_name = str(layer_count)
         with open(os.path.join(checkpoint_dir, file_name), 'wb') as f:
             pickle.dump(self, f)
-        if self.chkpt_to_delete is not None:
-            os.remove(os.path.join(checkpoint_dir, self.chkpt_to_delete))
-        self.chkpt_to_delete = str(layer_count) if delete_prev_chkpt else None
+        if delete_prev_chkpt:
+            try:
+                os.remove(os.path.join(checkpoint_dir, str(layer_count - checkpoint_every)))
+            except FileNotFoundError:
+                pass
 
     def _debug_log_optimised_layer(self, layer_count):
         if logger.getEffectiveLevel() == 10:

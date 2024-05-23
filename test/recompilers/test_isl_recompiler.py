@@ -650,6 +650,17 @@ class TestISLCheckpointing(TestCase):
             recompiler.recompile(checkpoint_every=1, checkpoint_dir=d, delete_prev_chkpt=True)
             self.assertEqual(len(os.listdir(d)), 1)
 
+    def test_given_delete_prev_chkpt_when_save_then_load_then_load_checkpoint_deleted(self):
+        qc = co.create_random_initial_state_circuit(3)
+        recompiler = ISLRecompiler(qc, isl_config=ISLConfig(max_layers=2))
+        with tempfile.TemporaryDirectory() as d:
+            recompiler.recompile(checkpoint_every=1, checkpoint_dir=d, delete_prev_chkpt=True)
+            with open(os.path.join(d, "1"), 'rb') as myfile:
+                loaded_recompiler = pickle.load(myfile)
+            loaded_recompiler.recompile(checkpoint_every=1, checkpoint_dir=d,
+                                        delete_prev_chkpt=True)
+            self.assertEqual(len(os.listdir(d)), 1)
+
     def test_given_checkpoint_every_large_when_recompile_then_2_checkpoints(self):
         qc = co.create_random_initial_state_circuit(3)
         recompiler = ISLRecompiler(qc)
