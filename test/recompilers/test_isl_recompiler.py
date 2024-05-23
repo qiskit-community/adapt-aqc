@@ -665,6 +665,14 @@ class TestISLCheckpointing(TestCase):
             recompiler.recompile(checkpoint_every=0, checkpoint_dir=d)
             self.assertFalse(os.path.isdir(d))
 
+    def test_given_checkpointing_when_recompile_then_dir_created(self):
+        qc = co.create_random_initial_state_circuit(3)
+        recompiler = ISLRecompiler(qc)
+        with tempfile.TemporaryDirectory() as d:
+            shutil.rmtree(d)
+            recompiler.recompile(checkpoint_every=100, checkpoint_dir=d)
+            self.assertTrue(os.path.isdir(d))
+
     def test_given_save_and_resume_from_different_points_then_non_time_results_equal(self):
         qc = co.create_random_initial_state_circuit(3)
         recompiler = ISLRecompiler(qc)
