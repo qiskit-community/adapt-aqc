@@ -378,8 +378,7 @@ class ISLRecompiler(ApproximateRecompiler):
         file after layers n, 2n, 3n, ... have been added.
         :param checkpoint_dir: Directory to place checkpoints in. Will be created if not already
         existing.
-        :param delete_prev_chkpt: If True and checkpoint_every != 0, delete previous saved
-        recompiler object each time a new one is saved.
+        :param delete_prev_chkpt: Delete the last checkpoint each time a new one is made.
         Termination criteria: SUFFICIENT_COST reached; max_layers reached;
         std(last_5_costs)/avg(last_5_costs) < TOL
         :return: ISLResult object
@@ -520,8 +519,6 @@ class ISLRecompiler(ApproximateRecompiler):
         if checkpoint_every > 0:
             self.checkpoint(checkpoint_dir, delete_prev_chkpt, len(self.qubit_pair_history) - 1,
                             start_time)
-        end_time = timeit.default_timer()
-
         recompiled_circuit = self.get_recompiled_circuit()
 
         num_2q_gates, num_1q_gates = co.find_num_gates(recompiled_circuit)
@@ -545,7 +542,7 @@ class ISLRecompiler(ApproximateRecompiler):
             e_val_history=self.e_val_history,
             qubit_pair_history=self.qubit_pair_history,
             method_history=self.pair_selection_method_history,
-            time_taken=self.time_taken + end_time,
+            time_taken=self.time_taken + (timeit.default_timer() - start_time),
             cost_evaluations=self.cost_evaluation_counter,
             coupling_map=self.coupling_map,
             circuit_qasm=qasm2.dumps(recompiled_circuit),

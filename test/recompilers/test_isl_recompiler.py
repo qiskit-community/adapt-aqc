@@ -678,7 +678,7 @@ class TestISLCheckpointing(TestCase):
                     if key != "time_taken":
                         self.assertEqual(result.__dict__[key], result_1.__dict__[key])
 
-    def test_given_save_and_resume_from_any_point_then_time_taken_within_1percent(self):
+    def test_given_save_and_resume_from_any_point_then_time_taken_within_100ms(self):
         qc = co.create_random_initial_state_circuit(3, seed=3)
         recompiler = ISLRecompiler(qc)
         with tempfile.TemporaryDirectory() as d:
@@ -688,7 +688,8 @@ class TestISLCheckpointing(TestCase):
                     loaded_recompiler = pickle.load(myfile)
                 result_1 = loaded_recompiler.recompile()
                 self.assertAlmostEqual(result.time_taken, result_1.time_taken,
-                                       delta=0.01*result.time_taken)
+                                       delta=0.1)
+                self.assertLess(result_1.time_taken, 100)
 
     def test_given_save_and_resume_and_save_and_resume_then_overwrites(self):
         qc = co.create_random_initial_state_circuit(3)
