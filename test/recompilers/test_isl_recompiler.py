@@ -1,7 +1,9 @@
 import logging
 import os
 import pickle
+import shutil
 import tempfile
+import unittest
 from unittest import TestCase
 from unittest.mock import patch
 
@@ -632,27 +634,76 @@ class TestISL(TestCase):
         for global_cost, local_cost in zip(result.global_cost_history, result.local_cost_history):
             self.assertGreaterEqual(np.round(global_cost, 15), np.round(local_cost, 15))
 
-    def test_given_save_and_resume_recompilation_then_non_time_results_equal(self):
+class TestISLCheckpointing(TestCase):
+
+    def test_given_checkpoint_every_1_when_recompile_then_n_layer_number_of_checkpoints(self):
         qc = co.create_random_initial_state_circuit(3)
         recompiler = ISLRecompiler(qc)
         with tempfile.TemporaryDirectory() as d:
             result = recompiler.recompile(checkpoint_every=1, checkpoint_dir=d)
-            with open(os.path.join(d, "1"), 'rb') as myfile:
-                loaded_recompiler = pickle.load(myfile)
-            result_1 = loaded_recompiler.recompile()
-            for key in result.__dict__.keys():
-                self.assertEqual(result.__dict__[key], result_1.__dict__[key])
+            self.assertEqual(len(os.listdir(d)), len(result.qubit_pair_history))
 
-    def test_given_save_and_resume_recompilation_then_time_taken_within_1percent(self):
-        qc = co.create_random_initial_state_circuit(3, seed=0)
+    def test_given_delete_prev_chkpt_when_recompile_then_1_checkpoint(self):
+        qc = co.create_random_initial_state_circuit(3)
+        recompiler = ISLRecompiler(qc)
+        with tempfile.TemporaryDirectory() as d:
+            recompiler.recompile(checkpoint_every=1, checkpoint_dir=d, delete_prev_chkpt=True)
+            self.assertEqual(len(os.listdir(d)), 1)
+
+    def test_given_checkpoint_every_large_when_recompile_then_2_checkpoints(self):
+        qc = co.create_random_initial_state_circuit(3)
+        recompiler = ISLRecompiler(qc)
+        with tempfile.TemporaryDirectory() as d:
+            recompiler.recompile(checkpoint_every=100, checkpoint_dir=d)
+            self.assertEqual(len(os.listdir(d)), 2)
+
+    def test_given_checkpoint_every_0_when_recompile_then_no_dir_created(self):
+        qc = co.create_random_initial_state_circuit(3)
+        recompiler = ISLRecompiler(qc)
+        with tempfile.TemporaryDirectory() as d:
+            shutil.rmtree(d)
+            recompiler.recompile(checkpoint_every=0, checkpoint_dir=d)
+            self.assertFalse(os.path.isdir(d))
+
+    def test_given_save_and_resume_from_different_points_then_non_time_results_equal(self):
+        qc = co.create_random_initial_state_circuit(3)
         recompiler = ISLRecompiler(qc)
         with tempfile.TemporaryDirectory() as d:
             result = recompiler.recompile(checkpoint_every=1, checkpoint_dir=d)
+            for c in ["0", "1"]:
+                with open(os.path.join(d, c), 'rb') as myfile:
+                    loaded_recompiler = pickle.load(myfile)
+                result_1 = loaded_recompiler.recompile()
+                for key in result.__dict__.keys():
+                    if key != "time_taken":
+                        self.assertEqual(result.__dict__[key], result_1.__dict__[key])
+
+    def test_given_save_and_resume_from_any_point_then_time_taken_within_1percent(self):
+        qc = co.create_random_initial_state_circuit(3, seed=3)
+        recompiler = ISLRecompiler(qc)
+        with tempfile.TemporaryDirectory() as d:
+            result = recompiler.recompile(checkpoint_every=1, checkpoint_dir=d)
+            for c in ["0", "1", "2", "3", "4"]:
+                with open(os.path.join(d, c), 'rb') as myfile:
+                    loaded_recompiler = pickle.load(myfile)
+                result_1 = loaded_recompiler.recompile()
+                self.assertAlmostEqual(result.time_taken, result_1.time_taken,
+                                       delta=0.01*result.time_taken)
+
+    def test_given_save_and_resume_and_save_and_resume_then_overwrites(self):
+        qc = co.create_random_initial_state_circuit(3)
+        recompiler = ISLRecompiler(qc)
+        with tempfile.TemporaryDirectory() as d:
+            recompiler.recompile(checkpoint_every=1, checkpoint_dir=d)
+            with open(os.path.join(d, "0"), 'rb') as myfile:
+                loaded_recompiler = pickle.load(myfile)
+            loaded_recompiler.recompile(checkpoint_every=1, checkpoint_dir=d)
             with open(os.path.join(d, "1"), 'rb') as myfile:
                 loaded_recompiler = pickle.load(myfile)
-            result_1 = loaded_recompiler.recompile()
-            self.assertAlmostEqual(result.time_taken, result_1.time_taken,
-                                   delta=0.01 * result.time_taken)
+            result = loaded_recompiler.recompile()
+            self.assertEqual(len(os.listdir(d)), len(result.qubit_pair_history))
+
+
 
 try:
     import qulacs

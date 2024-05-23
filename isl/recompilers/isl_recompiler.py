@@ -369,7 +369,7 @@ class ISLRecompiler(ApproximateRecompiler):
         return res
 
     def recompile(self, initial_ansatz: QuantumCircuit = None, checkpoint_every=0,
-                  checkpoint_dir='checkpoint/', delete_previous_file=False):
+                  checkpoint_dir='checkpoint/', delete_prev_chkpt=False):
         """
         Perform recompilation algorithm.
         :param initial_ansatz: A trial ansatz to start the recompilation
@@ -378,7 +378,7 @@ class ISLRecompiler(ApproximateRecompiler):
         file after layers n, 2n, 3n, ... have been added.
         :param checkpoint_dir: Directory to place checkpoints in. Will be created if not already
         existing.
-        :param delete_previous_file: If True and checkpoint_every != 0, delete previous saved
+        :param delete_prev_chkpt: If True and checkpoint_every != 0, delete previous saved
         recompiler object each time a new one is saved.
         Termination criteria: SUFFICIENT_COST reached; max_layers reached;
         std(last_5_costs)/avg(last_5_costs) < TOL
@@ -433,7 +433,7 @@ class ISLRecompiler(ApproximateRecompiler):
             logger.info(f"ISL resuming from layer: {start_point}")
         
         if checkpoint_every > 0:
-            file_to_delete = None
+            self.chkpt_to_delete = None
             Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
 
         for layer_count in range(start_point, self.isl_config.max_layers):
@@ -498,15 +498,7 @@ class ISLRecompiler(ApproximateRecompiler):
                 break
 
             if checkpoint_every > 0 and layer_count % checkpoint_every == 0:
-                self.resume_from_layer = layer_count + 1
-                current_chkpt_time_taken = timeit.default_timer() - start_time
-                self.prev_checkpoint_time_taken = self.time_taken + current_chkpt_time_taken
-                file_name = str(layer_count)
-                with open(os.path.join(checkpoint_dir, file_name), 'wb') as f:
-                    pickle.dump(self, f)
-                if file_to_delete is not None:
-                    os.remove(file_to_delete)
-                file_to_delete = file_name if delete_previous_file else None
+                self.checkpoint(checkpoint_dir, delete_prev_chkpt, layer_count, start_time)
 
         # Perform a final optimisation
         if self.perform_final_minimisation:
@@ -525,6 +517,9 @@ class ISLRecompiler(ApproximateRecompiler):
 
         final_global_cost = self._evaluate_global_cost()
         logger.info(f"Final global cost: {final_global_cost}")
+        if checkpoint_every > 0:
+            self.checkpoint(checkpoint_dir, delete_prev_chkpt, len(self.qubit_pair_history) - 1,
+                            start_time)
         end_time = timeit.default_timer()
 
         recompiled_circuit = self.get_recompiled_circuit()
@@ -550,7 +545,7 @@ class ISLRecompiler(ApproximateRecompiler):
             e_val_history=self.e_val_history,
             qubit_pair_history=self.qubit_pair_history,
             method_history=self.pair_selection_method_history,
-            time_taken=self.time_taken + (timeit.default_timer() - start_time),
+            time_taken=self.time_taken + end_time,
             cost_evaluations=self.cost_evaluation_counter,
             coupling_map=self.coupling_map,
             circuit_qasm=qasm2.dumps(recompiled_circuit),
@@ -561,6 +556,18 @@ class ISLRecompiler(ApproximateRecompiler):
                            " set_matrix_product_state instruction at the start of the circuit")
         logger.info("ISL completed")
         return result
+
+    def checkpoint(self, checkpoint_dir, delete_prev_chkpt, layer_count,
+                   start_time):
+        self.resume_from_layer = layer_count + 1
+        current_chkpt_time_taken = timeit.default_timer() - start_time
+        self.prev_checkpoint_time_taken = self.time_taken + current_chkpt_time_taken
+        file_name = str(layer_count)
+        with open(os.path.join(checkpoint_dir, file_name), 'wb') as f:
+            pickle.dump(self, f)
+        if self.chkpt_to_delete is not None:
+            os.remove(os.path.join(checkpoint_dir, self.chkpt_to_delete))
+        self.chkpt_to_delete = str(layer_count) if delete_prev_chkpt else None
 
     def _debug_log_optimised_layer(self, layer_count):
         if logger.getEffectiveLevel() == 10:
