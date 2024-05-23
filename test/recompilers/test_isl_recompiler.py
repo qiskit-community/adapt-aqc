@@ -643,15 +643,16 @@ class TestISL(TestCase):
             for key in result.__dict__.keys():
                 self.assertEqual(result.__dict__[key], result_1.__dict__[key])
 
-    def test_given_save_and_resume_recompilation_then_time_taken_within_1second(self):
-        qc = co.create_random_initial_state_circuit(4)
+    def test_given_save_and_resume_recompilation_then_time_taken_within_1percent(self):
+        qc = co.create_random_initial_state_circuit(3, seed=0)
         recompiler = ISLRecompiler(qc)
         with tempfile.TemporaryDirectory() as d:
             result = recompiler.recompile(checkpoint_every=1, checkpoint_dir=d)
             with open(os.path.join(d, "1"), 'rb') as myfile:
                 loaded_recompiler = pickle.load(myfile)
             result_1 = loaded_recompiler.recompile()
-            self.assertAlmostEqual(result.time_taken, result_1.time_taken, delta=1)
+            self.assertAlmostEqual(result.time_taken, result_1.time_taken,
+                                   delta=0.01 * result.time_taken)
 
 try:
     import qulacs
