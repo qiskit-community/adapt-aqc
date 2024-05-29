@@ -307,6 +307,8 @@ class ISLRecompiler(ApproximateRecompiler):
         self.resume_from_layer = None
         self.prev_checkpoint_time_taken = None
 
+        self.lhs_moved_by_initial_ansatz = 0
+
     def construct_layer_2q_gate(self, custom_layer_2q_gate):
         if custom_layer_2q_gate is None:
             qc = QuantumCircuit(2)
@@ -327,55 +329,17 @@ class ISLRecompiler(ApproximateRecompiler):
         co.add_subscript_to_all_variables(qc, layer_index)
         return qc
 
-    def recompile_using_initial_ansatz(
-        self, ansatz: QuantumCircuit, modify_ansatz=True
-    ):
-        """
-        Use the provided ansatz as a starting point for the recompilation
-        :param modify_ansatz: If ansatz should be optimised during ISL
-        :param ansatz: Quantum Circuit to use
-        :return: Recompilation result
-        """
-        old_vcr = self.variational_circuit_range()
-        vcr = self.variational_circuit_range
-        ansatz_inv = co.circuit_by_inverting_circuit(ansatz)
-        co.add_to_circuit(self.full_circuit, ansatz_inv, vcr()[0])
-        if not modify_ansatz:
-            self.lhs_gate_count = old_vcr[0] + len(ansatz_inv.data)
-
-        # NOTE this may need changing to use a different stop_val when using local cost
-        self.minimizer.minimize_cost(
-            algorithm_kind=vconstants.ALG_ROTOSOLVE,
-            tol=1e-5,
-            stop_val=self.isl_config.sufficient_cost,
-        )
-
-        res = self.recompile()
-        self.lhs_gate_count = old_vcr[0]
-
-        recompiled_circuit = self.get_recompiled_circuit()
-        exact_overlap = co.calculate_overlap_between_circuits(
-            self.circuit_to_recompile, recompiled_circuit
-        )
-        num_2q_gates, num_1q_gates = co.find_num_gates(
-            self.full_circuit, gate_range=vcr()
-        )
-
-        res.circuit = recompiled_circuit
-        res.exact_overlap = exact_overlap
-        res.num_1q_gates = num_1q_gates
-        res.num_2q_gates = num_2q_gates
-        res.circuit_qasm = qasm2.dumps(recompiled_circuit)
-        return res
-
-    def recompile(self, initial_ansatz: QuantumCircuit = None, checkpoint_every=0,
-                  checkpoint_dir='checkpoint/', delete_prev_chkpt=False):
+    def recompile(self, initial_ansatz: QuantumCircuit = None, optimise_initial_ansatz=True,
+                checkpoint_every=0, checkpoint_dir='checkpoint/', delete_prev_chkpt=False):
         """
         Perform recompilation algorithm.
         :param initial_ansatz: A trial ansatz to start the recompilation
         with instead of starting from scratch
+        :param modify_initial_ansatz: If True, optimise the parameters of initial_ansatz when
+        intially adding it to the circuit. NOTE: the parameters of initial ansatz will be fixed for
+        the rest of recompilation.
         :param checkpoint_every: If checkpoint_every = n != 0, recompiler object will be saved to a
-        file after layers n, 2n, 3n, ... have been added.
+        file after layers 0, n, 2n, ... have been added.
         :param checkpoint_dir: Directory to place checkpoints in. Will be created if not already
         existing.
         :param delete_prev_chkpt: Delete the last checkpoint each time a new one is made.
@@ -402,34 +366,14 @@ class ISLRecompiler(ApproximateRecompiler):
             # If an initial ansatz has been provided, add that and run minimization
             self.initial_ansatz_already_successful = False
             if initial_ansatz is not None:
-                co.add_to_circuit(
-                    self.full_circuit,
-                    co.circuit_by_inverting_circuit(initial_ansatz),
-                    self.g_range()[1],
-                    transpile_before_adding=True,
-                )
-                if self.use_roto_algos:
-                    # NOTE this may need changing to use a different stop_val when using local cost
-                    cost = self.minimizer.minimize_cost(
-                        algorithm_kind=vconstants.ALG_ROTOSOLVE,
-                        tol=1e-3,
-                        stop_val=self.isl_config.sufficient_cost,
-                        indexes_to_modify=self.g_range(),
-                    )
-                else:
-                    cost = self.minimizer.minimize_cost(
-                        algorithm_kind=vconstants.ALG_PYBOBYQA,
-                        alg_kwargs={"seek_global_minimum": True},
-                    )
-                if cost < self.isl_config.sufficient_cost:
-                    self.initial_ansatz_already_successful = True
-                    logger.debug(
-                        "ISL successfully found approximate circuit using provided ansatz only"
-                    )
+                self._add_initial_ansatz(initial_ansatz, optimise_initial_ansatz)
+
         else:
             start_point = self.resume_from_layer
             self.time_taken = self.prev_checkpoint_time_taken
             logger.info(f"ISL resuming from layer: {start_point}")
+            if initial_ansatz is not None:
+                logger.warning("An initial ansatz will be ignored when resuming recompilation from a checkpoint")
         
         if checkpoint_every > 0:
             Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
@@ -509,6 +453,10 @@ class ISLRecompiler(ApproximateRecompiler):
         if self.is_aer_mps_backend:
             # Replace full_circuit with ref_circuit_as_gates, otherwise no way to remove unnecessary gates
             self.full_circuit = self.ref_circuit_as_gates
+
+        if self.lhs_moved_by_initial_ansatz > 0:
+            # Add initial_ansatz indices back into variational_circuit_range()
+            self.lhs_gate_count -= self.lhs_moved_by_initial_ansatz
 
         co.remove_unnecessary_gates_from_circuit(
             self.full_circuit, True, True, gate_range=self.g_range()
@@ -595,6 +543,51 @@ class ISLRecompiler(ApproximateRecompiler):
                         "Final ansatz layer logging not implemented for custom ansatz or functionalities "
                         "placing more gates after trainable ansatz")
 
+    def _add_initial_ansatz(self, initial_ansatz, optimise_initial_ansatz):
+        # Label ansatz gates to work with rotosolve
+        for gate in initial_ansatz:
+            if gate[0].label is None and gate[0].name in co.SUPPORTED_1Q_GATES:
+                gate[0].label = gate[0].name
+
+        co.add_to_circuit(
+            self.full_circuit,
+            co.circuit_by_inverting_circuit(initial_ansatz),
+            self.variational_circuit_range()[1],
+        )
+        if optimise_initial_ansatz:
+            if self.use_roto_algos:
+                cost = self.minimizer.minimize_cost(
+                    algorithm_kind=vconstants.ALG_ROTOSOLVE,
+                    tol=1e-3,
+                    stop_val=0 if self.optimise_local_cost else self.isl_config.sufficient_cost,
+                    indexes_to_modify=self.variational_circuit_range(),
+                )
+            else:
+                cost = self.minimizer.minimize_cost(
+                    algorithm_kind=vconstants.ALG_PYBOBYQA,
+                    alg_kwargs={"seek_global_minimum": True},
+                )
+        else:
+            cost = self.evaluate_cost()
+
+        self.global_cost = cost if not self.optimise_local_cost else self._evaluate_global_cost()
+
+        if self.global_cost < self.isl_config.sufficient_cost:
+            self.initial_ansatz_already_successful = True
+            logger.debug(
+                "ISL successfully found approximate circuit using provided ansatz only"
+            )
+
+        if self.is_aer_mps_backend:
+            # Absorb optimised initial_ansatz into MPS and add gates to ref_circuit_as_gates
+            gates_absorbed = self._absorb_n_gates_into_mps(n=len(initial_ansatz))
+            co.add_to_circuit(self.layers_saved_to_mps, gates_absorbed)
+            self._update_reference_circuit()
+        else:
+            # Ensure initial_ansatz is not modified again
+            self.lhs_moved_by_initial_ansatz = len(initial_ansatz)
+            self.lhs_gate_count += self.lhs_moved_by_initial_ansatz
+
     def _add_layer(self, index):
         """
         Adds a dressed CNOT gate or other ansatz layer to the qubits with the 
@@ -609,7 +602,7 @@ class ISLRecompiler(ApproximateRecompiler):
         # Define first layer differently when initial_single_qubit_layer=True
         if self.initial_single_qubit_layer and index == 0:
             logger.debug("Starting with first layer comprising of only single qubit rotations")
-            layer_added_optimisation_indexes = self._add_rotation_to_all_qubits(ansatz_start_index)
+            layer_added_optimisation_indexes = self._add_rotation_to_all_qubits()
         else:
             layer_added_optimisation_indexes = self._add_entangling_layer(index)
 
@@ -663,7 +656,7 @@ class ISLRecompiler(ApproximateRecompiler):
                 includes_isql = self.layers_as_gates[0] == 0 and self.initial_single_qubit_layer
 
                 # Absorb layers into MPS, then add those layers to layers_saved_to_mps
-                layers_absorbed = self._absorb_n_layers_into_mps(num_layers_to_absorb, includes_isql)
+                layers_absorbed = self._absorb_n_layers_into_mps(n=num_layers_to_absorb, includes_isql=includes_isql)
                 co.add_to_circuit(self.layers_saved_to_mps, layers_absorbed)
 
                 # Update layers_as_gates
@@ -740,14 +733,14 @@ class ISLRecompiler(ApproximateRecompiler):
         )
         return layer_added_optimisation_indexes
 
-    def _add_rotation_to_all_qubits(self, ansatz_start_index):
+    def _add_rotation_to_all_qubits(self):
         first_layer = QuantumCircuit(self.full_circuit.num_qubits)
         first_layer.ry(0, range(self.full_circuit.num_qubits))
         co.add_to_circuit(self.full_circuit, first_layer, self.variational_circuit_range()[1])
         self._first_layer_increment_results_dict()
         # Gate indices in the initial layer
         initial_layer_optimisation_indexes = (
-            ansatz_start_index,
+            self.variational_circuit_range()[1] - self.full_circuit.num_qubits,
             (self.variational_circuit_range()[1]),
         )
         return initial_layer_optimisation_indexes
@@ -1030,8 +1023,8 @@ class ISLRecompiler(ApproximateRecompiler):
             # Delete all gates apart from the 5 from the added layer
             del layer_added.data[:-len_layer_added]
             return layer_added
-
-    def _absorb_n_layers_into_mps(self, n, includes_isql):
+    
+    def _absorb_n_layers_into_mps(self, n, includes_isql=False):
         """
         Takes full_circuit, which consists of a set_matrix_product_state instruction, followed by some number of ISL
         layers and absorbs the first n of these layers (immediately after set_matrix_product_state) into the
@@ -1049,16 +1042,27 @@ class ISLRecompiler(ApproximateRecompiler):
         :param includes_isql: True if one of the layers to absorb is the initial single qubit layer, False otherwise.
         :return: QuantumCircuit containing a copy of the layers which were absorbed.
         """
+        num_gates_to_absorb = len(self.layer_2q_gate) * (n - int(includes_isql)) + self.full_circuit.num_qubits * int(includes_isql)
+        
+        return self._absorb_n_gates_into_mps(num_gates_to_absorb)
+    
+    def _absorb_n_gates_into_mps(self, n):
+        """
+        Similar to _absorb_n_layers_into_mps but absorbs n GATES rather than n LAYERS.
 
-        # Get full_circuit up to and including layers to be absorbed
+        :param n: Number of gates to absorb.
+        :return: QuantumCircuit containing a copy of the gates which were absorbed.
+        """
+        # +1 to include the initial set_matrix_product_state
+        num_gates_to_absorb = n + 1
+
+        # Get full_circuit up to and including gates to be absorbed
         circ_to_absorb = self.full_circuit.copy()
-        num_gates_to_absorb = len(self.layer_2q_gate) * (
-                n - int(includes_isql)) + circ_to_absorb.num_qubits * int(includes_isql) + 1
         del circ_to_absorb.data[num_gates_to_absorb:]
 
         # Keep a copy of what was absorbed to add to the reference circuit
-        layers_absorbed = circ_to_absorb.copy()
-        del layers_absorbed.data[0]
+        gates_absorbed = circ_to_absorb.copy()
+        del gates_absorbed.data[0]
 
         # Get MPS of circ_to_absorb
         circ_to_absorb_mps = mpsops.mps_from_circuit(circ_to_absorb, sim=self.backend)
@@ -1075,4 +1079,4 @@ class ISLRecompiler(ApproximateRecompiler):
             del self.full_circuit.data[:]
         self.full_circuit.data.insert(0, mps_circuit.data[0])
 
-        return layers_absorbed
+        return gates_absorbed

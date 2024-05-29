@@ -18,6 +18,16 @@ from isl.utils.circuit_operations import QASM_SIM, SV_SIM, MPS_SIM, CUQUANTUM_SI
 from isl.utils.constants import DEFAULT_SUFFICIENT_COST
 from isl.utils.entanglement_measures import EM_TOMOGRAPHY_NEGATIVITY
 
+def create_initial_ansatz():
+        initial_ansatz = QuantumCircuit(4)
+        initial_ansatz.ry(0, [0, 1, 2, 3])
+        initial_ansatz.cx(0, 1)
+        initial_ansatz.cx(1, 2)
+        initial_ansatz.cx(2, 3)
+        initial_ansatz.rx(0, [0, 1, 2, 3])
+
+        return initial_ansatz
+
 
 class TestISL(TestCase):
 
@@ -173,7 +183,7 @@ class TestISL(TestCase):
 
         isl_recompiler = ISLRecompiler(qc_mod)
 
-        result = isl_recompiler.recompile_using_initial_ansatz(qc)
+        result = isl_recompiler.recompile(initial_ansatz=qc)
         approx_circuit = result.circuit
 
         overlap = co.calculate_overlap_between_circuits(approx_circuit, qc_mod)
@@ -582,9 +592,11 @@ class TestISL(TestCase):
                 self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
 
     def test_given_mps_backend_when_add_layer_then_num_gates_not_in_mps_is_as_expected(self):
+        # Test both cases of using/not using an initial ansatz
+        initial_ansatz_circ = create_initial_ansatz()
+
         qc = co.create_random_initial_state_circuit(4)
         config = ISLConfig(rotosolve_frequency=4, max_layers_to_modify=3)
-        recompiler = ISLRecompiler(qc, backend=MPS_SIM, isl_config=config)
         # Rotosolve happens on layers 4, 8, 12...
         # Add layer 0: absorb layer -> 0 gates left in ansatz
         # Add layer 1: absorb layer -> 0 gates
@@ -593,12 +605,19 @@ class TestISL(TestCase):
         # Add layer 4: absorb layers 2, 3, 4 -> 0 gates
         # Etc.
         expected_num_gates = [0, 0, 5, 10, 0, 0, 5, 10, 0, 0, 5, 10, 0]
-        actual_num_gates = []
-        for i in range(13):
-            recompiler._add_layer(i)
-            actual_num_gates.append(len(recompiler.full_circuit.data) - 1)
-        
-        np.testing.assert_equal(actual_num_gates, expected_num_gates)
+        for initial_ansatz in [initial_ansatz_circ, None]:
+            recompiler = ISLRecompiler(qc, backend=MPS_SIM, isl_config=config)
+            actual_num_gates = []
+            if initial_ansatz is not None:
+                # initial_ansatz should be absorbed into MPS and added to ref_circuit_as_gates
+                recompiler._add_initial_ansatz(initial_ansatz, optimise_initial_ansatz=True)
+                self.assertEqual(len(recompiler.full_circuit), 1)
+                self.assertEqual(len(recompiler.ref_circuit_as_gates), 12)
+            for i in range(13):
+                recompiler._add_layer(i)
+                actual_num_gates.append(len(recompiler.full_circuit.data) - 1)
+
+            np.testing.assert_equal(actual_num_gates, expected_num_gates)
 
     def test_given_max_layers_larger_than_freq_when_add_layer_then_num_gates_not_in_mps_as_expected(
         self,
@@ -634,6 +653,87 @@ class TestISL(TestCase):
         for global_cost, local_cost in zip(result.global_cost_history, result.local_cost_history):
             self.assertGreaterEqual(np.round(global_cost, 15), np.round(local_cost, 15))
 
+    def test_given_initial_ansatz_and_starting_circuit_and_isql_and_layer_caching_then_solution_has_correct_gates(self):
+        qc = co.create_random_initial_state_circuit(4)
+
+        starting_circuit = QuantumCircuit(4)
+        starting_circuit.x([0, 1, 2, 3])
+
+        initial_ansatz = create_initial_ansatz()
+
+        config = ISLConfig(rotosolve_frequency=4, max_layers_to_modify=2)
+        recompiler = ISLRecompiler(qc, backend=co.MPS_SIM, isl_config=config, starting_circuit=starting_circuit, initial_single_qubit_layer=True)
+
+        result = recompiler.recompile(initial_ansatz=initial_ansatz)
+
+
+        # Delete set_matrix_product_state instruction
+        del recompiler.full_circuit.data[0]
+        full_circuit = recompiler.full_circuit.copy()
+
+        # First 11 gates should be the same type as in initial_ansatz inverse
+        initial_ansatz_part = [gate for gate in full_circuit[:11]]
+        self.assertEqual([gate.operation.name for gate in initial_ansatz_part],
+                         ["rx", "rx", "rx", "rx", "cx", "cx", "cx", "ry", "ry", "ry", "ry"])
+
+        # Next 4 gates should be initial single qubit layer
+        isql_part = [gate for gate in full_circuit[11:15]]
+        self.assertTrue(all(gate.operation.name in ["rx", "ry", "rz"] for gate in isql_part))
+
+        # Everything in between should be thinly-dressed CNOTs
+        middle_part = [gate for gate in full_circuit[15:-4]]
+        for i, gate in enumerate(middle_part):
+            if i % 5 == 2:
+                self.assertEqual(gate.operation.name, "cx")
+            else:
+                self.assertTrue(gate.operation.name in ["rx", "ry", "rz"])
+        self.assertEqual(len(middle_part) % 5, 0)
+
+        # Final 4 gates should be starting_circuit inverse
+        starting_circuit_part = [gate for gate in full_circuit[-4:]]
+        self.assertTrue(all(gate.operation.name == "rx" for gate in starting_circuit_part))
+        self.assertTrue(all(gate.operation.params[0] == np.pi for gate in starting_circuit_part))
+
+        # Make sure the circuit has been partitioned correctly
+        reconstruct_circuit = initial_ansatz_part + isql_part + middle_part + starting_circuit_part
+        self.assertEqual(recompiler.full_circuit.data, reconstruct_circuit)
+
+        # Finally assert that recompilation has worked
+        overlap = co.calculate_overlap_between_circuits(qc, result.circuit)
+        self.assertGreaterEqual(overlap, 1 - DEFAULT_SUFFICIENT_COST)
+
+    def test_given_optimise_initial_ansatz_false_then_initial_ansatz_gates_unchanged(self):
+        qc = co.create_random_initial_state_circuit(2)
+
+        initial_ansatz = QuantumCircuit(2)
+        initial_ansatz.cz(0, 1)
+        initial_ansatz.ry(2.67, 0)
+        initial_ansatz.rx(0.53, 1)
+
+        recompiler = ISLRecompiler(qc)
+        result = recompiler.recompile(initial_ansatz=initial_ansatz, optimise_initial_ansatz=False)
+
+        self.assertEqual(result.circuit.data[-3:], initial_ansatz.data)
+
+    def test_given_initial_ansatz_when_add_layer_then_initial_ansatz_unchanged(self):
+        qc = co.create_random_initial_state_circuit(4)
+        target_gates = len(qc)
+        initial_ansatz = create_initial_ansatz()
+
+        config = ISLConfig(rotosolve_frequency=1, max_layers_to_modify=10)
+        recompiler = ISLRecompiler(qc, isl_config=config)
+
+        recompiler._add_initial_ansatz(initial_ansatz, optimise_initial_ansatz=True)
+        ia_gates_before = [gate for gate in recompiler.full_circuit[target_gates:(target_gates+11)]]
+
+        # Rotosolve will occur during layer 1, not layer 0
+        recompiler._add_layer(0)
+        recompiler._add_layer(1)
+        ia_gates_after = [gate for gate in recompiler.full_circuit[target_gates:(target_gates+11)]]
+
+        self.assertEqual(ia_gates_before, ia_gates_after)
+
+        
 class TestISLCheckpointing(TestCase):
 
     def test_given_checkpoint_every_1_when_recompile_then_n_layer_number_of_checkpoints(self):
