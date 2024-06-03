@@ -9,7 +9,7 @@ from isl.utils.utilityfunctions import (
     _expectation_value_of_qubit,
     expectation_value_of_qubits,
     expectation_value_of_qubits_mps,
-    multi_qubit_gate_depth,
+    multi_qubit_gate_depth, remove_permutations_from_coupling_map,
 )
 
 
@@ -71,6 +71,18 @@ class TestUtilityFunctions(TestCase):
         assert_array_almost_equal(
             eval_one_plus_zero_state, [-1.0, 0.0, 1.0], decimal=15
         )
+
+    def test_given_unique_coupling_map_when_remove_permutation_then_returned_in_same_order(self):
+        cmap = [(1, 2), (2, 3), (3, 4)]
+        self.assertEqual(remove_permutations_from_coupling_map(cmap), cmap)
+
+    def test_given_coupling_map_with_permutations_when_remove_permutation_then_unique(self):
+        cmap = [(2, 1), (1, 2), (2, 1)]
+        self.assertEqual(remove_permutations_from_coupling_map(cmap), [(2, 1)])
+
+    def test_given_coupling_map_with_permutations_when_remove_permutation_then_same_order(self):
+        cmap = [(1, 2), (1, 2), (2, 3), (2, 3), (3, 4)]
+        self.assertEqual(remove_permutations_from_coupling_map(cmap), [(1, 2), (2, 3), (3, 4)])
 
 
 class TestExpectationValueOfQubitsMPS(TestCase):

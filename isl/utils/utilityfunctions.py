@@ -258,9 +258,13 @@ def expectation_value_of_pauli_observable(counts, pauli):
 
 
 def remove_permutations_from_coupling_map(coupling_map):
-    set_of_sets = {frozenset(pair) for pair in coupling_map}
-    new_coupling_map = [tuple(pair) for pair in set_of_sets]
-    return new_coupling_map
+    seen = set()
+    unique_list = []
+    for pair in coupling_map:
+        if tuple(sorted(pair)) not in seen:
+            seen.add(tuple(sorted(pair)))
+            unique_list.append(pair)
+    return unique_list
 
 
 def has_stopped_improving(cost_history, rel_tol=1e-2):
