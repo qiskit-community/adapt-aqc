@@ -13,6 +13,7 @@ from qiskit import ClassicalRegister, QuantumCircuit, QuantumRegister
 from qiskit.quantum_info import Statevector
 
 import isl.utils.circuit_operations as co
+import isl.utils.cuquantum_functions as cu
 from isl.recompilers import ISLConfig, ISLRecompiler
 from isl.utils.circuit_operations import QASM_SIM, SV_SIM, MPS_SIM, CUQUANTUM_SIM
 from isl.utils.constants import DEFAULT_SUFFICIENT_COST
@@ -664,12 +665,13 @@ class TestISL(TestCase):
         config = ISLConfig(rotosolve_frequency=4, max_layers_to_modify=2)
         recompiler = ISLRecompiler(qc, backend=co.MPS_SIM, isl_config=config, starting_circuit=starting_circuit, initial_single_qubit_layer=True)
 
-        result = recompiler.recompile(initial_ansatz=initial_ansatz)
+        recompiler._add_initial_ansatz(initial_ansatz=initial_ansatz, optimise_initial_ansatz=True)
+        [recompiler._add_layer(i) for i in range(5)]
 
 
         # Delete set_matrix_product_state instruction
-        del recompiler.full_circuit.data[0]
-        full_circuit = recompiler.full_circuit.copy()
+        del recompiler.ref_circuit_as_gates.data[0]
+        full_circuit = recompiler.ref_circuit_as_gates.copy()
 
         # First 11 gates should be the same type as in initial_ansatz inverse
         initial_ansatz_part = [gate for gate in full_circuit[:11]]
@@ -696,11 +698,7 @@ class TestISL(TestCase):
 
         # Make sure the circuit has been partitioned correctly
         reconstruct_circuit = initial_ansatz_part + isql_part + middle_part + starting_circuit_part
-        self.assertEqual(recompiler.full_circuit.data, reconstruct_circuit)
-
-        # Finally assert that recompilation has worked
-        overlap = co.calculate_overlap_between_circuits(qc, result.circuit)
-        self.assertGreaterEqual(overlap, 1 - DEFAULT_SUFFICIENT_COST)
+        self.assertEqual(recompiler.ref_circuit_as_gates.data, reconstruct_circuit)
 
     def test_given_optimise_initial_ansatz_false_then_initial_ansatz_gates_unchanged(self):
         qc = co.create_random_initial_state_circuit(2)
@@ -873,6 +871,7 @@ class TestISLQulacs(TestCase):
 
 try:
     import cuquantum
+    import cupy as cp
 
     module_failed_cuquantum = False
 except ImportError:
@@ -904,6 +903,14 @@ class TestISLCuquantum(TestCase):
         overlap = co.calculate_overlap_between_circuits(qc, result.circuit)
         self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
 
+    def test_given_cuquantum_backend_and_cache_every_layer_when_recompile_then_works(self):
+        qc = co.create_random_initial_state_circuit(3)
+        config = ISLConfig(rotosolve_frequency=1e5)
+        recompiler = ISLRecompiler(qc, backend=CUQUANTUM_SIM, isl_config=config)
+        result = recompiler.recompile()
+        overlap = co.calculate_overlap_between_circuits(qc, result.circuit)
+        self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
+
     def test_given_cuquantum_backend_when_recompile_with_starting_circuit_then_works(self):
         qc = co.create_random_initial_state_circuit(3)
         starting_circuit = QuantumCircuit(3)
@@ -916,50 +923,85 @@ class TestISLCuquantum(TestCase):
         overlap = co.calculate_overlap_between_circuits(qc, result.circuit)
         self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
 
-    def test_given_cuquantum_backend_when_recompile_and_save_previous_layer_mps_then_works(self):
-        qc = co.create_random_initial_state_circuit(3)
-        starting_circuit = QuantumCircuit(3)
-        starting_circuit.x([0, 1])
-        config = ISLConfig(rotosolve_frequency=0)
-        for sc in [starting_circuit, None]:
-            for isql in [True, False]:
-                recompiler = ISLRecompiler(
-                    qc, backend=CUQUANTUM_SIM, isl_config=config, starting_circuit=sc,
-                    initial_single_qubit_layer=isql)
-                result = recompiler.recompile()
-                overlap = co.calculate_overlap_between_circuits(qc, result.circuit)
-                self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
+    def test_given_everything_and_cuquantum_layer_caching_then_works(self):
+        qc = co.create_random_initial_state_circuit(4)
 
-    def test_given_cuquantum_when_add_layers_then_mps_same_with_and_without_layer_caching(self):
-        qc = co.create_random_initial_state_circuit(3)
-        starting_circuit = QuantumCircuit(3)
-        starting_circuit.x([0, 1])
-        config1 = ISLConfig(rotosolve_frequency=1e5)
-        config2 = ISLConfig(rotosolve_frequency=0)
-        for sc in [starting_circuit, None]:
-            recompiler1 = ISLRecompiler(
-                qc, backend=CUQUANTUM_SIM, starting_circuit=sc, isl_config=config1
-            )
-            recompiler2 = ISLRecompiler(
-                qc, backend=CUQUANTUM_SIM, starting_circuit=sc, isl_config=config2
-            )
+        starting_circuit = QuantumCircuit(4)
+        starting_circuit.x([0, 1, 2, 3])
 
-            recompiler1.recompile()
-            recompiler2.recompile()
+        initial_ansatz = create_initial_ansatz()
 
-            mps_1 = recompiler1._get_full_circ_mps_using_cu()
-            mps_2 = recompiler2._get_full_circ_mps_using_cu()
-            self.assertAlmostEqual(abs(mps_dot(mps_1, mps_2, already_preprocessed=True))**2, 1, 1)
+        config = ISLConfig(rotosolve_frequency=4, max_layers_to_modify=2)
+        recompiler = ISLRecompiler(qc, backend=CUQUANTUM_SIM, isl_config=config, starting_circuit=starting_circuit, initial_single_qubit_layer=True)
 
-    def test_given_cuquantum_when_caching_previous_layers_then_faster(self):
-        qc = co.create_random_initial_state_circuit(3)
-        config1 = ISLConfig(rotosolve_frequency=1e5)
-        config2 = ISLConfig(rotosolve_frequency=0)
+        result = recompiler.recompile(initial_ansatz=initial_ansatz)
+        overlap = co.calculate_overlap_between_circuits(qc, result.circuit)
+        self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
 
-        recompiler1 = ISLRecompiler(qc, backend=CUQUANTUM_SIM, isl_config=config1)
-        recompiler2 = ISLRecompiler(qc, backend=CUQUANTUM_SIM, isl_config=config2)
+    def test_given_cuquantum_backend_when_add_layer_then_cached_mps_is_as_expected(self):
+        qc = co.create_random_initial_state_circuit(4)
+        config = ISLConfig(rotosolve_frequency=4, max_layers_to_modify=3)
+        # Rotosolve happens on layers 4, 8, 12...
+        # Add layer 0: absorb layer -> 0 gates left in ansatz
+        # Add layer 1: absorb layer -> 0 gates
+        # Add layer 2: don't absorb layer -> 5 gates
+        # Add layer 3: don't absorb layer -> 10 gates
+        # Add layer 4: absorb layers 2, 3, 4 -> 0 gates
+        # Etc.
+        expected_mps_matches = [True, True, False, False, True, True, False, False, True, True, False, False, True]
+        recompiler = ISLRecompiler(qc, backend=CUQUANTUM_SIM, isl_config=config)
+        calculated_mps_matches = []
+        for i in range(13):
+            recompiler._add_layer(i)
+            full_circuit_copy = recompiler.full_circuit.copy()
+            calculated_mps = cu.cu_mps_to_aer_mps(cu.mps_from_circuit(full_circuit_copy))
+            cu_cached_mps_copy = cu.cu_mps_to_aer_mps(recompiler.cu_cached_mps.copy())
+            overlap = abs(mps_dot(calculated_mps, cu_cached_mps_copy, already_preprocessed=True))**2
+            calculated_mps_matches.append((1 - overlap) < 1e-10)
+        np.testing.assert_equal(calculated_mps_matches, expected_mps_matches)
+            
+        
+    def test_given_initial_ansatz_and_starting_circuit_and_isql_and_cuquantum_layer_caching_then_solution_has_correct_gates(self):
+        qc = co.create_random_initial_state_circuit(4)
 
-        result1 = recompiler1.recompile()
-        result2 = recompiler2.recompile()
+        starting_circuit = QuantumCircuit(4)
+        starting_circuit.x([0, 1, 2, 3])
 
-        self.assertLess(result2['time_taken'], result1['time_taken'])
+        initial_ansatz = create_initial_ansatz()
+
+        config = ISLConfig(rotosolve_frequency=4, max_layers_to_modify=2)
+        recompiler = ISLRecompiler(qc, backend=CUQUANTUM_SIM, isl_config=config, starting_circuit=starting_circuit, initial_single_qubit_layer=True)
+
+        recompiler._add_initial_ansatz(initial_ansatz=initial_ansatz, optimise_initial_ansatz=True)
+        [recompiler._add_layer(i) for i in range(5)]
+
+        # Delete target
+        del recompiler.full_circuit.data[:len(qc)]
+        full_circuit = recompiler.full_circuit.copy()
+
+        # First 11 gates should be the same type as in initial_ansatz inverse
+        initial_ansatz_part = [gate for gate in full_circuit[:11]]
+        self.assertEqual([gate.operation.name for gate in initial_ansatz_part],
+                         ["rx", "rx", "rx", "rx", "cx", "cx", "cx", "ry", "ry", "ry", "ry"])
+
+        # Next 4 gates should be initial single qubit layer
+        isql_part = [gate for gate in full_circuit[11:15]]
+        self.assertTrue(all(gate.operation.name in ["rx", "ry", "rz"] for gate in isql_part))
+
+        # Everything in between should be thinly-dressed CNOTs
+        middle_part = [gate for gate in full_circuit[15:-4]]
+        for i, gate in enumerate(middle_part):
+            if i % 5 == 2:
+                self.assertEqual(gate.operation.name, "cx")
+            else:
+                self.assertTrue(gate.operation.name in ["rx", "ry", "rz"])
+        self.assertEqual(len(middle_part) % 5, 0)
+
+        # Final 4 gates should be starting_circuit inverse
+        starting_circuit_part = [gate for gate in full_circuit[-4:]]
+        self.assertTrue(all(gate.operation.name == "rx" for gate in starting_circuit_part))
+        self.assertTrue(all(gate.operation.params[0] == np.pi for gate in starting_circuit_part))
+
+        # Make sure the circuit has been partitioned correctly
+        reconstruct_circuit = initial_ansatz_part + isql_part + middle_part + starting_circuit_part
+        self.assertEqual(recompiler.full_circuit.data, reconstruct_circuit)

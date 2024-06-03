@@ -239,18 +239,8 @@ class ApproximateRecompiler(ABC):
             circuit = self.full_circuit
         return self.lhs_gate_count, len(circuit.data) - self.rhs_gate_count
 
-    def rhs_range(self):
+    def ansatz_range(self):
         return self.lhs_gate_count, len(self.full_circuit.data)
-    
-    def layer_added_and_starting_circuit_range(self):
-        ansatz = co.extract_inner_circuit(self.full_circuit, self.variational_circuit_range())
-        if ansatz.depth() == 1 and len(ansatz) == ansatz.width():
-            gates_in_last_layer = ansatz.width()
-        else:
-            gates_in_last_layer = len(self.layer_2q_gate)
-        end = len(self.full_circuit)
-        start = end - gates_in_last_layer - self.rhs_gate_count
-        return start, end
 
     def _starting_circuit_range(self):
         end = len(self.full_circuit.data)
@@ -556,13 +546,14 @@ class ApproximateRecompiler(ABC):
 
     def _get_full_circ_mps_using_cu(self):
         # TODO We use ISL specific logic, so this and where it's called should be in ISLRecompiler
-        if self.isl_config.rotosolve_frequency == 0 and not self.compiling_finished:
-            # Contract the most recent layer and starting circuit (if using)
-            gates_to_contract = co.extract_inner_circuit(self.full_circuit, self.layer_added_and_starting_circuit_range())
+        if not self.compiling_finished:
+            # Contract all gates after the most recent cache
+            first_gate_index_not_cached = self.next_gate_to_cache_index
+            gates_to_contract = co.extract_inner_circuit(self.full_circuit, (first_gate_index_not_cached, len(self.full_circuit)))
             circ_mps = cu.mps_from_circuit_and_starting_mps(gates_to_contract, self.cu_cached_mps,
                                                             self.cu_algorithm)
         else:
-            ansatz_circ = co.extract_inner_circuit(self.full_circuit, self.rhs_range())
+            ansatz_circ = co.extract_inner_circuit(self.full_circuit, self.ansatz_range())
             circ_mps = cu.mps_from_circuit_and_starting_mps(ansatz_circ, self.cu_target_mps,
                                                             self.cu_algorithm)
         return cu.cu_mps_to_aer_mps(circ_mps)
