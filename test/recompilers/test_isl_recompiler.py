@@ -192,10 +192,10 @@ class TestISL(TestCase):
         overlap = co.calculate_overlap_between_circuits(approx_circuit, qc_mod)
         assert overlap > 1 - DEFAULT_SUFFICIENT_COST
 
-    def test_heuristic_methods(self):
+    def test_expectation_method(self):
         qc = co.create_random_initial_state_circuit(3)
         qc = co.unroll_to_basis_gates(qc)
-        config = ISLConfig(method="heuristic")
+        config = ISLConfig(method="expectation")
 
         isl_recompiler = ISLRecompiler(qc, isl_config=config)
         result = isl_recompiler.recompile()
@@ -404,14 +404,14 @@ class TestISL(TestCase):
                         == len(result.qubit_pair_history)
                         == len(result.method_history))
 
-    def test_given_isl_mode_when_compile_circuit_with_very_small_entanglement_then_heuristic_method_used(self):
+    def test_given_isl_mode_when_compile_circuit_with_very_small_entanglement_then_expectation_method_used(self):
         qc = QuantumCircuit(2)
         qc.h(0)
         qc.crx(1e-15, 0, 1)
 
         recompiler = ISLRecompiler(qc, entanglement_measure=EM_TOMOGRAPHY_NEGATIVITY)
         result = recompiler.recompile()
-        self.assertTrue("heuristic" in result.method_history)
+        self.assertTrue("expectation" in result.method_history)
 
     @patch.object(ISLRecompiler, '_measure_qubit_expectation_values')
     def test_given_entanglement_when_find_highest_entanglement_pair_then_evals_not_evaluated(self, mock_get_evals):
@@ -532,7 +532,7 @@ class TestISL(TestCase):
         qc = co.create_random_initial_state_circuit(4)
         config = ISLConfig(rotosolve_frequency=1e5,
                            entanglement_reuse_exponent=np.random.rand() * 2,
-                           heuristic_reuse_exponent=np.random.rand() * 2,
+                           expectation_reuse_exponent=np.random.rand() * 2,
                            )
         compiler = ISLRecompiler(
             qc,

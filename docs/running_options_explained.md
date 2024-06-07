@@ -16,7 +16,7 @@ value of `entanglement_reuse_exponent`, the entanglement of the pair is weighted
 recently a layer has been applied to it.
 
 If the pairwise entanglement between all qubits in the coupling map is zero, this method falls
-back to the `heuristic` method defined below.
+back to the `expectation` method defined below.
 
 **What problem it aims to solve:** \
 The goal here is to use the entanglement structure of the compilation target to inform the adaptive
@@ -24,14 +24,14 @@ ansatz. This is motivated by the fact that the compiling succeeds by finding a s
 "undoes" the target circuit back to the $|00..0\rangle$ state. Since the $|00..0\rangle$ state has
 no pairwise entanglement, it makes sense that we want to iteratively reduce this.
 
-## method="heuristic"
+## method="expectation"
 
 **What is it:** \
 This is another mode of operation for compiling. When using this method, the ansatz is adaptively
 constructed by prioritising pairs which have smallest summed $\hat{\sigma}_z$ expectation values (
 i.e., the closest to the minimum value of -2)
 
-For the default value of `ISLConfig.heuristic_reuse_exponent = 1` the pair with the smallest
+For the default value of `ISLConfig.expectation_reuse_exponent = 1` the pair with the smallest
 expectation value is also weighted against how recently a layer has been applied to it.
 
 **What problem it aims to solve:** \
@@ -82,10 +82,10 @@ ISL depth-aware, so that e.g., the same pairs of qubits are not repeatedly picke
 marginally higher entanglement than other pairs that haven't been used. Ultimately, compiling
 with a larger exponent produces shallower solutions, at the cost of longer compiling times.
 
-## heuristic_reuse_exponent
+## expectation_reuse_exponent
 
 A very similar functionality to above, but for the case when compiling is done
-with `method=heuristic`. The same formula is used to compute $P_r$, however the combined priority
+with `method=expectation`. The same formula is used to compute $P_r$, however the combined priority
 is calculated differently. Given a pair of qubits, the combined priority is calculated as
 
 $$P_c = (2 - \langle Z_1 \rangle + \langle Z_2 \rangle) *P_r$$,

@@ -43,7 +43,7 @@ class ISLConfig:
         method="ISL",
         bad_qubit_pair_memory=10,
         entanglement_reuse_exponent=0,
-        heuristic_reuse_exponent=1,
+        expectation_reuse_exponent=1,
         reuse_priority_mode="pair",
         rotosolve_frequency=1,
         rotoselect_tol=1e-5,
@@ -65,7 +65,7 @@ class ISLConfig:
         the ansatz, when Rotosolve is used.
         :param method: Method by which a qubit pair is prioritised for the next layer. One of:
          'ISL' - Largest pairwise entanglement as defined by ISLRecompiler.entanglement_measure
-         'heuristic' - Smallest combined σz expectation values (i.e., closest to min value of -2)
+         'expectation' - Smallest combined σz expectation values (i.e., closest to min value of -2)
          'basic' - Pair not picked in the longest time
          'random' - Pair selected randomly
         :param bad_qubit_pair_memory: For the ISL method, if acting on a qubit pair leads to
@@ -75,7 +75,7 @@ class ISLConfig:
         controls how much priority should be given to picking qubits not recently acted on. If 0,
         the priority system is turned off and all qubits have the same reuse priority when adding
         a new layer. Note ISL never reuses the same pair of qubits regardless of this setting.
-        :param heuristic_reuse_exponent: Same as above but for the heuristic method.
+        :param expectation_reuse_exponent: Same as above but for the expectation method.
         :param reuse_priority_mode: For the priority system, given qubit pair (q1, q2) has been used
         before, should priority be given to:
         (a) not reusing the same pair of qubits (q1, q2) (set param to "pair")
@@ -104,7 +104,7 @@ class ISLConfig:
         self.rotosolve_tol = rotosolve_tol
         self.entanglement_threshold = entanglement_threshold
         self.entanglement_reuse_exponent = entanglement_reuse_exponent
-        self.heuristic_reuse_exponent = heuristic_reuse_exponent
+        self.expectation_reuse_exponent = expectation_reuse_exponent
         self.reuse_priority_mode = reuse_priority_mode.lower()
 
     def __repr__(self):
@@ -286,7 +286,7 @@ class ISLRecompiler(ApproximateRecompiler):
         self.qubit_pair_history = []
         # Avoid adding CNOTs to these qubit pairs
         self.bad_qubit_pairs = []
-        # Used to keep track of whether ISL/heuristic method was used
+        # Used to keep track of whether ISL/expectation method was used
         self.pair_selection_method_history = []
         self.entanglement_measures_history = []
         self.e_val_history = []
@@ -776,8 +776,8 @@ class ISLRecompiler(ApproximateRecompiler):
             reuse_priorities = self._get_all_qubit_pair_reuse_priorities(1)
             return self.coupling_map[np.argmax(reuse_priorities)]
 
-        if self.isl_config.method == "heuristic":
-            return self._find_best_heuristic_qubit_pair()
+        if self.isl_config.method == "expectation":
+            return self._find_best_expectation_qubit_pair()
 
         if self.isl_config.method == "ISL":
             logger.debug("Computing entanglement of pairs")
@@ -786,7 +786,7 @@ class ISLRecompiler(ApproximateRecompiler):
             return self._find_best_entanglement_qubit_pair(ems)
 
         raise ValueError(
-            f"Invalid ISL method {self.isl_config.method}. "f"Method must be one of ISL,heuristic,random")
+            f"Invalid ISL method {self.isl_config.method}. "f"Method must be one of ISL, expectation, random, basic")
 
     def _find_best_entanglement_qubit_pair(self, entanglement_measures):
         """
@@ -833,20 +833,20 @@ class ISLRecompiler(ApproximateRecompiler):
             # No local entanglement detected in non-bad qubit pairs;
             # defer to using 'basic' method
             logger.info("No local entanglement detected in non-bad qubit pairs")
-            return self._find_best_heuristic_qubit_pair()
+            return self._find_best_expectation_qubit_pair()
         else:
             self.pair_selection_method_history.append(f"ISL")
             # Add 'None' to e_val_history if no expectation values were needed
             self.e_val_history.append(None)
             return self.coupling_map[np.argmax(filtered_ems)]
 
-    def _find_best_heuristic_qubit_pair(self):
+    def _find_best_expectation_qubit_pair(self):
         """
         Choose the qubit pair to be the one with the largest expectation value priority multiplied by the reuse
         priority of that pair.
         @return: The pair of qubits with the highest multiplied e_val priority and reuse priority.
         """
-        reuse_priorities = self._get_all_qubit_pair_reuse_priorities(self.isl_config.heuristic_reuse_exponent)
+        reuse_priorities = self._get_all_qubit_pair_reuse_priorities(self.isl_config.expectation_reuse_exponent)
 
         e_vals = self._measure_qubit_expectation_values()
         self.e_val_history.append(e_vals)
@@ -865,7 +865,7 @@ class ISLRecompiler(ApproximateRecompiler):
             for (e_val_priority, reuse_priority) in zip(e_val_priorities, reuse_priorities)
         ]
         logger.debug(f"Combined priorities of pairs {combined_priorities}")
-        self.pair_selection_method_history.append(f"heuristic")
+        self.pair_selection_method_history.append(f"expectation")
         return self.coupling_map[np.argmax(combined_priorities)]
 
     def _get_all_qubit_pair_entanglement_measures(self):
