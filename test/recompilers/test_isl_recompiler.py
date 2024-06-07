@@ -18,6 +18,8 @@ from isl.recompilers import ISLConfig, ISLRecompiler
 from isl.utils.circuit_operations import QASM_SIM, SV_SIM, MPS_SIM, CUQUANTUM_SIM
 from isl.utils.constants import DEFAULT_SUFFICIENT_COST
 from isl.utils.entanglement_measures import EM_TOMOGRAPHY_NEGATIVITY
+from isl.utils.utilityfunctions import multi_qubit_gate_depth
+
 
 def create_initial_ansatz():
         initial_ansatz = QuantumCircuit(4)
@@ -322,7 +324,7 @@ class TestISL(TestCase):
         isl_recompiler = ISLRecompiler(qc, backend=MPS_SIM, execute_kwargs={'shots': shots}, save_circuit_history=True)
 
         result = isl_recompiler.recompile()
-        self.assertTrue(len(result.circuit_history) == len(result.global_cost_history))
+        self.assertTrue(len(result.circuit_history) == len(result.global_cost_history) - 1)
         self.assertTrue(len(result.circuit_history[-1]) > len(result.circuit_history[-2]))
 
     def test_circuit_output_not_saved_when_not_flagged(self):
@@ -396,7 +398,7 @@ class TestISL(TestCase):
         qc = QuantumCircuit(3)
         recompiler = ISLRecompiler(qc, initial_single_qubit_layer=True)
         result = recompiler.recompile()
-        self.assertTrue(len(result.global_cost_history)
+        self.assertTrue(len(result.global_cost_history) - 1
                         == len(result.entanglement_measures_history)
                         == len(result.e_val_history)
                         == len(result.qubit_pair_history)
@@ -645,13 +647,13 @@ class TestISL(TestCase):
 
     def test_given_optimise_local_cost_when_recompile_then_global_and_local_cost_histories_correct(self):
         # Tests that:
-        # a) local and global cost histories are the same length
+        # a) global_cost_history has one extra element (final cost)
         # b) every global cost is greater than its corresponding local cost
         qc = co.create_random_initial_state_circuit(3)
         recompiler = ISLRecompiler(qc, optimise_local_cost=True)
         result = recompiler.recompile()
-        self.assertEqual(len(result.global_cost_history), len(result.local_cost_history))
-        for global_cost, local_cost in zip(result.global_cost_history, result.local_cost_history):
+        self.assertEqual(len(result.global_cost_history), len(result.local_cost_history) + 1)
+        for global_cost, local_cost in zip(result.global_cost_history[:-1], result.local_cost_history):
             self.assertGreaterEqual(np.round(global_cost, 15), np.round(local_cost, 15))
 
     def test_given_initial_ansatz_and_starting_circuit_and_isql_and_layer_caching_then_solution_has_correct_gates(self):
@@ -730,6 +732,13 @@ class TestISL(TestCase):
         ia_gates_after = [gate for gate in recompiler.full_circuit[target_gates:(target_gates+11)]]
 
         self.assertEqual(ia_gates_before, ia_gates_after)
+
+    def test_cnot_depth_in_isl_result_correct(self):
+        qc = co.create_random_initial_state_circuit(4, seed=1)
+        recompiler = ISLRecompiler(qc)
+        result = recompiler.recompile()
+        circuit = result.circuit
+        self.assertEqual(multi_qubit_gate_depth(circuit), result.cnot_depth_history[-1])
 
         
 class TestISLCheckpointing(TestCase):

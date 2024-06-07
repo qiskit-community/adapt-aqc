@@ -24,6 +24,7 @@ from isl.utils.utilityfunctions import (
     expectation_value_of_qubits_mps,
     has_stopped_improving,
     remove_permutations_from_coupling_map,
+    multi_qubit_gate_depth,
 )
 import isl.utils.ansatzes as ans
 
@@ -122,6 +123,7 @@ class ISLResult:
         exact_overlap,
         num_1q_gates,
         num_2q_gates,
+        cnot_depth_history,
         global_cost_history,
         local_cost_history,
         circuit_history,
@@ -140,6 +142,7 @@ class ISLResult:
         :param exact_overlap: Only computable with SV backend.
         :param num_1q_gates: Number of rotation gates in circuit.
         :param num_2q_gates: Number of entangling gates in circuit.
+        :param cnot_depth_history: Depth of ansatz after each layer when only considering 2-qubit gates.
         :param global_cost_history: List of global costs after each layer.
         :param local_cost_history: List of local costs after each layer (if applicable).
         :param circuit_history: List of circuits as qasm strings after each layer (if applicable).
@@ -157,6 +160,7 @@ class ISLResult:
         self.exact_overlap = exact_overlap
         self.num_1q_gates = num_1q_gates
         self.num_2q_gates = num_2q_gates
+        self.cnot_depth_history = cnot_depth_history
         self.global_cost_history = global_cost_history
         self.local_cost_history = local_cost_history
         self.circuit_history = circuit_history
@@ -354,12 +358,13 @@ class ISLRecompiler(ApproximateRecompiler):
             logger.info("ISL started")
             logger.debug(f"ISL coupling map {self.coupling_map}")
             self.cost_evaluation_counter = 0
-            self.global_cost, self.local_cost, num_1q_gates, num_2q_gates = None, None, None, None
+            self.global_cost, self.local_cost, num_1q_gates, num_2q_gates, self.cnot_depth = None, None, None, None, None
 
             self.global_cost_history = []
             if self.optimise_local_cost:
                 self.local_cost_history = []
             self.circuit_history = []
+            self.cnot_depth_history = []
             self.g_range = self.variational_circuit_range
 
             # If an initial ansatz has been provided, add that and run minimization
@@ -382,6 +387,7 @@ class ISLRecompiler(ApproximateRecompiler):
                 break
 
             logger.info(f"Global cost before adding layer: {self.global_cost}")
+            logger.info(f"CNOT depth before adding layer: {self.cnot_depth}")
             if self.optimise_local_cost:
                 logger.info(f"Local cost before adding layer: {self.local_cost}")
                 self.local_cost = self._add_layer(layer_count)
@@ -390,6 +396,7 @@ class ISLRecompiler(ApproximateRecompiler):
             else:
                 self.global_cost = self._add_layer(layer_count)
             self.global_cost_history.append(self.global_cost)
+            self.record_cnot_depth()
 
             # Caching layers as MPS requires that the number of gates remain constant
             if self.remove_unnecessary_gates_during_isl and not (
@@ -450,9 +457,8 @@ class ISLRecompiler(ApproximateRecompiler):
             # Replace full_circuit with ref_circuit_as_gates, otherwise no way to remove unnecessary gates
             self.full_circuit = self.ref_circuit_as_gates
 
-        if self.lhs_moved_by_initial_ansatz > 0:
-            # Add initial_ansatz indices back into variational_circuit_range()
-            self.lhs_gate_count -= self.lhs_moved_by_initial_ansatz
+        # Add initial_ansatz indices back into variational_circuit_range(), if any
+        self.lhs_gate_count -= self.lhs_moved_by_initial_ansatz
 
         co.remove_unnecessary_gates_from_circuit(
             self.full_circuit, True, True, gate_range=self.g_range()
@@ -460,12 +466,16 @@ class ISLRecompiler(ApproximateRecompiler):
 
         final_global_cost = self._evaluate_global_cost()
         logger.info(f"Final global cost: {final_global_cost}")
+        self.global_cost_history.append(final_global_cost)
         if checkpoint_every > 0:
             self.checkpoint(checkpoint_every, checkpoint_dir, delete_prev_chkpt,
                             len(self.qubit_pair_history) - 1, start_time)
         recompiled_circuit = self.get_recompiled_circuit()
 
         num_2q_gates, num_1q_gates = co.find_num_gates(recompiled_circuit)
+        final_cnot_depth = multi_qubit_gate_depth(recompiled_circuit)
+        logger.info(f"Final CNOT depth: {final_cnot_depth}")
+        self.cnot_depth_history.append(final_cnot_depth)
 
         exact_overlap = "Not computable without SV backend"
         if self.is_statevector_backend:
@@ -479,6 +489,7 @@ class ISLRecompiler(ApproximateRecompiler):
             exact_overlap=exact_overlap,
             num_1q_gates=num_1q_gates,
             num_2q_gates=num_2q_gates,
+            cnot_depth_history=self.cnot_depth_history,
             global_cost_history=self.global_cost_history,
             local_cost_history=self.local_cost_history if self.optimise_local_cost else None,
             circuit_history=self.circuit_history,
@@ -567,6 +578,7 @@ class ISLRecompiler(ApproximateRecompiler):
             cost = self.evaluate_cost()
 
         self.global_cost = cost if not self.optimise_local_cost else self._evaluate_global_cost()
+        self.cnot_depth = multi_qubit_gate_depth(initial_ansatz)
 
         if self.global_cost < self.isl_config.sufficient_cost:
             self.initial_ansatz_already_successful = True
@@ -1070,3 +1082,13 @@ class ISLRecompiler(ApproximateRecompiler):
         self.full_circuit.data.insert(0, mps_circuit.data[0])
 
         return gates_absorbed
+
+    def record_cnot_depth(self):
+        if self.is_aer_mps_backend:
+            ansatz_circ = co.extract_inner_circuit(self.ref_circuit_as_gates, gate_range=(1, len(self.ref_circuit_as_gates)))
+        else:
+            start, end = self.variational_circuit_range()
+            # Shift start to include initial ansatz
+            ansatz_circ = co.extract_inner_circuit(self.full_circuit, gate_range=(start - self.lhs_moved_by_initial_ansatz, end))
+        self.cnot_depth = multi_qubit_gate_depth(ansatz_circ)
+        self.cnot_depth_history.append(self.cnot_depth)
