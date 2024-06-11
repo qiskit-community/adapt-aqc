@@ -6,7 +6,7 @@ from qiskit import QuantumCircuit
 import numpy as np
 
 import isl.utils.circuit_operations as co
-from isl.recompilers.isl_recompiler import ISLRecompiler
+from isl.recompilers.isl.isl_recompiler import ISLRecompiler
 from isl.recompilers.approximate_recompiler import ApproximateRecompiler
 from isl.utils.circuit_operations import MPS_SIM, SV_SIM, QASM_SIM
 

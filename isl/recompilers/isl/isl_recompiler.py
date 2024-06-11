@@ -12,6 +12,8 @@ from qiskit import QuantumCircuit, qasm2
 
 import isl.utils.constants as vconstants
 from isl.recompilers.approximate_recompiler import ApproximateRecompiler
+from isl.recompilers.isl.isl_config import ISLConfig
+from isl.recompilers.isl.isl_result import ISLResult
 from isl.utils import circuit_operations as co
 from isl.utils import cuquantum_functions as cu
 from isl.utils.constants import CMAP_FULL, generate_coupling_map
@@ -29,149 +31,6 @@ from isl.utils.utilityfunctions import (
 import isl.utils.ansatzes as ans
 
 logger = logging.getLogger(__name__)
-
-
-class ISLConfig:
-    def __init__(
-        self,
-        max_layers: int = int(1e5),
-        sufficient_cost=vconstants.DEFAULT_SUFFICIENT_COST,
-        max_2q_gates=1e4,
-        cost_improvement_num_layers=10,
-        cost_improvement_tol=1e-2,
-        max_layers_to_modify=100,
-        method="ISL",
-        bad_qubit_pair_memory=10,
-        entanglement_reuse_exponent=0,
-        expectation_reuse_exponent=1,
-        reuse_priority_mode="pair",
-        rotosolve_frequency=1,
-        rotoselect_tol=1e-5,
-        rotosolve_tol=1e-3,
-        entanglement_threshold=1e-8,
-    ):
-        """
-        ISL termination criteria.
-        :param max_layers: ISL will terminate if the number of ansatz layers reaches this value.
-        :param sufficient_cost: ISL will terminate if the cost reaches below this value.
-        :param max_2q_gates: ISL will terminate if the number of 2 qubit gates reaches this value.
-        :param cost_improvement_num_layers: The number of layer costs to consider when evaluating
-        if the cost is decreasing fast enough.
-        :param cost_improvement_tol: ISL will terminate if in the last cost_improvement_num_layers,
-        the cost has not decreased by this value on average per layer.
-
-        Add layer criteria:
-        :param max_layers_to_modify: The number of layers to modify, counting from the back of
-        the ansatz, when Rotosolve is used.
-        :param method: Method by which a qubit pair is prioritised for the next layer. One of:
-         'ISL' - Largest pairwise entanglement as defined by ISLRecompiler.entanglement_measure
-         'expectation' - Smallest combined σz expectation values (i.e., closest to min value of -2)
-         'basic' - Pair not picked in the longest time
-         'random' - Pair selected randomly
-        :param bad_qubit_pair_memory: For the ISL method, if acting on a qubit pair leads to
-        entanglement increasing, it is labelled a "bad pair". After this, for a number of layers
-        corresponding to the bad_qubit_pair_memory, this pair will not be selected.
-        :param entanglement_reuse_exponent: For the ISL method, this
-        controls how much priority should be given to picking qubits not recently acted on. If 0,
-        the priority system is turned off and all qubits have the same reuse priority when adding
-        a new layer. Note ISL never reuses the same pair of qubits regardless of this setting.
-        :param expectation_reuse_exponent: Same as above but for the expectation method.
-        :param reuse_priority_mode: For the priority system, given qubit pair (q1, q2) has been used
-        before, should priority be given to:
-        (a) not reusing the same pair of qubits (q1, q2) (set param to "pair")
-        (b) not reusing the qubits q1 OR q2 (set param to "qubit")
-
-        Other parameters:
-        :param rotosolve_frequency: How often Rotosolve is used (if n, rotosolve will be used after
-        every n layers).
-        :param rotoselect_tol: How much does the cost need to decrease by each iteration to continue
-         Rotoselect.
-        :param rotosolve_tol: How much does the cost need to decrease by each iteration to continue
-         Rotosolve.
-        :param entanglement_threshold: For the ISL method, entanglement below this value is treated
-         as zero in terms of picking the next layer.
-        """
-        self.bad_qubit_pair_memory = bad_qubit_pair_memory
-        self.max_layers = max_layers
-        self.sufficient_cost = sufficient_cost
-        self.max_2q_gates = max_2q_gates
-        self.cost_improvement_tol = cost_improvement_tol
-        self.cost_improvement_num_layers = int(cost_improvement_num_layers)
-        self.max_layers_to_modify = max_layers_to_modify
-        self.method = method
-        self.rotosolve_frequency = rotosolve_frequency
-        self.rotoselect_tol = rotoselect_tol
-        self.rotosolve_tol = rotosolve_tol
-        self.entanglement_threshold = entanglement_threshold
-        self.entanglement_reuse_exponent = entanglement_reuse_exponent
-        self.expectation_reuse_exponent = expectation_reuse_exponent
-        self.reuse_priority_mode = reuse_priority_mode.lower()
-
-    def __repr__(self):
-        representation_str = f"{self.__class__.__name__}("
-        for k, v in self.__dict__.items():
-            representation_str += f"{k}={v!r}, "
-        representation_str += ")"
-        return representation_str
-
-
-class ISLResult:
-    def __init__(
-        self,
-        circuit,
-        overlap,
-        exact_overlap,
-        num_1q_gates,
-        num_2q_gates,
-        cnot_depth_history,
-        global_cost_history,
-        local_cost_history,
-        circuit_history,
-        entanglement_measures_history,
-        e_val_history,
-        qubit_pair_history,
-        method_history,
-        time_taken,
-        cost_evaluations,
-        coupling_map,
-        circuit_qasm,
-    ):
-        """
-        :param circuit: Resulting circuit.
-        :param overlap: 1 - final_global_cost.
-        :param exact_overlap: Only computable with SV backend.
-        :param num_1q_gates: Number of rotation gates in circuit.
-        :param num_2q_gates: Number of entangling gates in circuit.
-        :param cnot_depth_history: Depth of ansatz after each layer when only considering 2-qubit gates.
-        :param global_cost_history: List of global costs after each layer.
-        :param local_cost_history: List of local costs after each layer (if applicable).
-        :param circuit_history: List of circuits as qasm strings after each layer (if applicable).
-        :param entanglement_measures_history: List of pairwise entanglements after each layer.
-        :param e_val_history: List of single-qubit sigma_z expectation values after each layer.
-        :param qubit_pair_history: List of qubit pair acted on in each layer.
-        :param method_history: List of methods used to select qubit pairs for each layer.
-        :param time_taken: Total time taken for recompilation.
-        :param cost_evaluations: Total number of cost evalutions during recompilation.
-        :param coupling_map: List of allowed qubit connections.
-        :param circuit_qasm: QASM string of the resulting circuit.
-        """
-        self.circuit = circuit
-        self.overlap = overlap
-        self.exact_overlap = exact_overlap
-        self.num_1q_gates = num_1q_gates
-        self.num_2q_gates = num_2q_gates
-        self.cnot_depth_history = cnot_depth_history
-        self.global_cost_history = global_cost_history
-        self.local_cost_history = local_cost_history
-        self.circuit_history = circuit_history
-        self.entanglement_measures_history = entanglement_measures_history
-        self.e_val_history = e_val_history
-        self.qubit_pair_history = qubit_pair_history
-        self.method_history = method_history
-        self.time_taken = time_taken
-        self.cost_evaluations = cost_evaluations
-        self.coupling_map = coupling_map
-        self.circuit_qasm = circuit_qasm
 
 
 class ISLRecompiler(ApproximateRecompiler):
