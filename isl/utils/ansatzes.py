@@ -31,11 +31,11 @@ def u4():
 
 def thinly_dressed_cnot():
     qc = QuantumCircuit(2)
-    qc.rz(0, 0)
-    qc.rz(0, 1)
+    qc.rx(0, 0)
+    qc.rx(0, 1)
     qc.cx(0, 1)
-    qc.rz(0, 0)
-    qc.rz(0, 1)
+    qc.rx(0, 0)
+    qc.rx(0, 1)
     return qc
 
 
@@ -59,14 +59,14 @@ def fully_dressed_cnot():
 
 def identity_resolvable():
     qc = QuantumCircuit(2)
-    qc.rz(0, 0)
-    qc.rz(0, 1)
+    qc.rx(0, 0)
+    qc.rx(0, 1)
     qc.cx(0, 1)
-    qc.rz(0, 0)
-    qc.rz(0, 1)
+    qc.rx(0, 0)
+    qc.rx(0, 1)
     qc.cx(0, 1)
-    qc.rz(0, 0)
-    qc.rz(0, 1)
+    qc.rx(0, 0)
+    qc.rx(0, 1)
     return qc
 
 
