@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 import numpy as np
 from aqc_research.mps_operations import mps_from_circuit, mps_dot
+from aqc_research.model_sp_lhs.trotter.trotter import trotter_circuit
 from qiskit import ClassicalRegister, QuantumCircuit, QuantumRegister
 from qiskit.quantum_info import Statevector
 
@@ -18,7 +19,11 @@ from isl.recompilers import ISLConfig, ISLRecompiler
 from isl.utils.circuit_operations import QASM_SIM, SV_SIM, MPS_SIM, CUQUANTUM_SIM
 from isl.utils.constants import DEFAULT_SUFFICIENT_COST
 from isl.utils.entanglement_measures import EM_TOMOGRAPHY_NEGATIVITY
-from isl.utils.utilityfunctions import multi_qubit_gate_depth
+from isl.utils.utilityfunctions import multi_qubit_gate_depth, tenpy_to_qiskit_mps
+
+from tenpy.networks.mps import MPS
+from tenpy.models import XXZChain
+from tenpy.algorithms import tebd
 
 
 def create_initial_ansatz():
@@ -739,6 +744,60 @@ class TestISL(TestCase):
         result = recompiler.recompile()
         circuit = result.circuit
         self.assertEqual(multi_qubit_gate_depth(circuit), result.cnot_depth_history[-1])
+
+    def test_recompiling_from_tenpy_mps_works(self):
+        n = 3
+        num_trotter_steps = 5
+        dt = 0.4
+        # Target from tenpy
+        # NOTE: our Hamiltonian with delta and field is equivalent to tenpy's XXZChain model with
+        # Jxx = -1, Jz = -delta, hz = -field.
+        model = XXZChain(
+        {
+            "L": n,
+            "Jxx": -1.0,
+            "Jz": -1.0,
+            "hz": 0.0,
+            "bc_MPS": "finite",
+        }
+        )
+        neel_state = ["up", "down", "up"]
+        psi = MPS.from_product_state(model.lat.mps_sites(), neel_state, bc=model.lat.bc_MPS)
+
+        tebd_params = {
+            'N_steps': num_trotter_steps,
+            'dt': dt,
+            'order': 2,
+            'trunc_params': {'chi_max': 100, 'svd_min': 1.e-12}
+        }
+
+        eng = tebd.TEBDEngine(psi, model, tebd_params)
+        eng.run()
+        target_mps = tenpy_to_qiskit_mps(psi)
+
+        # Recompile
+        starting_circuit = QuantumCircuit(n)
+        starting_circuit.x(range(0, n, 2))
+
+        recompiler = ISLRecompiler(target_mps, backend=co.MPS_SIM, starting_circuit=starting_circuit)
+        result = recompiler.recompile()
+
+        # Target circuit created independently for comparison
+        qc = QuantumCircuit(n)
+        qc.x(range(0, n, 2))
+
+        trotter_circuit(
+            qc,
+            dt=dt,
+            delta=1.0,
+            field=0.0,
+            num_trotter_steps=num_trotter_steps,
+            second_order=True,
+        )
+
+        overlap = co.calculate_overlap_between_circuits(result.circuit, qc)
+
+        self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
 
         
 class TestISLCheckpointing(TestCase):

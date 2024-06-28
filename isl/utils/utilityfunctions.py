@@ -1,5 +1,6 @@
 """Contains functions """
 import functools
+import copy
 from collections.abc import Iterable
 from typing import Union, Dict
 
@@ -284,3 +285,28 @@ def multi_qubit_gate_depth(qc: QuantumCircuit) -> int:
     this will be equivalent to the CNOT depth.
     """
     return qc.depth(filter_function=lambda instr: len(instr.qubits) > 1)
+
+def tenpy_to_qiskit_mps(tenpy_mps):
+    num_sites = tenpy_mps.L
+    tenpy_mps.canonical_form()
+
+    gam = [0] * num_sites
+    lam = [0] * (num_sites - 1)
+    permutation = None
+    for n in range(num_sites):
+        g_n = tenpy_mps.get_B(n, form="G").to_ndarray()  # Get the tenpy "B" tensor for site n
+        g_n = np.swapaxes(g_n, 0, 1)  # Swap axes to be consistent with Qiskit MPS
+        if permutation is not None:
+            g_n[:] = g_n[:, permutation, :] # permute left index in the same way the left singlular values were permuted
+        if n < num_sites - 1:
+            l_n = tenpy_mps.get_SR(n)   # Get singular values to the right of tensor n
+            permutation = np.argsort(l_n)[::-1]
+            l_n = np.sort(l_n)[::-1]    # Sort singular values in descending order
+            lam[n] = l_n
+            if permutation is not None:
+                g_n[:] = g_n[:, :, permutation] # permute right index in the same way the right singular values were permuted
+        gam[n] = (g_n[0], g_n[1]) # Split physical dimension into two parts of a tuple
+
+    qiskit_mps = (gam, lam)
+
+    return copy.deepcopy(qiskit_mps)
