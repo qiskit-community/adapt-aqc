@@ -28,7 +28,7 @@ from tenpy.networks.mps import MPS
 from tenpy.models import XXZChain
 from tenpy.algorithms import tebd
 
-from src.simulation.simulator import Simulator
+from qiskit_tenpy_converter.simulation.simulator import Simulator
 tenpy_sim = Simulator()
 
 

@@ -9,8 +9,7 @@ from pathlib import Path
 import aqc_research.mps_operations as mpsops
 import numpy as np
 from qiskit import QuantumCircuit, qasm2
-
-from src.simulation.simulator import Simulator
+from qiskit_tenpy_converter.simulation.simulator import Simulator
 
 import isl.utils.constants as vconstants
 from isl.recompilers.approximate_recompiler import ApproximateRecompiler

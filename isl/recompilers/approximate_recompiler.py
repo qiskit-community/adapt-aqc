@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 from typing import Union
 
 from isl.utils.utilityfunctions import tenpy_to_qiskit_mps
-from src.simulation.simulator import Simulator
+from qiskit_tenpy_converter.simulation.simulator import Simulator
 tenpy_sim = Simulator()
 
 import aqc_research.mps_operations as mpsops
