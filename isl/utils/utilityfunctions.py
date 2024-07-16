@@ -112,6 +112,8 @@ def is_statevector_backend(backend):
         return True
     elif backend == "cuquantum":
         return False
+    elif backend == "tenpy":
+        return False
     try:
         return backend.name().startswith("statevector")
     except TypeError:

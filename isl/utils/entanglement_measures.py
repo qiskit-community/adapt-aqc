@@ -13,6 +13,7 @@ from scipy import linalg
 from scipy.linalg import eig
 
 import isl.utils.circuit_operations as co
+from isl.utils.circuit_operations import TENPY_SIM
 from isl.utils.utilityfunctions import is_statevector_backend, is_aer_mps_backend, is_cuquantum_backend
 
 logger = logging.getLogger(__name__)
@@ -61,7 +62,7 @@ def calculate_entanglement_measure(
                 circuit, backend, return_statevector=True
             )
             rho = partial_trace(statevector, qubit_1, qubit_2)
-        elif is_aer_mps_backend(backend) or is_cuquantum_backend(backend):
+        elif is_aer_mps_backend(backend) or is_cuquantum_backend(backend) or backend == TENPY_SIM:
             rho = mpsops.partial_trace(mps, [qubit_1, qubit_2], already_preprocessed=True)
         else:
             rho = perform_quantum_tomography(

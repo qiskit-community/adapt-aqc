@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 QASM_SIM = Aer.get_backend("qasm_simulator")
 SV_SIM = Aer.get_backend("statevector_simulator")
+TENPY_SIM = "tenpy"
 
 # For cuquantum backend
 CUQUANTUM_SIM = "cuquantum"

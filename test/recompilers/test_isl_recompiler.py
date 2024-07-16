@@ -12,18 +12,24 @@ from aqc_research.mps_operations import mps_from_circuit, mps_dot
 from aqc_research.model_sp_lhs.trotter.trotter import trotter_circuit
 from qiskit import ClassicalRegister, QuantumCircuit, QuantumRegister
 from qiskit.quantum_info import Statevector
+from qiskit.transpiler import CouplingMap
+from qiskit.compiler import transpile
 
 import isl.utils.circuit_operations as co
 import isl.utils.cuquantum_functions as cu
+import isl.utils.ansatzes as ans
 from isl.recompilers import ISLConfig, ISLRecompiler
-from isl.utils.circuit_operations import QASM_SIM, SV_SIM, MPS_SIM, CUQUANTUM_SIM
-from isl.utils.constants import DEFAULT_SUFFICIENT_COST
+from isl.utils.circuit_operations import QASM_SIM, SV_SIM, MPS_SIM, CUQUANTUM_SIM, TENPY_SIM
+from isl.utils.constants import DEFAULT_SUFFICIENT_COST, coupling_map_linear
 from isl.utils.entanglement_measures import EM_TOMOGRAPHY_NEGATIVITY
 from isl.utils.utilityfunctions import multi_qubit_gate_depth, tenpy_to_qiskit_mps
 
 from tenpy.networks.mps import MPS
 from tenpy.models import XXZChain
 from tenpy.algorithms import tebd
+
+from src.simulation.simulator import Simulator
+tenpy_sim = Simulator()
 
 
 def create_initial_ansatz():
@@ -1073,3 +1079,69 @@ class TestISLCuquantum(TestCase):
         # Make sure the circuit has been partitioned correctly
         reconstruct_circuit = initial_ansatz_part + isql_part + middle_part + starting_circuit_part
         self.assertEqual(recompiler.full_circuit.data, reconstruct_circuit)
+
+
+class TestISLTenpy(TestCase):
+
+    def test_given_tenpy_backend_when_recompile_then_works(self):
+        n = 3
+        qc = co.create_random_initial_state_circuit(n)
+        qc = transpile(qc, basis_gates=["cx", "rx", "ry", "rz"], coupling_map=CouplingMap.from_line(n))
+
+        recompiler = ISLRecompiler(qc, backend=TENPY_SIM, coupling_map=coupling_map_linear(n),
+                                   tenpy_cut_off=1e-3)
+        result = recompiler.recompile()
+
+        overlap = co.calculate_overlap_between_circuits(qc, result.circuit)
+        self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
+
+    # TODO reinstate this test when we have better performance when using tenpy backend
+    # def test_given_tenpy_backend_when_recompile_with_isql_local_cost_starting_circuit_cl2q_then_works(self):
+    #     # Similar to above but with all options which could mess with the structure of the circuit
+    #     # NOTE: currently this takes a very long time (a few minutes)
+    #     n = 3
+    #     qc = co.create_random_initial_state_circuit(n)
+    #     qc = transpile(qc, basis_gates=["cx", "rx", "ry", "rz"], coupling_map=CouplingMap.from_line(n))
+
+    #     starting_circuit = QuantumCircuit(n)
+    #     starting_circuit.x(list(range(0, n, 2)))
+
+    #     recompiler = ISLRecompiler(qc, backend="TENPY", coupling_map=coupling_map_linear(n),
+    #                                custom_layer_2q_gate=ans.identity_resolvable(),
+    #                                starting_circuit=starting_circuit, optimise_local_cost=True,
+    #                                initial_single_qubit_layer=True, tenpy_cut_off=1e-3)
+    #     result = recompiler.recompile()
+
+    #     overlap = co.calculate_overlap_between_circuits(qc, result.circuit)
+    #     self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
+        
+    def test_given_tenpy_backend_then_target_cached(self):
+        n = 5
+        qc = co.create_random_initial_state_circuit(n)
+        qc = transpile(qc, basis_gates=["cx", "rx", "ry", "rz"])
+
+        recompiler = ISLRecompiler(qc, backend=TENPY_SIM, tenpy_cut_off=1e-3)
+        
+        cached_target = tenpy_to_qiskit_mps(recompiler.tenpy_target_mps)
+        actual_target = tenpy_to_qiskit_mps(tenpy_sim.simulate(qc, 1e-3))
+
+        overlap = abs(mps_dot(cached_target, actual_target))**2
+        self.assertAlmostEqual(overlap, 1)
+
+    def test_given_tenpy_backend_then_cache_not_modified(self):
+        n = 5
+        qc = co.create_random_initial_state_circuit(n)
+        qc = transpile(qc, basis_gates=["cx", "rx", "ry", "rz"])
+
+        recompiler = ISLRecompiler(qc, backend=TENPY_SIM, tenpy_cut_off=1e-3)
+        
+        cached_target = tenpy_to_qiskit_mps(recompiler.tenpy_target_mps.copy())
+
+        recompiler._add_layer(0)
+        recompiler._add_layer(1)
+        recompiler._add_layer(2)
+
+        cached_target_after_layers_added = tenpy_to_qiskit_mps(recompiler.tenpy_target_mps.copy())
+
+        overlap = abs(mps_dot(cached_target, cached_target_after_layers_added))**2
+        self.assertAlmostEqual(overlap, 1)

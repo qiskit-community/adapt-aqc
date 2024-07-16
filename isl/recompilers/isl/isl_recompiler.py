@@ -10,10 +10,13 @@ import aqc_research.mps_operations as mpsops
 import numpy as np
 from qiskit import QuantumCircuit, qasm2
 
+from src.simulation.simulator import Simulator
+
 import isl.utils.constants as vconstants
 from isl.recompilers.approximate_recompiler import ApproximateRecompiler
 from isl.recompilers.isl.isl_config import ISLConfig
 from isl.recompilers.isl.isl_result import ISLResult
+from isl.utils.utilityfunctions import tenpy_to_qiskit_mps
 from isl.utils import circuit_operations as co
 from isl.utils import cuquantum_functions as cu
 from isl.utils.constants import CMAP_FULL, generate_coupling_map
@@ -31,6 +34,8 @@ from isl.utils.utilityfunctions import (
 import isl.utils.ansatzes as ans
 
 logger = logging.getLogger(__name__)
+
+tenpy_sim = Simulator()
 
 
 class ISLRecompiler(ApproximateRecompiler):
@@ -59,6 +64,7 @@ class ISLRecompiler(ApproximateRecompiler):
         debug_log_full_ansatz=False,
         initial_single_qubit_layer=False,
         cu_algorithm=None,
+        tenpy_cut_off=None,
     ):
         """
         :param target: Circuit or MPS that is to be recompiled
@@ -95,6 +101,8 @@ class ISLRecompiler(ApproximateRecompiler):
         decompose algorithm to use for gate application. Can be either a `dict` or a
         `ContractDecomposeAlgorithm`. If None set, the default used is
         isl.utils.circuit_operations.DEFAULT_CU_ALGORITHM
+        :param tenpy_cut_off: Cutoff used by tenpy for singular values if gate acts on more than one
+        site.
         """
         super().__init__(
             target=target,
@@ -104,7 +112,8 @@ class ISLRecompiler(ApproximateRecompiler):
             general_initial_state=general_initial_state,
             starting_circuit=starting_circuit,
             optimise_local_cost=optimise_local_cost,
-            cu_algorithm=cu_algorithm
+            cu_algorithm=cu_algorithm,
+            tenpy_cut_off=tenpy_cut_off
         )
 
         self.save_circuit_history = save_circuit_history
@@ -165,6 +174,12 @@ class ISLRecompiler(ApproximateRecompiler):
 
         if self.is_cuquantum_backend:
             self.next_gate_to_cache_index = self.lhs_gate_count
+
+        if self.is_tenpy_backend:
+            for (q0, q1) in self.coupling_map:
+                if abs(q0 - q1) != 1:
+                    logger.warning("When using TenPy backend, a linear coupling map is recommended")
+                    break
 
         self.resume_from_layer = None
         self.prev_checkpoint_time_taken = None
@@ -735,6 +750,8 @@ class ISLRecompiler(ApproximateRecompiler):
             self.circ_mps = mpsops.mps_from_circuit(circ, return_preprocessed=True, sim=self.backend)
         elif self.is_cuquantum_backend:
             self.circ_mps = self._get_full_circ_mps_using_cu()
+        elif self.is_tenpy_backend:
+            self.circ_mps = self._get_full_circ_mps_using_tenpy()
         else:
             self.circ_mps = None
         for control, target in self.coupling_map:
@@ -840,6 +857,10 @@ class ISLRecompiler(ApproximateRecompiler):
             return expectation_value_of_qubits_mps(self.full_circuit, self.backend)
         if self.is_cuquantum_backend:
             mps = self._get_full_circ_mps_using_cu()
+            return [(mpsops.mps_expectation(mps, 'Z', i, already_preprocessed=True))
+                      for i in range(len(mps))]
+        if self.is_tenpy_backend:
+            mps = self._get_full_circ_mps_using_tenpy()
             return [(mpsops.mps_expectation(mps, 'Z', i, already_preprocessed=True))
                       for i in range(len(mps))]
         elif self.optimise_local_cost:

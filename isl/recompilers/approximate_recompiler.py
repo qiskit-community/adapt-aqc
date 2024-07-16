@@ -8,6 +8,10 @@ import timeit
 from abc import ABC, abstractmethod
 from typing import Union
 
+from isl.utils.utilityfunctions import tenpy_to_qiskit_mps
+from src.simulation.simulator import Simulator
+tenpy_sim = Simulator()
+
 import aqc_research.mps_operations as mpsops
 import numpy as np
 from aqc_research.mps_operations import mps_from_circuit, check_mps
@@ -19,7 +23,7 @@ from qiskit_aer.backends.compatibility import Statevector
 
 import isl.utils.cuquantum_functions as cu
 from isl.utils import circuit_operations as co
-from isl.utils.circuit_operations import QASM_SIM, DEFAULT_CU_ALGORITHM
+from isl.utils.circuit_operations import QASM_SIM, DEFAULT_CU_ALGORITHM, TENPY_SIM
 from isl.utils.circuit_operations.circuit_operations_full_circuit import (
     remove_classical_operations,
 )
@@ -71,6 +75,7 @@ class ApproximateRecompiler(ABC):
             starting_circuit=None,
             optimise_local_cost=False,
             cu_algorithm=None,
+            tenpy_cut_off=None
     ):
         """
         :param target: Circuit or MPS that is to be recompiled
@@ -101,6 +106,11 @@ class ApproximateRecompiler(ABC):
         self.is_statevector_backend = is_statevector_backend(self.backend)
         self.is_aer_mps_backend = is_aer_mps_backend(self.backend)
         self.is_cuquantum_backend = is_cuquantum_backend(self.backend)
+        self.is_tenpy_backend = self.backend == TENPY_SIM
+        if self.is_tenpy_backend:
+            logger.warning("TenPy is experimental with missing features e.g., initial ansatz")
+            self.tenpy_cut_off = tenpy_cut_off
+            self.tenpy_target_mps = None
         if self.is_cuquantum_backend:
             try:
                 import cupy
@@ -169,19 +179,24 @@ class ApproximateRecompiler(ABC):
             qc2.append(co.make_quantum_only_circuit(target_copy).to_instruction(), qc2.qregs[0])
             prepared_circuit = co.unroll_to_basis_gates(qc2)
             if self.is_aer_mps_backend:
-                logger.info("Pre-computing target circuit as MPS")
+                logger.info("Pre-computing target circuit as MPS using AerSimulator")
                 target_mps = mps_from_circuit(prepared_circuit, sim=self.backend)
                 target_mps_circuit = QuantumCircuit(prepared_circuit.num_qubits)
                 target_mps_circuit.set_matrix_product_state(target_mps)
                 # Return a circuit with the target MPS embedded inside
                 return target_mps_circuit
             if self.is_cuquantum_backend:
-                logger.info("Pre-computing target circuit as MPS")
+                logger.info("Pre-computing target circuit as MPS using CuQuantum")
                 # Here we cache the target MPS but don't return a circuit since we can't smuggle a
                 # CuQuantum MPS inside a Qiskit QuantumCircuit
                 self.cu_target_mps = (
                     cu.mps_from_circuit(prepared_circuit, algorithm=self.cu_algorithm))
                 self.cu_cached_mps = self.cu_target_mps.copy()
+            if self.is_tenpy_backend:
+                logger.info("Pre-computing target circuit as MPS using Tenpy")
+                # Here we cache the target MPS but don't return a circuit since we can't smuggle a
+                # Tenpy MPS inside a Qiskit QuantumCircuit
+                self.tenpy_target_mps = tenpy_sim.simulate(prepared_circuit.copy(), cut_off=self.tenpy_cut_off)
             return prepared_circuit
 
     def parse_default_execute_kwargs(self, execute_kwargs):
@@ -464,7 +479,7 @@ class ApproximateRecompiler(ABC):
             return self._evaluate_global_cost()
         
     def _evaluate_local_cost(self):
-        if self.is_aer_mps_backend or self.is_cuquantum_backend:
+        if self.is_aer_mps_backend or self.is_cuquantum_backend or self.is_tenpy_backend:
             return self._evaluate_local_cost_mps()
         elif self.is_statevector_backend:
             return self._evaluate_local_cost_sv()
@@ -476,9 +491,13 @@ class ApproximateRecompiler(ABC):
             mps = self._get_full_circ_mps_using_cu()
             e_vals = [(mpsops.mps_expectation(mps, 'Z', i, already_preprocessed=True))
                       for i in range(len(mps))]
-        else:
+        elif self.is_aer_mps_backend:
             circ = self.full_circuit.copy()
             e_vals = expectation_value_of_qubits_mps(circ, self.backend)
+        elif self.is_tenpy_backend:
+            mps = self._get_full_circ_mps_using_tenpy()
+            e_vals = [(mpsops.mps_expectation(mps, 'Z', i, already_preprocessed=True))
+                      for i in range(len(mps))]
 
         cost = 0.5 * (1 - np.mean(e_vals))
         return cost
@@ -522,7 +541,7 @@ class ApproximateRecompiler(ABC):
         return cost
     
     def _evaluate_global_cost(self):
-        if self.is_aer_mps_backend or self.is_cuquantum_backend:
+        if self.is_aer_mps_backend or self.is_cuquantum_backend or self.is_tenpy_backend:
             return self._evaluate_global_cost_mps()
         elif self.is_statevector_backend:
             return self._evaluate_global_cost_sv()
@@ -532,9 +551,11 @@ class ApproximateRecompiler(ABC):
     def _evaluate_global_cost_mps(self):
         if self.is_cuquantum_backend:
             circ_mps = self._get_full_circ_mps_using_cu()
-        else:
+        elif self.is_aer_mps_backend:
             circ = self.full_circuit.copy()
             circ_mps = mpsops.mps_from_circuit(circ, return_preprocessed=True, sim=self.backend)
+        elif self.is_tenpy_backend:
+            circ_mps = self._get_full_circ_mps_using_tenpy()
         if self.zero_mps is None:
             sim = self.backend if self.is_aer_mps_backend else None
             self.zero_mps = mpsops.mps_from_circuit(QuantumCircuit(self.total_num_qubits),
@@ -600,3 +621,9 @@ class ApproximateRecompiler(ABC):
         )
 
         return output
+    
+    def _get_full_circ_mps_using_tenpy(self):
+        ansatz_circ = co.extract_inner_circuit(self.full_circuit, self.ansatz_range())
+        circ_mps = tenpy_to_qiskit_mps(tenpy_sim.simulate(ansatz_circ, cut_off=self.tenpy_cut_off, starting_state=self.tenpy_target_mps.copy()))
+
+        return mpsops._preprocess_mps(circ_mps)
