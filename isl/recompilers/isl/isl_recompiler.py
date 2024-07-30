@@ -9,7 +9,6 @@ from pathlib import Path
 import aqc_research.mps_operations as mpsops
 import numpy as np
 from qiskit import QuantumCircuit, qasm2
-from qiskit_tenpy_converter.simulation.simulator import Simulator
 
 import isl.utils.constants as vconstants
 from isl.recompilers.approximate_recompiler import ApproximateRecompiler
@@ -34,7 +33,6 @@ import isl.utils.ansatzes as ans
 
 logger = logging.getLogger(__name__)
 
-tenpy_sim = Simulator()
 
 
 class ISLRecompiler(ApproximateRecompiler):

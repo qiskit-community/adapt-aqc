@@ -9,8 +9,6 @@ from abc import ABC, abstractmethod
 from typing import Union
 
 from isl.utils.utilityfunctions import tenpy_to_qiskit_mps
-from qiskit_tenpy_converter.simulation.simulator import Simulator
-tenpy_sim = Simulator()
 
 import aqc_research.mps_operations as mpsops
 import numpy as np
@@ -108,7 +106,13 @@ class ApproximateRecompiler(ABC):
         self.is_cuquantum_backend = is_cuquantum_backend(self.backend)
         self.is_tenpy_backend = self.backend == TENPY_SIM
         if self.is_tenpy_backend:
+            try:
+                from qiskit_tenpy_converter.simulation.simulator import Simulator
+            except ModuleNotFoundError as e:
+                logger.error(e)
+                raise ModuleNotFoundError("qiskit_tenpy_converter not installed. Try a different backend.")
             logger.warning("TenPy is experimental with missing features e.g., initial ansatz")
+            self.tenpy_sim = Simulator()
             self.tenpy_cut_off = tenpy_cut_off
             self.tenpy_target_mps = None
         if self.is_cuquantum_backend:
@@ -196,7 +200,7 @@ class ApproximateRecompiler(ABC):
                 logger.info("Pre-computing target circuit as MPS using Tenpy")
                 # Here we cache the target MPS but don't return a circuit since we can't smuggle a
                 # Tenpy MPS inside a Qiskit QuantumCircuit
-                self.tenpy_target_mps = tenpy_sim.simulate(prepared_circuit.copy(), cut_off=self.tenpy_cut_off)
+                self.tenpy_target_mps = self.tenpy_sim.simulate(prepared_circuit.copy(), cut_off=self.tenpy_cut_off)
             return prepared_circuit
 
     def parse_default_execute_kwargs(self, execute_kwargs):
@@ -624,6 +628,6 @@ class ApproximateRecompiler(ABC):
     
     def _get_full_circ_mps_using_tenpy(self):
         ansatz_circ = co.extract_inner_circuit(self.full_circuit, self.ansatz_range())
-        circ_mps = tenpy_to_qiskit_mps(tenpy_sim.simulate(ansatz_circ, cut_off=self.tenpy_cut_off, starting_state=self.tenpy_target_mps.copy()))
+        circ_mps = tenpy_to_qiskit_mps(self.tenpy_sim.simulate(ansatz_circ, cut_off=self.tenpy_cut_off, starting_state=self.tenpy_target_mps.copy()))
 
         return mpsops._preprocess_mps(circ_mps)

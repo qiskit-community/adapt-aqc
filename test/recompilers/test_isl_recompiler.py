@@ -3,33 +3,27 @@ import os
 import pickle
 import shutil
 import tempfile
-import unittest
 from unittest import TestCase
 from unittest.mock import patch
 
 import numpy as np
-from aqc_research.mps_operations import mps_from_circuit, mps_dot
 from aqc_research.model_sp_lhs.trotter.trotter import trotter_circuit
+from aqc_research.mps_operations import mps_from_circuit, mps_dot
 from qiskit import ClassicalRegister, QuantumCircuit, QuantumRegister
+from qiskit.compiler import transpile
 from qiskit.quantum_info import Statevector
 from qiskit.transpiler import CouplingMap
-from qiskit.compiler import transpile
+from tenpy.algorithms import tebd
+from tenpy.models import XXZChain
+from tenpy.networks.mps import MPS
 
 import isl.utils.circuit_operations as co
 import isl.utils.cuquantum_functions as cu
-import isl.utils.ansatzes as ans
 from isl.recompilers import ISLConfig, ISLRecompiler
 from isl.utils.circuit_operations import QASM_SIM, SV_SIM, MPS_SIM, CUQUANTUM_SIM, TENPY_SIM
 from isl.utils.constants import DEFAULT_SUFFICIENT_COST, coupling_map_linear
 from isl.utils.entanglement_measures import EM_TOMOGRAPHY_NEGATIVITY
 from isl.utils.utilityfunctions import multi_qubit_gate_depth, tenpy_to_qiskit_mps
-
-from tenpy.networks.mps import MPS
-from tenpy.models import XXZChain
-from tenpy.algorithms import tebd
-
-from qiskit_tenpy_converter.simulation.simulator import Simulator
-tenpy_sim = Simulator()
 
 
 def create_initial_ansatz():
@@ -1081,7 +1075,20 @@ class TestISLCuquantum(TestCase):
         self.assertEqual(recompiler.full_circuit.data, reconstruct_circuit)
 
 
+try:
+    from qiskit_tenpy_converter.simulation.simulator import Simulator
+
+    module_failed_tenpy = False
+except ImportError:
+    module_failed_tenpy = True
+
+
+
 class TestISLTenpy(TestCase):
+
+    def setUp(self):
+        if module_failed_tenpy:
+            self.skipTest('Skipping as qiskit_tenpy_converter is not installed')
 
     def test_given_tenpy_backend_when_recompile_then_works(self):
         n = 3
@@ -1116,6 +1123,7 @@ class TestISLTenpy(TestCase):
     #     self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
         
     def test_given_tenpy_backend_then_target_cached(self):
+        tenpy_sim = Simulator()
         n = 5
         qc = co.create_random_initial_state_circuit(n)
         qc = transpile(qc, basis_gates=["cx", "rx", "ry", "rz"])
