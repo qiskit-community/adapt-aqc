@@ -272,6 +272,7 @@ def concurrence(rho):
         logger.warning(f"When calculating concurrence,eigenvalues were not real")
         return 0
     lambdas = np.sqrt(eigenvalues.clip(min=0))
+    lambdas = sorted(lambdas, reverse=True)
     return np.max([0, lambdas[0] - lambdas[1] - lambdas[2] - lambdas[3]])
 
 
