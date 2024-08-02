@@ -1,10 +1,11 @@
 from unittest import TestCase
-from unittest import TestCase
 from unittest.mock import patch
 
 import aqc_research.mps_operations as mpsops
 import numpy as np
+import qiskit.quantum_info
 from qiskit import QuantumCircuit
+from qiskit.quantum_info import random_statevector, DensityMatrix
 from qiskit_aer import Aer
 
 import isl.utils.circuit_operations as co
@@ -39,6 +40,10 @@ class TestEntanglementMeasures(TestCase):
     def test_observable_min_concurrence(self):
         qc = co.create_random_initial_state_circuit(3)
         em.measure_concurrence_lower_bound(qc, 0, 1, Aer.get_backend("qasm_simulator"))
+
+    def test_when_calculating_concurrence_then_matches_qiskit(self):
+        rho = DensityMatrix(random_statevector(4, seed=0)).data
+        self.assertAlmostEqual(qiskit.quantum_info.concurrence(rho), em.concurrence(rho))
 
     @patch('aqc_research.mps_operations.partial_trace')
     def test_given_mps_backend_when_calculate_em_measure_then_mps_operations_partial_trace_called(
