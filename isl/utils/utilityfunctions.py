@@ -110,14 +110,12 @@ def is_statevector_backend(backend):
     """
     if backend == "qulacs":
         return True
-    elif backend == "cuquantum":
-        return False
-    elif backend == "tenpy":
-        return False
     try:
         return backend.name().startswith("statevector")
     except TypeError:
         return backend.name.startswith("statevector")
+    except AttributeError:
+        return False
     
 def is_aer_mps_backend(backend):
     """
@@ -137,6 +135,10 @@ def is_cuquantum_backend(backend):
     :return: Boolean
     """
     return backend == "cuquantum"
+
+def is_mps_backend(backend):
+    return is_aer_mps_backend(backend) or is_cuquantum_backend(
+        backend) or backend == "tenpy" or backend == "itensor"
 
 def counts_data_from_statevector(
         statevector,

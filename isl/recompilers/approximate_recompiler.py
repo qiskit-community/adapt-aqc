@@ -8,7 +8,7 @@ import timeit
 from abc import ABC, abstractmethod
 from typing import Union
 
-from isl.utils.utilityfunctions import tenpy_to_qiskit_mps
+from isl.utils.utilityfunctions import tenpy_to_qiskit_mps, is_mps_backend
 
 import aqc_research.mps_operations as mpsops
 import numpy as np
@@ -21,7 +21,7 @@ from qiskit_aer.backends.compatibility import Statevector
 
 import isl.utils.cuquantum_functions as cu
 from isl.utils import circuit_operations as co
-from isl.utils.circuit_operations import QASM_SIM, DEFAULT_CU_ALGORITHM, TENPY_SIM
+from isl.utils.circuit_operations import QASM_SIM, DEFAULT_CU_ALGORITHM, TENPY_SIM, ITENSOR_SIM
 from isl.utils.circuit_operations.circuit_operations_full_circuit import (
     remove_classical_operations,
 )
@@ -73,7 +73,10 @@ class ApproximateRecompiler(ABC):
             starting_circuit=None,
             optimise_local_cost=False,
             cu_algorithm=None,
-            tenpy_cut_off=None
+            tenpy_cut_off=None,
+            itensor_chi=None,
+            itensor_cutoff=None,
+
     ):
         """
         :param target: Circuit or MPS that is to be recompiled
@@ -111,7 +114,7 @@ class ApproximateRecompiler(ABC):
             except ModuleNotFoundError as e:
                 logger.error(e)
                 raise ModuleNotFoundError("qiskit_tenpy_converter not installed. Try a different backend.")
-            logger.warning("TenPy is experimental with missing features e.g., initial ansatz")
+            logger.warning("TenPy is an experimental backend with many missing features")
             self.tenpy_sim = Simulator()
             self.tenpy_cut_off = tenpy_cut_off
             self.tenpy_target_mps = None
@@ -123,9 +126,14 @@ class ApproximateRecompiler(ABC):
                 self.cu_cached_mps = None
             except ModuleNotFoundError as e:
                 logger.error(e)
-                raise ModuleNotFoundError("cuquantum not installed. Try a different backend.")
+                raise ModuleNotFoundError("Cuquantum not installed. Try a different backend.")
+        if self.backend == ITENSOR_SIM:
+            logger.warning("ITensor is an experimental backend with many missing features")
+            self.itensor_target = None
+            self.itensor_chi = itensor_chi
+            self.itensor_cutoff = itensor_cutoff
         if check_mps(self.target) and not self.is_aer_mps_backend:
-            raise Exception("An MPS backend must be used when target is an MPS")
+            raise Exception("Aer MPS backend must be used when target is an Aer MPS")
         self.circuit_to_recompile = self.prepare_circuit()
         if hasattr(self.backend, "num_qubits") and self.circuit_to_recompile.num_qubits > self.backend.num_qubits:
             raise ValueError(f"Number of qubits is too large for backend chosen. Maximum is {self.backend.num_qubits}.")
@@ -191,16 +199,23 @@ class ApproximateRecompiler(ABC):
                 return target_mps_circuit
             if self.is_cuquantum_backend:
                 logger.info("Pre-computing target circuit as MPS using CuQuantum")
-                # Here we cache the target MPS but don't return a circuit since we can't smuggle a
-                # CuQuantum MPS inside a Qiskit QuantumCircuit
                 self.cu_target_mps = (
                     cu.mps_from_circuit(prepared_circuit, algorithm=self.cu_algorithm))
                 self.cu_cached_mps = self.cu_target_mps.copy()
             if self.is_tenpy_backend:
                 logger.info("Pre-computing target circuit as MPS using Tenpy")
-                # Here we cache the target MPS but don't return a circuit since we can't smuggle a
-                # Tenpy MPS inside a Qiskit QuantumCircuit
                 self.tenpy_target_mps = self.tenpy_sim.simulate(prepared_circuit.copy(), cut_off=self.tenpy_cut_off)
+            if self.backend == ITENSOR_SIM:
+                from itensornetworks_qiskit.utils import qiskit_circ_to_it_circ
+                from juliacall import Main as jl
+                jl.seval("using ITensorNetworksQiskit")
+                logger.info("Pre-computing target circuit as MPS using ITensor")
+                gates = qiskit_circ_to_it_circ(prepared_circuit)
+                n = self.target.num_qubits
+                self.itensor_sites = jl.generate_siteindices_itensors(n)
+                self.itensor_target = jl.mps_from_circuit_itensors(n, gates, self.itensor_chi,
+                                                                   self.itensor_cutoff,
+                                                                   self.itensor_sites)
             return prepared_circuit
 
     def parse_default_execute_kwargs(self, execute_kwargs):
@@ -481,9 +496,9 @@ class ApproximateRecompiler(ABC):
             return self._evaluate_local_cost()
         else:
             return self._evaluate_global_cost()
-        
+
     def _evaluate_local_cost(self):
-        if self.is_aer_mps_backend or self.is_cuquantum_backend or self.is_tenpy_backend:
+        if is_mps_backend(self.backend):
             return self._evaluate_local_cost_mps()
         elif self.is_statevector_backend:
             return self._evaluate_local_cost_sv()
@@ -491,6 +506,8 @@ class ApproximateRecompiler(ABC):
             return self._evaluate_local_cost_counts()
 
     def _evaluate_local_cost_mps(self):
+        if self.backend == ITENSOR_SIM:
+            raise NotImplementedError("Local cost not supported for ITensor")
         if self.is_cuquantum_backend:
             mps = self._get_full_circ_mps_using_cu()
             e_vals = [(mpsops.mps_expectation(mps, 'Z', i, already_preprocessed=True))
@@ -545,7 +562,7 @@ class ApproximateRecompiler(ABC):
         return cost
     
     def _evaluate_global_cost(self):
-        if self.is_aer_mps_backend or self.is_cuquantum_backend or self.is_tenpy_backend:
+        if is_mps_backend(self.backend):
             return self._evaluate_global_cost_mps()
         elif self.is_statevector_backend:
             return self._evaluate_global_cost_sv()
@@ -553,7 +570,9 @@ class ApproximateRecompiler(ABC):
             return self._evaluate_global_cost_counts()
 
     def _evaluate_global_cost_mps(self):
-        if self.is_cuquantum_backend:
+        if self.backend == ITENSOR_SIM:
+            return self._global_cost_itensor()
+        elif self.is_cuquantum_backend:
             circ_mps = self._get_full_circ_mps_using_cu()
         elif self.is_aer_mps_backend:
             circ = self.full_circuit.copy()
@@ -631,3 +650,15 @@ class ApproximateRecompiler(ABC):
         circ_mps = tenpy_to_qiskit_mps(self.tenpy_sim.simulate(ansatz_circ, cut_off=self.tenpy_cut_off, starting_state=self.tenpy_target_mps.copy()))
 
         return mpsops._preprocess_mps(circ_mps)
+
+    def _global_cost_itensor(self):
+        from itensornetworks_qiskit.utils import qiskit_circ_to_it_circ
+        from juliacall import Main as jl
+        jl.seval("using ITensorNetworksQiskit")
+
+        n = self.total_num_qubits
+        ansatz_circ = co.extract_inner_circuit(self.full_circuit, self.ansatz_range())
+        gates = qiskit_circ_to_it_circ(ansatz_circ)
+        psi = jl.mps_from_circuit_and_mps_itensors(self.itensor_target, gates, self.itensor_chi,
+                                                   self.itensor_cutoff, self.itensor_sites)
+        return 1 - jl.overlap_with_zero_itensors(n, psi, self.itensor_sites)

@@ -30,6 +30,8 @@ CUQUANTUM_SIM = "cuquantum"
 DEFAULT_CU_ALGORITHM = {'qr_method': False,
                             'svd_method':{'partition': 'UV', 'max_extent': 256}}
 
+ITENSOR_SIM = "itensor"
+
 def mps_sim_with_args(mps_truncation_threshold=1e-16, max_chi=None, mps_log_data=False):
     """
     :param mps_truncation_threshold: truncation threshold to use in AerSimulator

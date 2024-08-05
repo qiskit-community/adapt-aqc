@@ -20,7 +20,8 @@ from tenpy.networks.mps import MPS
 import isl.utils.circuit_operations as co
 import isl.utils.cuquantum_functions as cu
 from isl.recompilers import ISLConfig, ISLRecompiler
-from isl.utils.circuit_operations import QASM_SIM, SV_SIM, MPS_SIM, CUQUANTUM_SIM, TENPY_SIM
+from isl.utils.circuit_operations import QASM_SIM, SV_SIM, MPS_SIM, CUQUANTUM_SIM, TENPY_SIM, \
+    ITENSOR_SIM
 from isl.utils.constants import DEFAULT_SUFFICIENT_COST, coupling_map_linear
 from isl.utils.entanglement_measures import EM_TOMOGRAPHY_NEGATIVITY
 from isl.utils.utilityfunctions import multi_qubit_gate_depth, tenpy_to_qiskit_mps
@@ -1152,4 +1153,66 @@ class TestISLTenpy(TestCase):
         cached_target_after_layers_added = tenpy_to_qiskit_mps(recompiler.tenpy_target_mps.copy())
 
         overlap = abs(mps_dot(cached_target, cached_target_after_layers_added))**2
+        self.assertAlmostEqual(overlap, 1)
+
+try:
+    from itensornetworks_qiskit.utils import qiskit_circ_to_it_circ
+    from juliacall import Main as jl
+    jl.seval("using ITensorNetworksQiskit")
+    jl.seval("using ITensors: siteinds")
+    module_failed = False
+except ImportError:
+    module_failed = True
+
+class TestITensor(TestCase):
+
+    def setUp(self):
+        if module_failed:
+            self.skipTest("Skipping as ITensor backend not set up")
+
+    def test_given_itensor_backend_when_recompile_with_basic_then_works(self):
+        qc = co.create_random_initial_state_circuit(3)
+        qc = transpile(qc, basis_gates=["cx", "rx", "ry", "rz"])
+        config = ISLConfig(method="basic")
+        recompiler = ISLRecompiler(qc, backend=ITENSOR_SIM, isl_config=config)
+        result = recompiler.recompile()
+        overlap = co.calculate_overlap_between_circuits(qc, result.circuit)
+        self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
+
+    def test_given_itensor_backend_when_recompile_with_isl_then_error(self):
+        with self.assertRaises(NotImplementedError):
+            ISLRecompiler(QuantumCircuit(1), backend=ITENSOR_SIM).recompile()
+
+    def test_given_itensor_backend_when_recompile_with_expectation_then_error(self):
+        with self.assertRaises(NotImplementedError):
+            config = ISLConfig(method="expectation")
+            ISLRecompiler(QuantumCircuit(1), backend=ITENSOR_SIM, isl_config=config).recompile()
+
+    def test_given_itensor_backend_then_target_cached(self):
+        qc = co.create_random_initial_state_circuit(3)
+        qc = transpile(qc, basis_gates=["cx", "rx", "ry", "rz"])
+        recompiler = ISLRecompiler(qc, backend=ITENSOR_SIM)
+
+        s = recompiler.itensor_sites
+        cached_target = recompiler.itensor_target
+        gates = qiskit_circ_to_it_circ(qc)
+        actual_target = jl.mps_from_circuit_itensors(3, gates, 10, s)
+
+        overlap = jl.overlap_itensors(cached_target, actual_target)
+        self.assertAlmostEqual(overlap, 1)
+
+
+    def test_given_itensor_backend_then_cache_not_modified(self):
+        qc = co.create_random_initial_state_circuit(3)
+        qc = transpile(qc, basis_gates=["cx", "rx", "ry", "rz"])
+        config = ISLConfig(method="basic")
+        recompiler = ISLRecompiler(qc, backend=ITENSOR_SIM, isl_config=config)
+        cached_target = recompiler.itensor_target
+        recompiler._add_layer(0)
+        recompiler._add_layer(1)
+        recompiler._add_layer(2)
+
+        cached_target_after_layers_added = recompiler.itensor_target
+
+        overlap = jl.overlap_itensors(cached_target, cached_target_after_layers_added)
         self.assertAlmostEqual(overlap, 1)

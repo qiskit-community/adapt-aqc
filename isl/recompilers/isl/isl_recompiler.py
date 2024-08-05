@@ -14,7 +14,8 @@ import isl.utils.constants as vconstants
 from isl.recompilers.approximate_recompiler import ApproximateRecompiler
 from isl.recompilers.isl.isl_config import ISLConfig
 from isl.recompilers.isl.isl_result import ISLResult
-from isl.utils.utilityfunctions import tenpy_to_qiskit_mps
+from isl.utils.circuit_operations import ITENSOR_SIM
+from isl.utils.utilityfunctions import is_mps_backend
 from isl.utils import circuit_operations as co
 from isl.utils import cuquantum_functions as cu
 from isl.utils.constants import CMAP_FULL, generate_coupling_map
@@ -62,6 +63,8 @@ class ISLRecompiler(ApproximateRecompiler):
         initial_single_qubit_layer=False,
         cu_algorithm=None,
         tenpy_cut_off=None,
+        itensor_chi=None,
+        itensor_cutoff=None,
     ):
         """
         :param target: Circuit or MPS that is to be recompiled
@@ -110,7 +113,9 @@ class ISLRecompiler(ApproximateRecompiler):
             starting_circuit=starting_circuit,
             optimise_local_cost=optimise_local_cost,
             cu_algorithm=cu_algorithm,
-            tenpy_cut_off=tenpy_cut_off
+            tenpy_cut_off=tenpy_cut_off,
+            itensor_chi=itensor_chi,
+            itensor_cutoff=itensor_cutoff,
         )
 
         self.save_circuit_history = save_circuit_history
@@ -272,7 +277,8 @@ class ISLRecompiler(ApproximateRecompiler):
             # Caching layers as MPS requires that the number of gates remain constant
             if self.remove_unnecessary_gates_during_isl and not (
                 self.is_aer_mps_backend or self.is_cuquantum_backend):
-                co.remove_unnecessary_gates_from_circuit(self.full_circuit, False, False, gate_range=self.g_range())
+                co.remove_unnecessary_gates_from_circuit(self.full_circuit, False, False,
+                                                         gate_range=self.g_range())
 
             num_2q_gates, num_1q_gates = co.find_num_gates(
                 circuit=self.ref_circuit_as_gates if self.is_aer_mps_backend else self.full_circuit,
@@ -742,6 +748,8 @@ class ISLRecompiler(ApproximateRecompiler):
     def _get_all_qubit_pair_entanglement_measures(self):
         entanglement_measures = []
         # Generate MPS from circuit once if using MPS backend
+        if self.backend == ITENSOR_SIM:
+            raise NotImplementedError("ISL mode not supported for ITensor")
         if self.is_aer_mps_backend:
             circ = self.full_circuit.copy()
             self.circ_mps = mpsops.mps_from_circuit(circ, return_preprocessed=True, sim=self.backend)
@@ -850,6 +858,8 @@ class ISLRecompiler(ApproximateRecompiler):
                 return 1
 
     def _measure_qubit_expectation_values(self):
+        if self.backend == ITENSOR_SIM:
+            raise NotImplementedError("Expectation mode not supported for ITensor")
         if self.is_aer_mps_backend:
             return expectation_value_of_qubits_mps(self.full_circuit, self.backend)
         if self.is_cuquantum_backend:
