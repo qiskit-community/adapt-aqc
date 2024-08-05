@@ -800,6 +800,17 @@ class TestISL(TestCase):
 
         self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
 
+    def test_given_op_gradient_method_when_recompile_then_works(self):
+        qc = co.create_random_initial_state_circuit(4)
+
+        config = ISLConfig(method="op_gradient")
+        recompiler = ISLRecompiler(qc, backend=co.MPS_SIM, isl_config=config,
+                                   custom_layer_2q_gate=ans.identity_resolvable())
+        result = recompiler.recompile()
+
+        overlap = co.calculate_overlap_between_circuits(qc, result.circuit)
+        self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
+
         
 class TestISLCheckpointing(TestCase):
 

@@ -3,36 +3,47 @@ from unittest import TestCase
 import numpy as np
 from numpy.testing import assert_array_almost_equal
 from qiskit import QuantumCircuit
+from qiskit.compiler import transpile
+from qiskit.circuit.random import random_circuit
+from qiskit.quantum_info import Statevector
 
 import isl.utils.circuit_operations as co
 from isl.utils.utilityfunctions import (
     _expectation_value_of_qubit,
     expectation_value_of_qubits,
     expectation_value_of_qubits_mps,
-    multi_qubit_gate_depth, remove_permutations_from_coupling_map,
+    multi_qubit_gate_depth,
+    remove_permutations_from_coupling_map,
     tenpy_to_qiskit_mps,
+    xx_grad_of_pairs,
 )
 
 import aqc_research.mps_operations as mpsops
 from tenpy.networks.mps import MPS
 from tenpy.models import XXZChain
 
+
 def get_random_tenpy_mps(num_sites=4):
     model = XXZChain(
-    {
-        "L": num_sites,
-        "Jxx": 1.0,
-        "Jz": 1.0,
-        "hz": 0.0,
-        "bc_MPS": "finite",
-    }
+        {
+            "L": num_sites,
+            "Jxx": 1.0,
+            "Jz": 1.0,
+            "hz": 0.0,
+            "bc_MPS": "finite",
+        }
     )
     state_labels = list(model.lat.mps_sites()[0].state_labels.keys())
     neel_state = [state_labels[i % 2] for i in range(num_sites)]
-    tenpy_mps = MPS.from_random_unitary_evolution(model.lat.mps_sites(), int(2**(num_sites/2)), 
-                                                   neel_state, bc=model.lat.bc_MPS)
-    
+    tenpy_mps = MPS.from_random_unitary_evolution(
+        model.lat.mps_sites(),
+        int(2 ** (num_sites / 2)),
+        neel_state,
+        bc=model.lat.bc_MPS,
+    )
+
     return tenpy_mps
+
 
 class TestUtilityFunctions(TestCase):
     def test_qasm_when_zero_state_then_sigmaz_expectation_is_one(self):
@@ -93,17 +104,25 @@ class TestUtilityFunctions(TestCase):
             eval_one_plus_zero_state, [-1.0, 0.0, 1.0], decimal=15
         )
 
-    def test_given_unique_coupling_map_when_remove_permutation_then_returned_in_same_order(self):
+    def test_given_unique_coupling_map_when_remove_permutation_then_returned_in_same_order(
+        self,
+    ):
         cmap = [(1, 2), (2, 3), (3, 4)]
         self.assertEqual(remove_permutations_from_coupling_map(cmap), cmap)
 
-    def test_given_coupling_map_with_permutations_when_remove_permutation_then_unique(self):
+    def test_given_coupling_map_with_permutations_when_remove_permutation_then_unique(
+        self,
+    ):
         cmap = [(2, 1), (1, 2), (2, 1)]
         self.assertEqual(remove_permutations_from_coupling_map(cmap), [(2, 1)])
 
-    def test_given_coupling_map_with_permutations_when_remove_permutation_then_same_order(self):
+    def test_given_coupling_map_with_permutations_when_remove_permutation_then_same_order(
+        self,
+    ):
         cmap = [(1, 2), (1, 2), (2, 3), (2, 3), (3, 4)]
-        self.assertEqual(remove_permutations_from_coupling_map(cmap), [(1, 2), (2, 3), (3, 4)])
+        self.assertEqual(
+            remove_permutations_from_coupling_map(cmap), [(1, 2), (2, 3), (3, 4)]
+        )
 
 
 class TestExpectationValueOfQubitsMPS(TestCase):
@@ -117,7 +136,9 @@ class TestExpectationValueOfQubitsMPS(TestCase):
         expectation_value_of_qubits_mps(qc)
         expectation_value_of_qubits_mps(qc)
 
-    def test_given_n_qubit_circuit_when_mps_expectation_value_then_n_output_values(self):
+    def test_given_n_qubit_circuit_when_mps_expectation_value_then_n_output_values(
+        self,
+    ):
         qc = QuantumCircuit(3)
         self.assertEqual(len(expectation_value_of_qubits_mps(qc)), 3)
 
@@ -177,6 +198,7 @@ class TestMultiQubitGateDepth(TestCase):
         qc.cx(0, 2)
         self.assertEqual(multi_qubit_gate_depth(qc), 3)
 
+
 class TestTenpyToQiskitMPS(TestCase):
 
     def test_given_tenpy_mps_then_not_qiskit_mps(self):
@@ -203,7 +225,7 @@ class TestTenpyToQiskitMPS(TestCase):
 
         # NOTE: tenpy uses the opposite notation to qiskit. I.e. the state q0 = |1>, q1 = |0> would
         # be |10> = [0, 0, 1, 0] in tenpy but |01> = [0, 1, 0, 0] in qiskit.
-        tenpy_sv = tenpy_mps.get_theta(0, n).to_ndarray().reshape([2]*n)
+        tenpy_sv = tenpy_mps.get_theta(0, n).to_ndarray().reshape([2] * n)
         tenpy_sv = np.transpose(tenpy_sv, axes=range(n)[::-1])
         tenpy_sv = tenpy_sv.flatten()
         qiskit_sv = mpsops.mps_to_vector(qiskit_mps)
@@ -215,16 +237,18 @@ class TestTenpyToQiskitMPS(TestCase):
         # Neel state from tenpy
         # NOTE: tenpy "down" is the same as qiskit |0>. I.e. [1, 0]
         model = XXZChain(
-        {
-            "L": n,
-            "Jxx": 1.0,
-            "Jz": 1.0,
-            "hz": 0.0,
-            "bc_MPS": "finite",
-        }
+            {
+                "L": n,
+                "Jxx": 1.0,
+                "Jz": 1.0,
+                "hz": 0.0,
+                "bc_MPS": "finite",
+            }
         )
         neel_state = ["up", "down", "up"]
-        tenpy_mps = MPS.from_product_state(model.lat.mps_sites(), neel_state, bc=model.lat.bc_MPS)
+        tenpy_mps = MPS.from_product_state(
+            model.lat.mps_sites(), neel_state, bc=model.lat.bc_MPS
+        )
         qiskit_mps_from_tenpy = tenpy_to_qiskit_mps(tenpy_mps)
 
         # Neel state from QuantumCircuit
@@ -232,11 +256,15 @@ class TestTenpyToQiskitMPS(TestCase):
         qc.x([0, 2])
         qiskit_mps_from_circuit = mpsops.mps_from_circuit(qc)
 
-        overlap = np.abs(mpsops.mps_dot(qiskit_mps_from_tenpy, qiskit_mps_from_circuit))**2
+        overlap = (
+            np.abs(mpsops.mps_dot(qiskit_mps_from_tenpy, qiskit_mps_from_circuit)) ** 2
+        )
 
         self.assertEqual(overlap, 1)
 
-    def test_given_tenpy_mps_when_initialise_qiskit_with_it_then_output_qiskit_mps_same(self):
+    def test_given_tenpy_mps_when_initialise_qiskit_with_it_then_output_qiskit_mps_same(
+        self,
+    ):
         n = 4
         tenpy_mps = get_random_tenpy_mps(n)
         qiskit_mps = tenpy_to_qiskit_mps(tenpy_mps)
@@ -245,7 +273,7 @@ class TestTenpyToQiskitMPS(TestCase):
         mps_as_circuit.set_matrix_product_state(qiskit_mps)
         mps_after_circuit = mpsops.mps_from_circuit(mps_as_circuit)
 
-        overlap = np.abs(mpsops.mps_dot(mps_after_circuit, qiskit_mps))**2
+        overlap = np.abs(mpsops.mps_dot(mps_after_circuit, qiskit_mps)) ** 2
         self.assertAlmostEqual(overlap, 1, places=10)
 
         for i in range(n):
@@ -256,3 +284,27 @@ class TestTenpyToQiskitMPS(TestCase):
                 lambda_before = np.array(qiskit_mps[1][i])
                 lambda_after = np.array(mps_after_circuit[1][i])
                 np.testing.assert_allclose(lambda_before, lambda_after)
+
+
+class TestXXGradOfPairs(TestCase):
+
+    def test_given_zero_state_when_xx_grad_then_zero(self):
+        qc = QuantumCircuit(2)
+        self.assertEqual([0.0], xx_grad_of_pairs(qc, [(0, 1)]))
+
+    def test_given_random_state_when_xx_grad_then_as_expected(self):
+        """
+        Given a state [a,b,c,d], applying Rxx(θ) and calculating the cost-gradient at θ=0 gives:
+        dC/dθ|θ=0 = -Im(conj(a)d).
+        """
+        qc = transpile(random_circuit(2, 5), basis_gates=["cx", "ry", "rz", "rx"])
+        sv = Statevector(qc)
+        a = sv.data[0]
+        d = sv.data[3]
+        expected_grad = -1 * np.imag(np.conj(a) * d)
+        actual_grad = xx_grad_of_pairs(qc, [(0, 1)])[0]
+        self.assertAlmostEqual(abs(expected_grad), actual_grad, places=10)
+
+    def test_when_xx_grad_then_result_same_length_as_num_pairs(self):
+        qc = QuantumCircuit(5)
+        self.assertEqual(4, len(xx_grad_of_pairs(qc, [(i, i + 1) for i in range(4)])))
