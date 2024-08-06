@@ -19,6 +19,7 @@ from tenpy.networks.mps import MPS
 
 import isl.utils.circuit_operations as co
 import isl.utils.cuquantum_functions as cu
+import isl.utils.ansatzes as ans
 from isl.recompilers import ISLConfig, ISLRecompiler
 from isl.utils.circuit_operations import QASM_SIM, SV_SIM, MPS_SIM, CUQUANTUM_SIM, TENPY_SIM, \
     ITENSOR_SIM
@@ -640,7 +641,7 @@ class TestISL(TestCase):
         for i in range(13):
             recompiler._add_layer(i)
             actual_num_gates.append(len(recompiler.full_circuit.data) - 1)
-    
+
         np.testing.assert_equal(actual_num_gates, expected_num_gates)
 
     def test_given_optimise_local_cost_when_recompile_then_global_cost_converged(self):
@@ -675,7 +676,6 @@ class TestISL(TestCase):
 
         recompiler._add_initial_ansatz(initial_ansatz=initial_ansatz, optimise_initial_ansatz=True)
         [recompiler._add_layer(i) for i in range(5)]
-
 
         # Delete set_matrix_product_state instruction
         del recompiler.ref_circuit_as_gates.data[0]
@@ -800,10 +800,10 @@ class TestISL(TestCase):
 
         self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
 
-    def test_given_op_gradient_method_when_recompile_then_works(self):
-        qc = co.create_random_initial_state_circuit(4)
+    def test_given_rxx_gradient_method_when_recompile_then_works(self):
+        qc = co.create_random_initial_state_circuit(3)
 
-        config = ISLConfig(method="op_gradient")
+        config = ISLConfig(method="rxx_gradient")
         recompiler = ISLRecompiler(qc, backend=co.MPS_SIM, isl_config=config,
                                    custom_layer_2q_gate=ans.identity_resolvable())
         result = recompiler.recompile()
@@ -811,7 +811,18 @@ class TestISL(TestCase):
         overlap = co.calculate_overlap_between_circuits(qc, result.circuit)
         self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
 
-        
+    def test_given_general_gradient_method_when_recompile_then_works(self):
+        qc = co.create_random_initial_state_circuit(3)
+
+        config = ISLConfig(method="general_gradient")
+        recompiler = ISLRecompiler(qc, backend=co.MPS_SIM, isl_config=config,
+                                   custom_layer_2q_gate=ans.identity_resolvable())
+        result = recompiler.recompile()
+
+        overlap = co.calculate_overlap_between_circuits(qc, result.circuit)
+        self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
+
+
 class TestISLCheckpointing(TestCase):
 
     def test_given_checkpoint_every_1_when_recompile_then_n_layer_number_of_checkpoints(self):
@@ -900,7 +911,6 @@ class TestISLCheckpointing(TestCase):
                 loaded_recompiler = pickle.load(myfile)
             result = loaded_recompiler.recompile()
             self.assertEqual(len(os.listdir(d)), len(result.qubit_pair_history))
-
 
 
 try:

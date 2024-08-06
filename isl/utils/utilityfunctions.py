@@ -314,35 +314,3 @@ def tenpy_to_qiskit_mps(tenpy_mps):
     qiskit_mps = (gam, lam)
 
     return copy.deepcopy(qiskit_mps)
-
-def xx_grad_of_pairs(circuit: QuantumCircuit, coupling_map: List[Tuple], sim=None):
-    """
-    Returns the magnitude of the cost-gradient of each qubit pair in the coupling map w.r.t Rxx(θ) at θ=0
-    The gradient takes the form:
-    dC/dθ|θ=0 = -imag(<0|XX|psi><psi|0>)
-    where XX acts on the qubit pair, and |psi> is the state prepared by circuit
-
-    Args:
-        circuit (QuantumCircuit): a circuit representing |psi>
-        coupling_map (List[Tuple]): the list of all pairs of qubits for which to calculate the gradient
-        sim (AerSimulator): Aer MPS simulator used to generate relevant states
-    Returns:
-        gradients (List): List of gradients w.r.t. Rxx(θ) at θ=0 for each pair
-    """
-    gradients = []
-    circ_mps = mpsop.mps_from_circuit(circuit.copy(), return_preprocessed=True, sim=sim)
-    zero_mps = mpsop.mps_from_circuit(QuantumCircuit(circuit.num_qubits),
-                                                return_preprocessed=True, sim=sim)
-    # Find <psi|0>
-    zero_overlap = mpsop.mps_dot(circ_mps, zero_mps, already_preprocessed=True)
-    for control, target in coupling_map:
-        circ = circuit.copy()
-        circ.x(control)
-        circ.x(target)
-        xx_mps = mpsop.mps_from_circuit(circ, return_preprocessed=True, sim=sim)
-        # Find <0|XX|psi>
-        xx_overlap = mpsop.mps_dot(zero_mps, xx_mps, already_preprocessed=True)
-        gradient = -1 * np.imag(xx_overlap * zero_overlap)
-        gradients.append(abs(gradient))
-
-    return gradients

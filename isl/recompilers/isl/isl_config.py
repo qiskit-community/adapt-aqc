@@ -39,7 +39,9 @@ class ISLConfig:
          'expectation' - Smallest combined σz expectation values (i.e., closest to min value of -2)
          'basic' - Pair not picked in the longest time
          'random' - Pair selected randomly
-         'op_gradient' - Pair with the largest global cost gradient with respect to Rxx(theta) at theta=0
+         'rxx_gradient' - Pair with the largest global cost gradient with respect to Rxx(theta) at theta=0
+         'general_gradient' - Pair with largest Euclidean norm of the global cost gradient with
+         respect to all parameters (θ) in the layer ansatz, evaluated at θ=0.
         :param bad_qubit_pair_memory: For the ISL method, if acting on a qubit pair leads to
         entanglement increasing, it is labelled a "bad pair". After this, for a number of layers
         corresponding to the bad_qubit_pair_memory, this pair will not be selected.

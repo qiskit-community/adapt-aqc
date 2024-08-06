@@ -9,15 +9,18 @@ from pathlib import Path
 import aqc_research.mps_operations as mpsops
 import numpy as np
 from qiskit import QuantumCircuit, qasm2
+from qiskit_tenpy_converter.simulation.simulator import Simulator
+from qiskit.compiler import transpile
 
 import isl.utils.constants as vconstants
 from isl.recompilers.approximate_recompiler import ApproximateRecompiler
 from isl.recompilers.isl.isl_config import ISLConfig
 from isl.recompilers.isl.isl_result import ISLResult
 from isl.utils.circuit_operations import ITENSOR_SIM
-from isl.utils.utilityfunctions import is_mps_backend, xx_grad_of_pairs
+from isl.utils.utilityfunctions import is_mps_backend
 from isl.utils import circuit_operations as co
 from isl.utils import cuquantum_functions as cu
+from isl.utils import gradients as gr
 from isl.utils.constants import CMAP_FULL, generate_coupling_map
 from isl.utils.entanglement_measures import (
     EM_TOMOGRAPHY_CONCURRENCE,
@@ -33,7 +36,6 @@ from isl.utils.utilityfunctions import (
 import isl.utils.ansatzes as ans
 
 logger = logging.getLogger(__name__)
-
 
 
 class ISLRecompiler(ApproximateRecompiler):
@@ -160,7 +162,8 @@ class ISLRecompiler(ApproximateRecompiler):
         self.pair_selection_method_history = []
         self.entanglement_measures_history = []
         self.e_val_history = []
-        self.gradient_history = []
+        self.rxx_gradient_history = []
+        self.general_gradient_history = []
         self.time_taken = None
         self.debug_log_full_ansatz = debug_log_full_ansatz
 
@@ -171,7 +174,7 @@ class ISLRecompiler(ApproximateRecompiler):
             # separately keep track of ansatz gates to return a compiled solution.
             self.layers_saved_to_mps = self.full_circuit.copy()
             del self.layers_saved_to_mps.data[1:]
-        
+
         # Keep track of which layers have not been absorbed into the MPS
         self.layers_as_gates = []
 
@@ -189,11 +192,17 @@ class ISLRecompiler(ApproximateRecompiler):
 
         self.lhs_moved_by_initial_ansatz = 0
 
-        if self.isl_config.method == "op_gradient" and custom_layer_2q_gate != ans.identity_resolvable():
-            logger.warning("op_gradient method is designed to work with the identity_resolvable ansatz "
+        if self.isl_config.method == "rxx_gradient" and custom_layer_2q_gate != ans.identity_resolvable():
+            logger.warning("rxx_gradient method is designed to work with the identity_resolvable ansatz "
                            "and may perform badly with a different ansatz")
-        if self.isl_config.method == "op_gradient" and not self.is_aer_mps_backend:
-            raise ValueError("op_gradient method is only implemented for Aer MPS backend")
+        if self.isl_config.method == "rxx_gradient" and not self.is_aer_mps_backend:
+            raise ValueError("rxx_gradient method is only implemented for Aer MPS backend")
+
+        if self.isl_config.method == "general_gradient":
+            if not self.is_aer_mps_backend:
+                raise ValueError("general_gradient method is only implemented for Aer MPS backend")
+            self.generators = gr.get_generators(self.layer_2q_gate, use_rotoselect, inverse=True)
+            self.inverse_zero_ansatz = transpile(self.layer_2q_gate).inverse()
 
     def construct_layer_2q_gate(self, custom_layer_2q_gate):
         if custom_layer_2q_gate is None:
@@ -261,7 +270,7 @@ class ISLRecompiler(ApproximateRecompiler):
             logger.info(f"ISL resuming from layer: {start_point}")
             if initial_ansatz is not None:
                 logger.warning("An initial ansatz will be ignored when resuming recompilation from a checkpoint")
-        
+
         if checkpoint_every > 0:
             Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
 
@@ -668,18 +677,40 @@ class ISLRecompiler(ApproximateRecompiler):
             ems = self._get_all_qubit_pair_entanglement_measures()
             self.entanglement_measures_history.append(ems)
             return self._find_best_entanglement_qubit_pair(ems)
-        
-        if self.isl_config.method == "op_gradient":
-            # Choose the qubit pair with the highest cost gradient w.r.t Rxx
+
+        if self.isl_config.method == "rxx_gradient":
             logger.debug("Computing Rxx gradients of pairs")
-            gradients = xx_grad_of_pairs(self.full_circuit, self.coupling_map, self.backend)
+            gradients = gr.xx_grad_of_pairs(self.full_circuit, self.coupling_map, self.backend)
+            logger.debug(f"Rxx gradient of all pairs: {gradients}")
+            self.rxx_gradient_history.append(gradients)
+            self.pair_selection_method_history.append(f"rxx_gradient")
+            return self.coupling_map[np.argmax(gradients)]
+
+        if self.isl_config.method == "general_gradient":
+            logger.debug("Computing gradients of pairs")
+
+            # Get the full_circuit without starting_circuit
+            if self.starting_circuit is not None:
+                range = (0, len(self.full_circuit) - len(self.starting_circuit))
+            else:
+                range = (0, len(self.full_circuit))
+            circuit = co.extract_inner_circuit(self.full_circuit, range)
+
+            gradients = gr.general_grad_of_pairs(
+                circuit,
+                self.inverse_zero_ansatz,
+                self.generators,
+                self.coupling_map,
+                self.starting_circuit,
+                self.backend,
+            )
             logger.debug(f"Gradient of all pairs: {gradients}")
-            self.gradient_history.append(gradients)
-            self.pair_selection_method_history.append(f"op_gradient")
+            self.general_gradient_history.append(gradients)
+            self.pair_selection_method_history.append(f"general_gradient")
             return self.coupling_map[np.argmax(gradients)]
 
         raise ValueError(
-            f"Invalid ISL method {self.isl_config.method}. "f"Method must be one of ISL, expectation, random, basic")
+            f"Invalid ISL method {self.isl_config.method}. "f"Method must be one of ISL, expectation, random, basic, rxx_gradient, general_gradient")
 
     def _find_best_entanglement_qubit_pair(self, entanglement_measures):
         """
@@ -900,7 +931,8 @@ class ISLRecompiler(ApproximateRecompiler):
     def _first_layer_increment_results_dict(self):
         self.entanglement_measures_history.append([None])
         self.e_val_history.append(None)
-        self.gradient_history.append(None)
+        self.rxx_gradient_history.append(None)
+        self.general_gradient_history.append(None)
         self.qubit_pair_history.append((None, None))
         self.pair_selection_method_history.append(None)
 
@@ -938,7 +970,7 @@ class ISLRecompiler(ApproximateRecompiler):
 
     def _get_num_gates_to_cache(self, n, includes_isql=False):
         return len(self.layer_2q_gate) * (n - int(includes_isql)) + self.full_circuit.num_qubits * int(includes_isql)
-    
+
     def _absorb_n_gates_into_mps(self, n):
         """
         Takes full_circuit, which consists of a set_matrix_product_state instruction, followed by some number of ISL
