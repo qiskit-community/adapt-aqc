@@ -9,7 +9,6 @@ from pathlib import Path
 import aqc_research.mps_operations as mpsops
 import numpy as np
 from qiskit import QuantumCircuit, qasm2
-from qiskit_tenpy_converter.simulation.simulator import Simulator
 from qiskit.compiler import transpile
 
 import isl.utils.constants as vconstants
