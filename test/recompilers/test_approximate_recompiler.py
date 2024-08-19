@@ -8,7 +8,7 @@ import numpy as np
 import isl.utils.circuit_operations as co
 from isl.recompilers.isl.isl_recompiler import ISLRecompiler
 from isl.recompilers.approximate_recompiler import ApproximateRecompiler
-from isl.utils.circuit_operations import MPS_SIM, SV_SIM, QASM_SIM
+from isl.backends.python_default_backends import QASM_SIM, SV_SIM, MPS_SIM
 
 
 @patch.multiple(ApproximateRecompiler, __abstractmethods__=set())
@@ -23,44 +23,39 @@ class TestApproximateRecompiler(TestCase):
     def test_when_init_with_sv_backend_then_sv_backend_flag_true(self):
         self.assertTrue(ApproximateRecompiler(self.qc, SV_SIM).is_statevector_backend)
 
-    def test_when_circuit_too_large_for_backend_then_error(self):
-        qc = QuantumCircuit(50)
-        ApproximateRecompiler(qc, MPS_SIM)
-        self.assertRaises(ValueError, lambda: ApproximateRecompiler(qc, SV_SIM))
-
     def test_given_global_cost_and_SV_backend_when_evaluate_cost_then_correct_function_called(self):
         compiler = ApproximateRecompiler(QuantumCircuit(1), SV_SIM)
-        with patch.object(compiler, '_evaluate_global_cost_sv') as mock:
+        with patch.object(compiler.backend, 'evaluate_global_cost') as mock:
             compiler.evaluate_cost()
         mock.assert_called_once()
 
     def test_given_global_cost_and_MPS_backend_when_evaluate_cost_then_correct_function_called(self):
         compiler = ApproximateRecompiler(QuantumCircuit(1), MPS_SIM)
-        with patch.object(compiler, '_evaluate_global_cost_mps') as mock:
+        with patch.object(compiler.backend, 'evaluate_global_cost') as mock:
             compiler.evaluate_cost()
         mock.assert_called_once()
 
     def test_given_global_cost_and_QASM_backend_when_evaluate_cost_then_correct_function_called(self):
         compiler = ApproximateRecompiler(QuantumCircuit(1), QASM_SIM)
-        with patch.object(compiler, '_evaluate_global_cost_counts') as mock:
+        with patch.object(compiler.backend, 'evaluate_global_cost') as mock:
             compiler.evaluate_cost()
         mock.assert_called_once()
 
     def test_given_local_cost_and_SV_backend_when_evaluate_cost_then_correct_function_called(self):
         compiler = ApproximateRecompiler(QuantumCircuit(1), SV_SIM, optimise_local_cost=True)
-        with patch.object(compiler, '_evaluate_local_cost_sv') as mock:
+        with patch.object(compiler.backend, 'evaluate_local_cost') as mock:
             compiler.evaluate_cost()
         mock.assert_called_once()
 
     def test_given_local_cost_and_MPS_backend_when_evaluate_cost_then_correct_function_called(self):
         compiler = ApproximateRecompiler(QuantumCircuit(1), MPS_SIM, optimise_local_cost=True)
-        with patch.object(compiler, '_evaluate_local_cost_mps') as mock:
+        with patch.object(compiler.backend, 'evaluate_local_cost') as mock:
             compiler.evaluate_cost()
         mock.assert_called_once()
 
     def test_given_local_cost_and_QASM_backend_when_evaluate_cost_then_correct_function_called(self):
         compiler = ApproximateRecompiler(QuantumCircuit(1), QASM_SIM, optimise_local_cost=True)
-        with patch.object(compiler, '_evaluate_local_cost_counts') as mock:
+        with patch.object(compiler.backend, 'evaluate_local_cost') as mock:
             compiler.evaluate_cost()
         mock.assert_called_once()
 

@@ -1,9 +1,9 @@
 """Contains ISLRecompiler"""
 
 import logging
+import os
 import pickle
 import timeit
-import os
 from pathlib import Path
 
 import aqc_research.mps_operations as mpsops
@@ -11,12 +11,14 @@ import numpy as np
 from qiskit import QuantumCircuit, qasm2
 from qiskit.compiler import transpile
 
+import isl.utils.ansatzes as ans
 import isl.utils.constants as vconstants
+from isl.backends.aer_sv_backend import AerSVBackend
+from isl.backends.aqc_backend import AQCBackend
+from isl.backends.itensor_backend import ITensorBackend
 from isl.recompilers.approximate_recompiler import ApproximateRecompiler
 from isl.recompilers.isl.isl_config import ISLConfig
 from isl.recompilers.isl.isl_result import ISLResult
-from isl.utils.circuit_operations import ITENSOR_SIM
-from isl.utils.utilityfunctions import is_mps_backend
 from isl.utils import circuit_operations as co
 from isl.utils import cuquantum_functions as cu
 from isl.utils import gradients as gr
@@ -26,13 +28,10 @@ from isl.utils.entanglement_measures import (
     calculate_entanglement_measure,
 )
 from isl.utils.utilityfunctions import (
-    expectation_value_of_qubits,
-    expectation_value_of_qubits_mps,
     has_stopped_improving,
     remove_permutations_from_coupling_map,
     multi_qubit_gate_depth,
 )
-import isl.utils.ansatzes as ans
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +47,7 @@ class ISLRecompiler(ApproximateRecompiler):
         self,
         target,
         entanglement_measure=EM_TOMOGRAPHY_CONCURRENCE,
-        backend=co.SV_SIM,
+        backend: AQCBackend = AerSVBackend(),
         execute_kwargs=None,
         coupling_map=None,
         isl_config: ISLConfig = None,
@@ -224,7 +223,7 @@ class ISLRecompiler(ApproximateRecompiler):
         return qc
 
     def recompile(self, initial_ansatz: QuantumCircuit = None, optimise_initial_ansatz=True,
-                checkpoint_every=0, checkpoint_dir='checkpoint/', delete_prev_chkpt=False):
+                  checkpoint_every=0, checkpoint_dir='checkpoint/', delete_prev_chkpt=False):
         """
         Perform recompilation algorithm.
         :param initial_ansatz: A trial ansatz to start the recompilation
@@ -282,7 +281,7 @@ class ISLRecompiler(ApproximateRecompiler):
             if self.optimise_local_cost:
                 logger.info(f"Local cost before adding layer: {self.local_cost}")
                 self.local_cost = self._add_layer(layer_count)
-                self.global_cost = self._evaluate_global_cost()
+                self.global_cost = self.backend.evaluate_global_cost(self)
                 self.local_cost_history.append(self.local_cost)
             else:
                 self.global_cost = self._add_layer(layer_count)
@@ -356,7 +355,7 @@ class ISLRecompiler(ApproximateRecompiler):
             self.full_circuit, True, True, gate_range=self.g_range()
         )
 
-        final_global_cost = self._evaluate_global_cost()
+        final_global_cost = self.backend.evaluate_global_cost(self)
         logger.info(f"Final global cost: {final_global_cost}")
         self.global_cost_history.append(final_global_cost)
         if checkpoint_every > 0:
@@ -469,7 +468,7 @@ class ISLRecompiler(ApproximateRecompiler):
         else:
             cost = self.evaluate_cost()
 
-        self.global_cost = cost if not self.optimise_local_cost else self._evaluate_global_cost()
+        self.global_cost = self.backend.evaluate_global_cost() if self.optimise_local_cost else cost
         self.cnot_depth = multi_qubit_gate_depth(initial_ansatz)
 
         if self.global_cost < self.isl_config.sufficient_cost:
@@ -771,7 +770,7 @@ class ISLRecompiler(ApproximateRecompiler):
         """
         reuse_priorities = self._get_all_qubit_pair_reuse_priorities(self.isl_config.expectation_reuse_exponent)
 
-        e_vals = self._measure_qubit_expectation_values()
+        e_vals = self.backend.measure_qubit_expectation_values(self)
         self.e_val_history.append(e_vals)
 
         e_val_sums = self._get_all_qubit_pair_e_val_sums(e_vals)
@@ -794,15 +793,10 @@ class ISLRecompiler(ApproximateRecompiler):
     def _get_all_qubit_pair_entanglement_measures(self):
         entanglement_measures = []
         # Generate MPS from circuit once if using MPS backend
-        if self.backend == ITENSOR_SIM:
+        if isinstance(self.backend, ITensorBackend):
             raise NotImplementedError("ISL mode not supported for ITensor")
-        if self.is_aer_mps_backend:
-            circ = self.full_circuit.copy()
-            self.circ_mps = mpsops.mps_from_circuit(circ, return_preprocessed=True, sim=self.backend)
-        elif self.is_cuquantum_backend:
-            self.circ_mps = self._get_full_circ_mps_using_cu()
-        elif self.is_tenpy_backend:
-            self.circ_mps = self._get_full_circ_mps_using_tenpy()
+        if self.is_aer_mps_backend or self.is_cuquantum_backend or self.is_tenpy_backend:
+            self.circ_mps = self.backend.evaluate_circuit(self)
         else:
             self.circ_mps = None
         for control, target in self.coupling_map:
@@ -903,30 +897,6 @@ class ISLRecompiler(ApproximateRecompiler):
             except ValueError:
                 return 1
 
-    def _measure_qubit_expectation_values(self):
-        if self.backend == ITENSOR_SIM:
-            raise NotImplementedError("Expectation mode not supported for ITensor")
-        if self.is_aer_mps_backend:
-            return expectation_value_of_qubits_mps(self.full_circuit, self.backend)
-        if self.is_cuquantum_backend:
-            mps = self._get_full_circ_mps_using_cu()
-            return [(mpsops.mps_expectation(mps, 'Z', i, already_preprocessed=True))
-                      for i in range(len(mps))]
-        if self.is_tenpy_backend:
-            mps = self._get_full_circ_mps_using_tenpy()
-            return [(mpsops.mps_expectation(mps, 'Z', i, already_preprocessed=True))
-                      for i in range(len(mps))]
-        elif self.optimise_local_cost:
-
-            output = self._run_full_circuit(add_measurements=not self.is_statevector_backend)
-
-            rel_counts = {k[0: self.total_num_qubits]: v for k, v in output.items()}
-
-            return expectation_value_of_qubits(rel_counts)
-        else:
-            output = self._run_full_circuit(return_statevector=self.is_statevector_backend)
-            return expectation_value_of_qubits(output)
-
     def _first_layer_increment_results_dict(self):
         self.entanglement_measures_history.append([None])
         self.e_val_history.append(None)
@@ -1002,7 +972,7 @@ class ISLRecompiler(ApproximateRecompiler):
         del gates_absorbed.data[0]
 
         # Get MPS of circ_to_absorb
-        circ_to_absorb_mps = mpsops.mps_from_circuit(circ_to_absorb, sim=self.backend)
+        circ_to_absorb_mps = mpsops.mps_from_circuit(circ_to_absorb, sim=self.backend.simulator)
 
         # Create circuit with MPS instruction found above, with same registers as full_circuit
         mps_circuit = QuantumCircuit(self.full_circuit.qregs[0])

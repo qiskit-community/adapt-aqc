@@ -3,6 +3,7 @@ from unittest import TestCase
 import isl.utils.circuit_operations as co
 from isl.recompilers import RotoselectRecompiler
 from isl.utils.constants import DEFAULT_SUFFICIENT_COST
+from isl.backends.python_default_backends import QULACS
 
 
 class TestRotoselectRecompiler(TestCase):
@@ -66,7 +67,7 @@ class TestRotoselectRecompiler(TestCase):
         qc = co.create_random_initial_state_circuit(3)
         qc = co.unroll_to_basis_gates(qc)
 
-        roto_recompiler = RotoselectRecompiler(qc, backend="qulacs")
+        roto_recompiler = RotoselectRecompiler(qc, backend=QULACS)
 
         result = roto_recompiler.recompile()
         approx_circuit = result.circuit

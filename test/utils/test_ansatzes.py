@@ -7,7 +7,7 @@ import isl.utils.circuit_operations as co
 from isl import ISLRecompiler
 from isl.recompilers import ISLConfig
 from isl.utils.ansatzes import u4, identity_resolvable, fully_dressed_cnot, thinly_dressed_cnot, heisenberg
-from isl.utils.circuit_operations import MPS_SIM, SV_SIM
+from isl.backends.python_default_backends import SV_SIM, MPS_SIM
 from isl.utils.constants import DEFAULT_SUFFICIENT_COST
 
 

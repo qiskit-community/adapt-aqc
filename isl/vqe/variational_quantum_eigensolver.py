@@ -5,6 +5,8 @@ import numpy as np
 from openfermion import QubitOperator
 from qiskit import QuantumCircuit
 
+from isl.backends.python_default_backends import SV_SIM
+from isl.backends.qulacs_backend import QulacsBackend
 import isl.utils.circuit_operations as co
 from isl.utils.cost_minimiser import CostMinimiser
 from isl.utils.utilityfunctions import is_statevector_backend
@@ -19,7 +21,7 @@ class VariationalQuantumEigensolver(ABC):
         self,
         evaluation_matrix=None,
         evaluation_paulis=None,
-        backend=co.SV_SIM,
+        backend=SV_SIM,
         execute_kwargs=None,
     ):
         """
@@ -73,7 +75,7 @@ class VariationalQuantumEigensolver(ABC):
     def parse_default_execute_kwargs(self, execute_kwargs):
         kwargs = {} if execute_kwargs is None else dict(execute_kwargs)
         if "shots" not in kwargs:
-            if self.backend == "qulacs":
+            if isinstance(self.backend, QulacsBackend):
                 kwargs["shots"] = 2**30
             elif not is_statevector_backend(self.backend):
                 kwargs["shots"] = 8192
@@ -114,7 +116,7 @@ class VariationalQuantumEigensolver(ABC):
         """
         if self.matrix_mode:
             sv = co.run_circuit_without_transpilation(
-                self.full_circuit, co.SV_SIM, return_statevector=True
+                self.full_circuit, SV_SIM, return_statevector=True
             )
             # Calculate expectation value of hamiltonian <Ψ|H|Ψ>
             energy = np.real(np.vdot(sv, np.dot(self.hamiltonian, sv)))

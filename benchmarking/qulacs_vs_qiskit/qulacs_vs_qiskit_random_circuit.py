@@ -13,7 +13,7 @@ from qiskit import transpile
 from qiskit.circuit.random import random_circuit
 
 from isl.recompilers import ISLRecompiler, ISLConfig
-from isl.utils.circuit_operations import SV_SIM
+from isl.backends.python_default_backends import SV_SIM
 from isl.utils.constants import DEFAULT_SUFFICIENT_COST
 
 

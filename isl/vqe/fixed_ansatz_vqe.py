@@ -1,6 +1,7 @@
 """Contains FixedAnsatzVQE"""
 import logging
 
+from isl.backends.python_default_backends import SV_SIM
 import isl.utils.circuit_operations as co
 import isl.utils.constants as vconstants
 from isl.vqe.variational_quantum_eigensolver import VariationalQuantumEigensolver
@@ -21,7 +22,7 @@ class FixedAnsatzVQE(VariationalQuantumEigensolver):
         initial_params=None,
         optimization_algorithm_kind=vconstants.ALG_ROTOSOLVE,
         optimization_algorithm_identifier=None,
-        backend=co.SV_SIM,
+        backend=SV_SIM,
     ):
         """
         :param ansatz_circuit: The ansatz circuit that is to be recompiled to.

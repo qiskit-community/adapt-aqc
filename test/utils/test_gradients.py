@@ -6,6 +6,7 @@ from qiskit.compiler import transpile
 from qiskit.circuit.random import random_circuit
 from qiskit.quantum_info import Statevector
 
+import isl.backends.python_default_backends
 import isl.utils.gradients as gr
 import isl.utils.circuit_operations as co
 
@@ -47,14 +48,14 @@ class TestGeneralGradOfPairs(TestCase):
         ansatz = QuantumCircuit(2)
 
         generators = gr.get_generators(ansatz)
-        sim = co.MPS_SIM
+        sim = isl.backends.python_default_backends.MPS_SIM
         gradients = gr.general_grad_of_pairs(
             qc,
             ansatz,
             generators,
             coupling_map=[(0, 1), (1, 2), (2, 3), (3, 4)],
             starting_circuit=starting_circuit,
-            sim=sim,
+            backend=sim,
         )
 
         expected_gradients = [0.0, 0.0, 0.0, 0.0]

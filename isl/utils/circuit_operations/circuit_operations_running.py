@@ -3,11 +3,14 @@ import logging
 import numpy as np
 from qiskit import QuantumCircuit, transpile
 from qiskit.circuit.library import CXGate
-from qiskit_aer import AerSimulator, Aer
 from qiskit_aer.backends.aerbackend import AerBackend
 from qiskit_aer.noise import thermal_relaxation_error, NoiseModel
 from scipy.optimize import curve_fit
 
+from isl.backends.aer_sv_backend import AerSVBackend
+from isl.backends.python_default_backends import QASM_SIM
+from isl.backends.qiskit_sampling_backend import QiskitSamplingBackend
+from isl.backends.qulacs_backend import QulacsBackend
 from isl.utils.circuit_operations.circuit_operations_full_circuit import (
     unroll_to_basis_gates,
 )
@@ -21,34 +24,6 @@ from isl.utils.utilityfunctions import (
 
 logger = logging.getLogger(__name__)
 
-QASM_SIM = Aer.get_backend("qasm_simulator")
-SV_SIM = Aer.get_backend("statevector_simulator")
-TENPY_SIM = "tenpy"
-
-# For cuquantum backend
-CUQUANTUM_SIM = "cuquantum"
-DEFAULT_CU_ALGORITHM = {'qr_method': False,
-                            'svd_method':{'partition': 'UV', 'max_extent': 256}}
-
-ITENSOR_SIM = "itensor"
-
-def mps_sim_with_args(mps_truncation_threshold=1e-16, max_chi=None, mps_log_data=False):
-    """
-    :param mps_truncation_threshold: truncation threshold to use in AerSimulator
-    :param max_chi: maximum bond dimension to use in AerSimulator
-    :param mps_log_data: same as corresponding argument in AerSimulator
-    :return: instance of AerSimulator using MPS method and parameters specified above
-    """
-    logger.info(f"Using Aer MPS Simulator with truncation {mps_truncation_threshold}")
-    return AerSimulator(method="matrix_product_state", 
-                        matrix_product_state_truncation_threshold=mps_truncation_threshold,
-                        matrix_product_state_max_bond_dimension=max_chi,
-                        mps_log_data=mps_log_data,
-                        )
-
-# Setting mps_log_data=True will massively reduce performance and should only be done for debugging
-MPS_SIM = mps_sim_with_args()
-QULACS = "qulacs"
 
 def run_circuit_with_transpilation(
         circuit: QuantumCircuit,
@@ -57,10 +32,10 @@ def run_circuit_with_transpilation(
         execute_kwargs=None,
         return_statevector=False,
 ):
-    if backend == "qulacs":
+    if isinstance(backend, QulacsBackend):
         transpiled_circuit = unroll_to_basis_gates(circuit)
     else:
-        transpiled_circuit = transpile(circuit, backend)
+        transpiled_circuit = transpile(circuit, backend.simulator)
     return run_circuit_without_transpilation(
         transpiled_circuit, backend, backend_options, execute_kwargs, return_statevector
     )
@@ -68,7 +43,7 @@ def run_circuit_with_transpilation(
 
 def run_circuit_without_transpilation(
         circuit: QuantumCircuit,
-        backend=QASM_SIM,
+        backend: QiskitSamplingBackend | AerSVBackend | QulacsBackend = QASM_SIM,
         backend_options=None,
         execute_kwargs=None,
         return_statevector=False,
@@ -76,7 +51,7 @@ def run_circuit_without_transpilation(
     if execute_kwargs is None:
         execute_kwargs = {}
 
-    if backend == "qulacs":
+    if isinstance(backend, QulacsBackend):
         sv = run_on_qulacs_noiseless(circuit, False)
         if (
                 "noise_model" in execute_kwargs
@@ -98,7 +73,7 @@ def run_circuit_without_transpilation(
     if backend_options is None or not isinstance(backend, AerBackend):
         backend_options = {}
     # executing the circuits on the backend and returning the job
-    job = backend.run(circuit, **backend_options, **execute_kwargs)
+    job = backend.simulator.run(circuit, **backend_options, **execute_kwargs)
 
     result = job.result()
     if is_statevector_backend(backend):
@@ -107,9 +82,6 @@ def run_circuit_without_transpilation(
         else:
             output = counts_data_from_statevector(result.get_statevector())
     else:
-        # TODO In this case (non-sv, non-mps) we could not use the result of backend.run and instead use primitives
-        # TODO e.g., StatevectorSampler which will let us use Qiskit Runtime for real device and might be a
-        # TODO performance improvement for shot simulation.
         output = result.get_counts()
 
     return output

@@ -8,10 +8,11 @@ from qiskit import QuantumCircuit
 from qiskit.quantum_info import random_statevector, DensityMatrix
 from qiskit_aer import Aer
 
+import isl.backends.python_default_backends
 import isl.utils.circuit_operations as co
 import isl.utils.entanglement_measures as em
 from isl.recompilers import ISLRecompiler
-from isl.utils.circuit_operations import MPS_SIM, SV_SIM
+from isl.backends.python_default_backends import SV_SIM, MPS_SIM, QASM_SIM
 from isl.utils.entanglement_measures import perform_quantum_tomography, EM_TOMOGRAPHY_CONCURRENCE, \
     EM_TOMOGRAPHY_NEGATIVITY, EM_TOMOGRAPHY_EOF
 
@@ -27,8 +28,8 @@ class TestEntanglementMeasures(TestCase):
 
         qc = co.create_random_initial_state_circuit(3)
         for backend in [
-            Aer.get_backend("qasm_simulator"),
-            Aer.get_backend("statevector_simulator"),
+            QASM_SIM,
+            SV_SIM,
         ]:
             for method in [
                 em.EM_TOMOGRAPHY_CONCURRENCE,
@@ -39,7 +40,7 @@ class TestEntanglementMeasures(TestCase):
 
     def test_observable_min_concurrence(self):
         qc = co.create_random_initial_state_circuit(3)
-        em.measure_concurrence_lower_bound(qc, 0, 1, Aer.get_backend("qasm_simulator"))
+        em.measure_concurrence_lower_bound(qc, 0, 1, QASM_SIM)
 
     def test_when_calculating_concurrence_then_matches_qiskit(self):
         rho = DensityMatrix(random_statevector(4, seed=0)).data
@@ -58,7 +59,7 @@ class TestEntanglementMeasures(TestCase):
 
         mock_mps_partial_trace.assert_called_once_with(qc_mps, [0, 1], already_preprocessed=True)
 
-    @patch('aqc_research.mps_operations.mps_from_circuit')
+    @patch('isl.backends.aer_mps_backend.mps_from_circuit')
     def test_given_mps_backend_when_get_all_qubit_pair_em_measure_then_mps_from_circuit_called_exactly_once(
             self, mock_mps_from_circuit):
 
@@ -69,7 +70,7 @@ class TestEntanglementMeasures(TestCase):
                     [array([1.])])
         circ_mps = mpsops._preprocess_mps(circ_mps)
         mock_mps_from_circuit.return_value = circ_mps
-        recompiler = ISLRecompiler(qc, backend=co.MPS_SIM)
+        recompiler = ISLRecompiler(qc, backend=isl.backends.python_default_backends.MPS_SIM)
         recompiler.circ_mps = circ_mps
         recompiler._get_all_qubit_pair_entanglement_measures()
         mock_mps_from_circuit.assert_called_once()

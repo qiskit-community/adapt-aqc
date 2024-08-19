@@ -1,14 +1,17 @@
 """Contains functions """
-import functools
 import copy
+import functools
 from collections.abc import Iterable
-from typing import Union, Dict, List, Tuple
+from typing import Union, Dict
 
 import aqc_research.mps_operations as mpsop
 import numpy as np
 from qiskit import QuantumCircuit
 from qiskit.result import Counts
 from qiskit_aer.backends.compatibility import Statevector
+
+from isl.backends.aer_sv_backend import AerSVBackend
+from isl.backends.qulacs_backend import QulacsBackend
 
 
 # ------------------Trigonometric functions------------------ #
@@ -108,37 +111,10 @@ def is_statevector_backend(backend):
     :param backend: Simulator backend
     :return: Boolean
     """
-    if backend == "qulacs":
+    if isinstance(backend, QulacsBackend) or isinstance(backend, AerSVBackend):
         return True
-    try:
-        return backend.name().startswith("statevector")
-    except TypeError:
-        return backend.name.startswith("statevector")
-    except AttributeError:
-        return False
-    
-def is_aer_mps_backend(backend):
-    """
-    Check if backend is a Aer MPS simulator backed
-    :param backend: Simulator backend
-    :return: Boolean
-    """
-    try:
-        return backend.options.method == "matrix_product_state"
-    except AttributeError:
-        return False
+    return False
 
-def is_cuquantum_backend(backend):
-    """
-    Check if backend is a CuQuantum simulator backed
-    :param backend: Simulator backend
-    :return: Boolean
-    """
-    return backend == "cuquantum"
-
-def is_mps_backend(backend):
-    return is_aer_mps_backend(backend) or is_cuquantum_backend(
-        backend) or backend == "tenpy" or backend == "itensor"
 
 def counts_data_from_statevector(
         statevector,

@@ -4,6 +4,7 @@ import numpy as np
 from numpy.testing import assert_array_almost_equal
 from qiskit import QuantumCircuit
 
+from isl.backends.python_default_backends import QASM_SIM, SV_SIM
 import isl.utils.circuit_operations as co
 from isl.utils.utilityfunctions import (
     _expectation_value_of_qubit,
@@ -46,7 +47,7 @@ class TestUtilityFunctions(TestCase):
         qc = QuantumCircuit(1)
         qc.measure_all()
 
-        job = co.QASM_SIM.run(qc, shots=int(1e4))
+        job = QASM_SIM.simulator.run(qc, shots=int(1e4))
         counts = job.result().get_counts()
         eval_zero_state = _expectation_value_of_qubit(0, counts, 1)
         self.assertAlmostEqual(eval_zero_state, 1)
@@ -54,7 +55,7 @@ class TestUtilityFunctions(TestCase):
     def test_qasm_when_zero_state_then_sigmaz_expectation_is_minus_one(self):
         qc = QuantumCircuit(1)
         qc.measure_all()
-        job = co.QASM_SIM.run(qc, shots=int(1e4))
+        job = QASM_SIM.simulator.run(qc, shots=int(1e4))
         counts = job.result().get_counts()
         eval_one_state = _expectation_value_of_qubit(0, counts, 1)
         self.assertAlmostEqual(eval_one_state, 1)
@@ -64,7 +65,7 @@ class TestUtilityFunctions(TestCase):
         qc.x(0)
         qc.h(1)
         qc.measure_all()
-        job = co.QASM_SIM.run(qc, shots=int(1e4))
+        job = QASM_SIM.simulator.run(qc, shots=int(1e4))
         counts = job.result().get_counts()
         eval_one_plus_zero_state = expectation_value_of_qubits(counts)
         five_sigma_error_range = 5 / np.sqrt(1e4)
@@ -76,7 +77,7 @@ class TestUtilityFunctions(TestCase):
     def test_sv_when_zero_state_then_sigmaz_expectation_is_one(self):
         qc = QuantumCircuit(1)
         qc.measure_all()
-        job = co.SV_SIM.run(qc)
+        job = SV_SIM.simulator.run(qc)
         counts = job.result().get_counts()
         eval_zero_state = _expectation_value_of_qubit(0, counts, 1)
         self.assertAlmostEqual(eval_zero_state, 1.0)
@@ -84,7 +85,7 @@ class TestUtilityFunctions(TestCase):
     def test_sv_when_zero_state_then_sigmaz_expectation_is_minus_one(self):
         qc = QuantumCircuit(1)
         qc.measure_all()
-        job = co.SV_SIM.run(qc)
+        job = SV_SIM.simulator.run(qc)
         counts = job.result().get_counts()
         eval_one_state = _expectation_value_of_qubit(0, counts, 1)
         self.assertAlmostEqual(eval_one_state, 1.0)
@@ -93,7 +94,7 @@ class TestUtilityFunctions(TestCase):
         qc = QuantumCircuit(3)
         qc.x(0)
         qc.h(1)
-        job = co.SV_SIM.run(qc)
+        job = SV_SIM.simulator.run(qc)
         sv = job.result().get_statevector()
         eval_one_plus_zero_state = expectation_value_of_qubits(sv)
         assert_array_almost_equal(

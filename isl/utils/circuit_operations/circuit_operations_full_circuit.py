@@ -1,6 +1,5 @@
 import multiprocessing
 import random
-from random import seed
 from typing import Union
 
 import numpy as np
@@ -8,7 +7,6 @@ from qiskit import ClassicalRegister, QuantumCircuit, QuantumRegister
 from qiskit import transpile as qiskit_transpile
 from qiskit.circuit import Clbit, Gate, Instruction, Qubit, Reset
 from qiskit.quantum_info import random_statevector, Statevector
-from qiskit_aer import Aer
 
 from isl.utils.circuit_operations import (
     BASIS_GATES,
@@ -16,13 +14,13 @@ from isl.utils.circuit_operations import (
     SUPPORTED_1Q_GATES,
     SUPPORTED_2Q_GATES,
 )
-from isl.utils.circuit_operations.circuit_operations_qulacs import (
-    QULACS_BASIS_GATES,
-)
 from isl.utils.circuit_operations.circuit_operations_basic import (
     add_gate,
     create_1q_gate,
     create_2q_gate,
+)
+from isl.utils.circuit_operations.circuit_operations_qulacs import (
+    QULACS_BASIS_GATES,
 )
 
 

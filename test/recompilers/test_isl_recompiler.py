@@ -17,12 +17,11 @@ from tenpy.algorithms import tebd
 from tenpy.models import XXZChain
 from tenpy.networks.mps import MPS
 
+from isl.backends.python_default_backends import SV_SIM, MPS_SIM, QASM_SIM, CUQUANTUM_SIM
 import isl.utils.circuit_operations as co
 import isl.utils.cuquantum_functions as cu
 import isl.utils.ansatzes as ans
 from isl.recompilers import ISLConfig, ISLRecompiler
-from isl.utils.circuit_operations import QASM_SIM, SV_SIM, MPS_SIM, CUQUANTUM_SIM, TENPY_SIM, \
-    ITENSOR_SIM
 from isl.utils.constants import DEFAULT_SUFFICIENT_COST, coupling_map_linear
 from isl.utils.entanglement_measures import EM_TOMOGRAPHY_NEGATIVITY
 from isl.utils.utilityfunctions import multi_qubit_gate_depth, tenpy_to_qiskit_mps
@@ -82,7 +81,7 @@ class TestISL(TestCase):
     def test_isl_procedure_when_input_mps_directly(self):
         qc = co.create_random_initial_state_circuit(3)
         qc = co.unroll_to_basis_gates(qc)
-        mps = mps_from_circuit(qc.copy(), sim=MPS_SIM)
+        mps = mps_from_circuit(qc.copy(), sim=MPS_SIM.simulator)
 
         # Input MPS for recompilation rather than QuantumCircuit
         recompiler = ISLRecompiler(mps, backend=MPS_SIM)
@@ -420,13 +419,13 @@ class TestISL(TestCase):
         result = recompiler.recompile()
         self.assertTrue("expectation" in result.method_history)
 
-    @patch.object(ISLRecompiler, '_measure_qubit_expectation_values')
+    @patch.object(SV_SIM, 'measure_qubit_expectation_values')
     def test_given_entanglement_when_find_highest_entanglement_pair_then_evals_not_evaluated(self, mock_get_evals):
         recompiler = ISLRecompiler(QuantumCircuit(2))
         recompiler._find_best_entanglement_qubit_pair([0.5])
         mock_get_evals.assert_not_called()
 
-    @patch.object(ISLRecompiler, '_measure_qubit_expectation_values')
+    @patch.object(SV_SIM, 'measure_qubit_expectation_values')
     def test_given_entanglement_when_find_appropriate_pair_then_evals_not_evaluated(self, mock_get_evals):
         qc = QuantumCircuit(2)
         qc.h(0)
@@ -672,7 +671,7 @@ class TestISL(TestCase):
         initial_ansatz = create_initial_ansatz()
 
         config = ISLConfig(rotosolve_frequency=4, max_layers_to_modify=2)
-        recompiler = ISLRecompiler(qc, backend=co.MPS_SIM, isl_config=config, starting_circuit=starting_circuit, initial_single_qubit_layer=True)
+        recompiler = ISLRecompiler(qc, backend=MPS_SIM, isl_config=config, starting_circuit=starting_circuit, initial_single_qubit_layer=True)
 
         recompiler._add_initial_ansatz(initial_ansatz=initial_ansatz, optimise_initial_ansatz=True)
         [recompiler._add_layer(i) for i in range(5)]
@@ -780,7 +779,7 @@ class TestISL(TestCase):
         starting_circuit = QuantumCircuit(n)
         starting_circuit.x(range(0, n, 2))
 
-        recompiler = ISLRecompiler(target_mps, backend=co.MPS_SIM, starting_circuit=starting_circuit)
+        recompiler = ISLRecompiler(target_mps, backend=MPS_SIM, starting_circuit=starting_circuit)
         result = recompiler.recompile()
 
         # Target circuit created independently for comparison
@@ -804,7 +803,7 @@ class TestISL(TestCase):
         qc = co.create_random_initial_state_circuit(3)
 
         config = ISLConfig(method="rxx_gradient")
-        recompiler = ISLRecompiler(qc, backend=co.MPS_SIM, isl_config=config,
+        recompiler = ISLRecompiler(qc, backend=MPS_SIM, isl_config=config,
                                    custom_layer_2q_gate=ans.identity_resolvable())
         result = recompiler.recompile()
 
@@ -815,7 +814,7 @@ class TestISL(TestCase):
         qc = co.create_random_initial_state_circuit(3)
 
         config = ISLConfig(method="general_gradient")
-        recompiler = ISLRecompiler(qc, backend=co.MPS_SIM, isl_config=config,
+        recompiler = ISLRecompiler(qc, backend=MPS_SIM, isl_config=config,
                                    custom_layer_2q_gate=ans.identity_resolvable())
         result = recompiler.recompile()
 
@@ -915,6 +914,7 @@ class TestISLCheckpointing(TestCase):
 
 try:
     import qulacs
+    from isl.backends.python_default_backends import QULACS
 
     module_failed_qulacs = False
 except ImportError:
@@ -932,7 +932,7 @@ class TestISLQulacs(TestCase):
         qc = co.unroll_to_basis_gates(qc)
 
         config = ISLConfig(cost_improvement_num_layers=1e3)
-        isl_recompiler = ISLRecompiler(qc, backend="qulacs", isl_config=config)
+        isl_recompiler = ISLRecompiler(qc, backend=QULACS, isl_config=config)
 
         result = isl_recompiler.recompile()
         approx_circuit = result.circuit
@@ -945,7 +945,7 @@ class TestISLQulacs(TestCase):
         qc = co.unroll_to_basis_gates(qc)
         nm = co.create_noisemodel(0.1, 0.1, False)
         isl_recompiler = ISLRecompiler(
-            qc, backend="qulacs", execute_kwargs={"noise_model": nm}
+            qc, backend=QULACS, execute_kwargs={"noise_model": nm}
         )
         with self.assertRaises(ValueError):
             isl_recompiler.recompile()
@@ -953,7 +953,7 @@ class TestISLQulacs(TestCase):
     def test_with_initial_ansatz(self):
         qc = co.create_random_initial_state_circuit(3)
         qc = co.unroll_to_basis_gates(qc)
-        isl_recompiler = ISLRecompiler(qc, backend="qulacs")
+        isl_recompiler = ISLRecompiler(qc, backend=QULACS)
         result = isl_recompiler.recompile(qc.copy())
         num_2q_before = co.find_num_gates(qc)[0]
         num_2q_after = co.find_num_gates(result.circuit)[0]
@@ -962,6 +962,7 @@ class TestISLQulacs(TestCase):
 try:
     import cuquantum
     import cupy as cp
+    from isl.backends.python_default_backends import CUQUANTUM_SIM
 
     module_failed_cuquantum = False
 except ImportError:
@@ -1099,6 +1100,7 @@ class TestISLCuquantum(TestCase):
 
 try:
     from qiskit_tenpy_converter.simulation.simulator import Simulator
+    from isl.backends.python_default_backends import TENPY_SIM
 
     module_failed_tenpy = False
 except ImportError:
@@ -1178,11 +1180,14 @@ class TestISLTenpy(TestCase):
 
 try:
     from itensornetworks_qiskit.utils import qiskit_circ_to_it_circ
-    from juliacall import Main as jl
+    from juliacall import Main as jl, JuliaError
+    from isl.backends.julia_default_backends import ITENSOR_SIM
     jl.seval("using ITensorNetworksQiskit")
     jl.seval("using ITensors: siteinds")
     module_failed = False
 except ImportError:
+    module_failed = True
+except JuliaError:
     module_failed = True
 
 class TestITensor(TestCase):

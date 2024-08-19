@@ -9,8 +9,9 @@ import logging
 from aqc_research.mps_operations import rand_mps_vec
 from qiskit import QuantumCircuit
 
+from isl.backends.aer_mps_backend import mps_sim_with_args, AerMPSBackend
 from isl.recompilers import ISLRecompiler
-from isl.utils.circuit_operations import MPS_SIM, mps_sim_with_args
+from isl.backends.python_default_backends import MPS_SIM
 
 logging.basicConfig()
 logger = logging.getLogger('isl')
@@ -40,13 +41,16 @@ print(f"Overlap between circuits is {result.overlap}")
 # (b) Set the Aer truncation threshold manually.
 
 # Create an instance of Qiskit's MPS simulator with a specified truncation threshold
-mps_backend = mps_sim_with_args(mps_truncation_threshold=1e-8)
+qiskit_mps_sim = mps_sim_with_args(mps_truncation_threshold=1e-8)
+
+# Create the corresponding AQC backend
+backend = AerMPSBackend(simulator=qiskit_mps_sim)
 
 # Create a target MPS
 mps = rand_mps_vec(4)
 
 # Set the compilation target to be a MPS rather than a circuit
-isl_recompiler = ISLRecompiler(target=mps, backend=mps_backend)
+isl_recompiler = ISLRecompiler(target=mps, backend=backend)
 
 result = isl_recompiler.recompile()
 print(f"Overlap between circuits is {result.overlap}")

@@ -1,11 +1,16 @@
 from typing import List, Tuple
+
 import aqc_research.mps_operations as mpsop
 import numpy as np
 from qiskit import QuantumCircuit
 from qiskit.compiler import transpile
 
+from isl.backends.aer_mps_backend import AerMPSBackend
+from isl.backends.python_default_backends import MPS_SIM
 
-def xx_grad_of_pairs(circuit: QuantumCircuit, coupling_map: List[Tuple], sim=None):
+
+def xx_grad_of_pairs(circuit: QuantumCircuit, coupling_map: List[Tuple],
+                     backend: AerMPSBackend = MPS_SIM):
     """
     Returns the magnitude of the cost-gradient of each qubit pair in the coupling map w.r.t Rxx(θ) at θ=0
     The gradient takes the form:
@@ -15,14 +20,15 @@ def xx_grad_of_pairs(circuit: QuantumCircuit, coupling_map: List[Tuple], sim=Non
     Args:
         circuit (QuantumCircuit): a circuit representing |ψ>
         coupling_map (List[Tuple]): the list of all pairs of qubits for which to calculate the gradient
-        sim (AerSimulator): Aer MPS simulator used to generate relevant states
+        backend (AerSimulator): Aer MPS simulator used to generate relevant states
     Returns:
         gradients (List): List of gradients w.r.t. Rxx(θ) at θ=0 for each pair
     """
     gradients = []
-    circ_mps = mpsop.mps_from_circuit(circuit.copy(), return_preprocessed=True, sim=sim)
+    circ_mps = mpsop.mps_from_circuit(circuit.copy(), return_preprocessed=True,
+                                      sim=backend.simulator)
     zero_mps = mpsop.mps_from_circuit(
-        QuantumCircuit(circuit.num_qubits), return_preprocessed=True, sim=sim
+        QuantumCircuit(circuit.num_qubits), return_preprocessed=True, sim=backend.simulator
     )
     # Find <ψ|0>
     zero_overlap = mpsop.mps_dot(circ_mps, zero_mps, already_preprocessed=True)
@@ -30,7 +36,7 @@ def xx_grad_of_pairs(circuit: QuantumCircuit, coupling_map: List[Tuple], sim=Non
         circ = circuit.copy()
         circ.x(control)
         circ.x(target)
-        xx_mps = mpsop.mps_from_circuit(circ, return_preprocessed=True, sim=sim)
+        xx_mps = mpsop.mps_from_circuit(circ, return_preprocessed=True, sim=backend.simulator)
         # Find <0|XX|ψ>
         xx_overlap = mpsop.mps_dot(zero_mps, xx_mps, already_preprocessed=True)
         gradient = -1 * np.imag(xx_overlap * zero_overlap)
@@ -45,7 +51,7 @@ def general_grad_of_pairs(
     generators: List[QuantumCircuit],
     coupling_map: List[Tuple],
     starting_circuit=None,
-    sim=None,
+    backend: AerMPSBackend = MPS_SIM,
 ):
     """
     For an ansatz of the form U(θ) = U_N(θ_N) * ... * U_1(θ_1), parameterised by θ = (θ_1, ..., θ_N),
@@ -66,14 +72,15 @@ def general_grad_of_pairs(
         generators (List[QuantumCircuit]): a list of quantum circuits representing (G_k)†
         coupling_map (List[Tuple]): the list of all pairs of qubits for which to calculate the gradient
         starting_circuit (QuantumCircuit): a circuit representing |s>
-        sim (AerSimulator): Aer MPS simulator used to generate relevant states
+        backend (AerSimulator): Aer MPS simulator used to generate relevant states
     Returns:
         gradients (List): List of gradients g for each pair
     """
     gradients = []
 
     # Get MPS of |ψ>
-    circ_mps = mpsop.mps_from_circuit(circuit.copy(), return_preprocessed=True, sim=sim)
+    circ_mps = mpsop.mps_from_circuit(circuit.copy(), return_preprocessed=True,
+                                      sim=backend.simulator)
 
     # Get the starting circuit
     if starting_circuit is not None:
@@ -88,7 +95,7 @@ def general_grad_of_pairs(
             inverse_zero_ansatz, [control, target]
         )
         ansatz_on_starting_circuit_mps = mpsop.mps_from_circuit(
-            ansatz_on_starting_circuit, return_preprocessed=True, sim=sim
+            ansatz_on_starting_circuit, return_preprocessed=True, sim=backend.simulator
         )
         # Find <ψ|U†(0)|s>
         zero_ansatz_overlap = mpsop.mps_dot(
@@ -102,7 +109,7 @@ def general_grad_of_pairs(
                 generator, [control, target]
             )
             generator_on_starting_circuit_mps = mpsop.mps_from_circuit(
-                generator_on_starting_circuit, return_preprocessed=True, sim=sim
+                generator_on_starting_circuit, return_preprocessed=True, sim=backend.simulator
             )
             # Find <s|G_k|ψ>, computed as the dot product of (G_k)†|s> and |ψ>
             generator_overlap = mpsop.mps_dot(

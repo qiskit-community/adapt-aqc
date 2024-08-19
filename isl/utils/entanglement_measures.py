@@ -13,8 +13,11 @@ from scipy import linalg
 from scipy.linalg import eig
 
 import isl.utils.circuit_operations as co
-from isl.utils.circuit_operations import TENPY_SIM
-from isl.utils.utilityfunctions import is_statevector_backend, is_aer_mps_backend, is_cuquantum_backend
+from isl.backends.aer_mps_backend import AerMPSBackend
+from isl.backends.aqc_backend import AQCBackend
+from isl.backends.cuquantum_backend import CuQuantumBackend
+from isl.backends.tenpy_backend import TenpyBackend
+from isl.utils.utilityfunctions import is_statevector_backend
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +33,7 @@ def calculate_entanglement_measure(
         circuit,
         qubit_1,
         qubit_2,
-        backend,
+        backend: AQCBackend,
         backend_options=None,
         execute_kwargs=None,
         mps=None
@@ -62,11 +65,11 @@ def calculate_entanglement_measure(
                 circuit, backend, return_statevector=True
             )
             rho = partial_trace(statevector, qubit_1, qubit_2)
-        elif is_aer_mps_backend(backend) or is_cuquantum_backend(backend) or backend == TENPY_SIM:
+        elif isinstance(backend, AerMPSBackend) or isinstance(backend, CuQuantumBackend) or isinstance(backend, TenpyBackend):
             rho = mpsops.partial_trace(mps, [qubit_1, qubit_2], already_preprocessed=True)
         else:
             rho = perform_quantum_tomography(
-                circuit, qubit_1, qubit_2, backend, backend_options, execute_kwargs
+                circuit, qubit_1, qubit_2, backend.simulator, backend_options, execute_kwargs
             )
         if method == EM_TOMOGRAPHY_EOF:
             return eof(rho)
@@ -157,7 +160,7 @@ def measure_concurrence_lower_bound(
         qc, circuit.copy(), qubit_subset=list(range(num_qubits, 2 * num_qubits))
     )
 
-    transpile_kwargs = {"backend": backend}
+    transpile_kwargs = {"backend": backend.simulator}
 
     p_minus_p_minus_circuit = qc.copy()
     co.add_to_circuit(

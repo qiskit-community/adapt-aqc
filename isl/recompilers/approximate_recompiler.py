@@ -6,29 +6,27 @@ import multiprocessing
 import os
 import timeit
 from abc import ABC, abstractmethod
-from typing import Union
 
-from isl.utils.utilityfunctions import tenpy_to_qiskit_mps, is_mps_backend
-
-import aqc_research.mps_operations as mpsops
-import numpy as np
 from aqc_research.mps_operations import mps_from_circuit, check_mps
 from qiskit import ClassicalRegister, QuantumCircuit, QuantumRegister
 from qiskit.providers import Backend
-from qiskit.result import Counts
 from qiskit_aer import Aer
-from qiskit_aer.backends.compatibility import Statevector
 
 import isl.utils.cuquantum_functions as cu
+from isl.backends.aer_mps_backend import AerMPSBackend
+from isl.backends.aqc_backend import AQCBackend
+from isl.backends.cuquantum_backend import CuQuantumBackend
+from isl.backends.itensor_backend import ITensorBackend
+from isl.backends.qiskit_sampling_backend import QiskitSamplingBackend
+from isl.backends.tenpy_backend import TenpyBackend
 from isl.utils import circuit_operations as co
-from isl.utils.circuit_operations import QASM_SIM, DEFAULT_CU_ALGORITHM, TENPY_SIM, ITENSOR_SIM
+from isl.backends.python_default_backends import QASM_SIM
 from isl.utils.circuit_operations.circuit_operations_full_circuit import (
     remove_classical_operations,
 )
 from isl.utils.constants import QiskitMPS
 from isl.utils.cost_minimiser import CostMinimiser
-from isl.utils.utilityfunctions import is_statevector_backend, is_aer_mps_backend, \
-    is_cuquantum_backend, expectation_value_of_qubits, expectation_value_of_qubits_mps
+from isl.utils.utilityfunctions import is_statevector_backend
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +63,7 @@ class ApproximateRecompiler(ABC):
     def __init__(
             self,
             target: QuantumCircuit | QiskitMPS,
-            backend,
+            backend: AQCBackend,
             execute_kwargs=None,
             initial_state=None,
             qubit_subset=None,
@@ -101,13 +99,12 @@ class ApproximateRecompiler(ABC):
         self.target = target
         self.original_circuit_classical_ops = None
         self.backend = (
-            backend if backend is not None else Aer.get_backend("qasm_simulator")
+            backend if backend is not None else QASM_SIM
         )
-        self.cu_algorithm = cu_algorithm if cu_algorithm is not None else DEFAULT_CU_ALGORITHM
         self.is_statevector_backend = is_statevector_backend(self.backend)
-        self.is_aer_mps_backend = is_aer_mps_backend(self.backend)
-        self.is_cuquantum_backend = is_cuquantum_backend(self.backend)
-        self.is_tenpy_backend = self.backend == TENPY_SIM
+        self.is_aer_mps_backend = isinstance(self.backend, AerMPSBackend)
+        self.is_cuquantum_backend = isinstance(self.backend, CuQuantumBackend)
+        self.is_tenpy_backend = isinstance(self.backend, TenpyBackend)
         if self.is_tenpy_backend:
             try:
                 from qiskit_tenpy_converter.simulation.simulator import Simulator
@@ -127,7 +124,7 @@ class ApproximateRecompiler(ABC):
             except ModuleNotFoundError as e:
                 logger.error(e)
                 raise ModuleNotFoundError("Cuquantum not installed. Try a different backend.")
-        if self.backend == ITENSOR_SIM:
+        if isinstance(self.backend, ITensorBackend):
             logger.warning("ITensor is an experimental backend with many missing features")
             self.itensor_target = None
             self.itensor_chi = itensor_chi
@@ -135,8 +132,6 @@ class ApproximateRecompiler(ABC):
         if check_mps(self.target) and not self.is_aer_mps_backend:
             raise Exception("Aer MPS backend must be used when target is an Aer MPS")
         self.circuit_to_recompile = self.prepare_circuit()
-        if hasattr(self.backend, "num_qubits") and self.circuit_to_recompile.num_qubits > self.backend.num_qubits:
-            raise ValueError(f"Number of qubits is too large for backend chosen. Maximum is {self.backend.num_qubits}.")
         self.execute_kwargs = self.parse_default_execute_kwargs(execute_kwargs)
         self.backend_options = self.parse_default_backend_options()
         self.initial_state_circuit = co.initial_state_to_circuit(initial_state)
@@ -146,7 +141,8 @@ class ApproximateRecompiler(ABC):
         )
         self.general_initial_state = general_initial_state
         self.starting_circuit = starting_circuit
-        self.zero_mps = None
+        self.zero_mps = mps_from_circuit(QuantumCircuit(self.total_num_qubits),
+                                         return_preprocessed=True)
         self.optimise_local_cost = optimise_local_cost
 
         if initial_state is not None and general_initial_state:
@@ -192,7 +188,7 @@ class ApproximateRecompiler(ABC):
             prepared_circuit = co.unroll_to_basis_gates(qc2)
             if self.is_aer_mps_backend:
                 logger.info("Pre-computing target circuit as MPS using AerSimulator")
-                target_mps = mps_from_circuit(prepared_circuit, sim=self.backend)
+                target_mps = mps_from_circuit(prepared_circuit, sim=self.backend.simulator)
                 target_mps_circuit = QuantumCircuit(prepared_circuit.num_qubits)
                 target_mps_circuit.set_matrix_product_state(target_mps)
                 # Return a circuit with the target MPS embedded inside
@@ -200,12 +196,12 @@ class ApproximateRecompiler(ABC):
             if self.is_cuquantum_backend:
                 logger.info("Pre-computing target circuit as MPS using CuQuantum")
                 self.cu_target_mps = (
-                    cu.mps_from_circuit(prepared_circuit, algorithm=self.cu_algorithm))
+                    cu.mps_from_circuit(prepared_circuit, algorithm=self.backend.cu_algorithm))
                 self.cu_cached_mps = self.cu_target_mps.copy()
             if self.is_tenpy_backend:
                 logger.info("Pre-computing target circuit as MPS using Tenpy")
                 self.tenpy_target_mps = self.tenpy_sim.simulate(prepared_circuit.copy(), cut_off=self.tenpy_cut_off)
-            if self.backend == ITENSOR_SIM:
+            if isinstance(self.backend, ITensorBackend):
                 from itensornetworks_qiskit.utils import qiskit_circ_to_it_circ
                 from juliacall import Main as jl
                 jl.seval("using ITensorNetworksQiskit")
@@ -221,9 +217,7 @@ class ApproximateRecompiler(ABC):
     def parse_default_execute_kwargs(self, execute_kwargs):
         kwargs = {} if execute_kwargs is None else dict(execute_kwargs)
         if "shots" not in kwargs:
-            if self.backend == "qulacs":
-                kwargs["shots"] = 2 ** 30
-            elif not self.is_statevector_backend:
+            if isinstance(self.backend, QiskitSamplingBackend):
                 kwargs["shots"] = 8192
             else:
                 kwargs["shots"] = 1
@@ -429,7 +423,7 @@ class ApproximateRecompiler(ABC):
         if self.initial_state_circuit is not None:
             co.add_to_circuit(
                 qc,
-                self.initial_state_circuit, 
+                self.initial_state_circuit,
                 transpile_before_adding=True,
                 transpile_kwargs=transpile_kwargs,
             )
@@ -493,172 +487,6 @@ class ApproximateRecompiler(ABC):
         self.cost_evaluation_counter += 1
 
         if self.optimise_local_cost:
-            return self._evaluate_local_cost()
+            return self.backend.evaluate_local_cost(self)
         else:
-            return self._evaluate_global_cost()
-
-    def _evaluate_local_cost(self):
-        if is_mps_backend(self.backend):
-            return self._evaluate_local_cost_mps()
-        elif self.is_statevector_backend:
-            return self._evaluate_local_cost_sv()
-        else:
-            return self._evaluate_local_cost_counts()
-
-    def _evaluate_local_cost_mps(self):
-        if self.backend == ITENSOR_SIM:
-            raise NotImplementedError("Local cost not supported for ITensor")
-        if self.is_cuquantum_backend:
-            mps = self._get_full_circ_mps_using_cu()
-            e_vals = [(mpsops.mps_expectation(mps, 'Z', i, already_preprocessed=True))
-                      for i in range(len(mps))]
-        elif self.is_aer_mps_backend:
-            circ = self.full_circuit.copy()
-            e_vals = expectation_value_of_qubits_mps(circ, self.backend)
-        elif self.is_tenpy_backend:
-            mps = self._get_full_circ_mps_using_tenpy()
-            e_vals = [(mpsops.mps_expectation(mps, 'Z', i, already_preprocessed=True))
-                      for i in range(len(mps))]
-
-        cost = 0.5 * (1 - np.mean(e_vals))
-        return cost
-
-    def _evaluate_local_cost_sv(self):
-        sv = self._run_full_circuit(return_statevector=True)
-        e_vals = expectation_value_of_qubits(sv)
-        cost = 0.5 * (1 - np.mean(e_vals))
-        return cost
-    
-    def _evaluate_local_cost_counts(self):
-        qubit_costs = np.zeros(self.total_num_qubits)
-        for i in range(self.total_num_qubits):
-            if self.general_initial_state:
-                self.full_circuit.measure(i, 0)
-                self.full_circuit.measure(i + self.total_num_qubits, 1)
-                counts = self._run_full_circuit()
-                del self.full_circuit.data[-1]
-                del self.full_circuit.data[-1]
-                total_shots = sum([each_count for _, each_count in counts.items()])
-                # '00...00' might not be present in counts if no shot
-                # resulted in the ground state
-                if "00" in counts:
-                    overlap = counts["00"] / total_shots
-                else:
-                    overlap = 0
-                qubit_costs[i] = 1 - overlap
-            else:
-                self.full_circuit.measure(i, 0)
-                counts = self._run_full_circuit()
-                del self.full_circuit.data[-1]
-                total_shots = sum([each_count for _, each_count in counts.items()])
-                # '00...00' might not be present in counts if no shot
-                # resulted in the ground state
-                if "0" in counts:
-                    overlap = counts["0"] / total_shots
-                else:
-                    overlap = 0
-                qubit_costs[i] = 1 - overlap
-        cost = np.mean(qubit_costs)
-        return cost
-    
-    def _evaluate_global_cost(self):
-        if is_mps_backend(self.backend):
-            return self._evaluate_global_cost_mps()
-        elif self.is_statevector_backend:
-            return self._evaluate_global_cost_sv()
-        else:
-            return self._evaluate_global_cost_counts()
-
-    def _evaluate_global_cost_mps(self):
-        if self.backend == ITENSOR_SIM:
-            return self._global_cost_itensor()
-        elif self.is_cuquantum_backend:
-            circ_mps = self._get_full_circ_mps_using_cu()
-        elif self.is_aer_mps_backend:
-            circ = self.full_circuit.copy()
-            circ_mps = mpsops.mps_from_circuit(circ, return_preprocessed=True, sim=self.backend)
-        elif self.is_tenpy_backend:
-            circ_mps = self._get_full_circ_mps_using_tenpy()
-        if self.zero_mps is None:
-            sim = self.backend if self.is_aer_mps_backend else None
-            self.zero_mps = mpsops.mps_from_circuit(QuantumCircuit(self.total_num_qubits),
-                                                    return_preprocessed=True, sim=sim)
-
-        cost = 1 - np.absolute(
-            mpsops.mps_dot(circ_mps, self.zero_mps, already_preprocessed=True))**2
-        return cost
-
-    def _get_full_circ_mps_using_cu(self):
-        # TODO We use ISL specific logic, so this and where it's called should be in ISLRecompiler
-        if not self.compiling_finished:
-            # Contract all gates after the most recent cache
-            first_gate_index_not_cached = self.next_gate_to_cache_index
-            gates_to_contract = co.extract_inner_circuit(self.full_circuit, (first_gate_index_not_cached, len(self.full_circuit)))
-            circ_mps = cu.mps_from_circuit_and_starting_mps(gates_to_contract, self.cu_cached_mps,
-                                                            self.cu_algorithm)
-        else:
-            ansatz_circ = co.extract_inner_circuit(self.full_circuit, self.ansatz_range())
-            circ_mps = cu.mps_from_circuit_and_starting_mps(ansatz_circ, self.cu_target_mps,
-                                                            self.cu_algorithm)
-        return cu.cu_mps_to_aer_mps(circ_mps)
-
-    def _evaluate_global_cost_sv(self):
-        sv1 = self._run_full_circuit(return_statevector=True)
-        cost = 1 - (np.absolute(sv1[0])) ** 2
-        return cost
-    
-    def _evaluate_global_cost_counts(self):
-        counts = self._run_full_circuit()
-        total_qubits = (
-            2 * self.total_num_qubits
-            if self.general_initial_state
-            else self.total_num_qubits
-        )
-        all_zero_string = "".join(str(int(e)) for e in np.zeros(total_qubits))
-        total_shots = sum([each_count for _, each_count in counts.items()])
-        # '00...00' might not be present in counts if no shot resulted in
-        # the ground state
-        if all_zero_string in counts:
-            overlap = counts[all_zero_string] / total_shots
-        else:
-            overlap = 0
-        cost = 1 - overlap
-        return cost
-    
-    def _run_full_circuit(self, return_statevector=None, add_measurements=False) -> Union[Counts, Statevector]:
-        """
-        Run the full circuit
-        :rtype: dict or Statevector
-        :return: statevector or counts_data or [counts_data] (e.g. counts_data = ['000':10,
-        '010':31,'011':20,'110':40])
-        """
-
-        # Don't parallelise shots if ISl is already being run in parallel
-        already_in_parallel = os.environ["QISKIT_IN_PARALLEL"] == "TRUE"
-        backend_options = None if already_in_parallel else self.backend_options
-
-        return_sv = self.is_statevector_backend if None else return_statevector
-
-        output = co.run_circuit_without_transpilation(
-            self.full_circuit, self.backend, backend_options, self.execute_kwargs, return_sv
-        )
-
-        return output
-    
-    def _get_full_circ_mps_using_tenpy(self):
-        ansatz_circ = co.extract_inner_circuit(self.full_circuit, self.ansatz_range())
-        circ_mps = tenpy_to_qiskit_mps(self.tenpy_sim.simulate(ansatz_circ, cut_off=self.tenpy_cut_off, starting_state=self.tenpy_target_mps.copy()))
-
-        return mpsops._preprocess_mps(circ_mps)
-
-    def _global_cost_itensor(self):
-        from itensornetworks_qiskit.utils import qiskit_circ_to_it_circ
-        from juliacall import Main as jl
-        jl.seval("using ITensorNetworksQiskit")
-
-        n = self.total_num_qubits
-        ansatz_circ = co.extract_inner_circuit(self.full_circuit, self.ansatz_range())
-        gates = qiskit_circ_to_it_circ(ansatz_circ)
-        psi = jl.mps_from_circuit_and_mps_itensors(self.itensor_target, gates, self.itensor_chi,
-                                                   self.itensor_cutoff, self.itensor_sites)
-        return 1 - jl.overlap_with_zero_itensors(n, psi, self.itensor_sites)
+            return self.backend.evaluate_global_cost(self)

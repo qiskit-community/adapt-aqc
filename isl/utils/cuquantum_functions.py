@@ -2,8 +2,6 @@
 import logging
 from copy import copy
 
-from isl.utils.circuit_operations import DEFAULT_CU_ALGORITHM
-
 logger = logging.getLogger(__name__)
 
 try: 
@@ -88,6 +86,13 @@ def _get_initial_mps(num_qubits, dtype='complex128'):
     state_tensor = cp.asarray([1, 0], dtype=dtype).reshape(1,2,1)
     mps_tensors = [state_tensor] * num_qubits
     return mps_tensors
+
+
+DEFAULT_CU_ALGORITHM = {
+    "qr_method": False,
+    "svd_method": {"partition": "UV", "max_extent": 256},
+}
+
 
 def contract_mps_tensors_with_circuit(circuit, mps_tensors, algorithm=DEFAULT_CU_ALGORITHM):
     converter = CircuitToEinsum(circuit, dtype='complex128', backend=cp)

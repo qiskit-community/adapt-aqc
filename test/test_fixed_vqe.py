@@ -4,6 +4,7 @@ import numpy as np
 from openfermion import QubitOperator, get_sparse_operator, hermitian_conjugated
 from scipy.linalg import eigh
 
+import isl.backends.python_default_backends
 import isl.utils.circuit_operations as co
 from isl.utils.fixed_ansatz_circuits import hardware_efficient_circuit
 from isl.vqe import FixedAnsatzVQE
@@ -32,7 +33,7 @@ class TestMatrixMode(TestCase):
         assert np.isclose(min_eigval, result["energy"], atol=1e-5)
 
         sv = co.run_circuit_without_transpilation(
-            result["circuit"], co.SV_SIM, return_statevector=True
+            result["circuit"], isl.backends.python_default_backends.SV_SIM, return_statevector=True
         )
         overlap = np.absolute(np.vdot(sv, min_eigvec))
         assert np.isclose(overlap, 1, atol=1e-3)
@@ -47,7 +48,7 @@ class TestPauliMode(TestCase):
 
         vqe = FixedAnsatzVQE(
             hardware_efficient_circuit(2, "rxryrz", 2),
-            backend=co.QASM_SIM,
+            backend=isl.backends.python_default_backends.QASM_SIM,
             evaluation_paulis=TEST_QO,
         )
 

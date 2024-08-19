@@ -9,6 +9,7 @@ import isl.utils.circuit_operations as co
 import isl.utils.constants as vconstants
 from isl.recompilers.approximate_recompiler import ApproximateRecompiler
 from isl.utils.constants import coupling_map_linear
+from isl.backends.python_default_backends import SV_SIM
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +53,7 @@ class RotoselectRecompiler(ApproximateRecompiler):
         self,
         target,
         initial_state=None,
-        backend=Aer.get_backend("statevector_simulator"),
+        backend=SV_SIM,
         qubit_subset=None,
         max_gpqpl=2,
         num_layers=4,
@@ -174,6 +175,6 @@ class RotoselectRecompiler(ApproximateRecompiler):
             variational_circuit,
             self.variational_circuit_range()[0],
             transpile_before_adding=True,
-            transpile_kwargs={"backend": self.backend, "optimization_level": 0},
+            transpile_kwargs={"backend": self.backend.simulator, "optimization_level": 0},
             qubit_subset=self.qubit_subset_to_recompile,
         )

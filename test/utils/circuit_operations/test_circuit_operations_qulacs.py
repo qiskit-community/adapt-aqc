@@ -3,6 +3,8 @@ from unittest import TestCase
 import numpy as np
 from qiskit import QuantumCircuit
 
+import isl.backends.python_default_backends
+from isl.backends.python_default_backends import QULACS
 import isl.utils.circuit_operations as co
 
 try:
@@ -30,10 +32,10 @@ class TestQulacs(TestCase):
         qc.u(np.pi / 2, -0.15, -2.1, 1)
         qc.u(0, 0, -1.2, 1)
         sv_qulacs = co.run_circuit_without_transpilation(
-            qc, "qulacs", return_statevector=True
+            qc, QULACS, return_statevector=True
         )
         sv_qiskit = co.run_circuit_without_transpilation(
-            qc, co.SV_SIM, return_statevector=True
+            qc, isl.backends.python_default_backends.SV_SIM, return_statevector=True
         )
         self.assertTrue(np.allclose(sv_qiskit, sv_qulacs, 1e-10))
 
@@ -55,10 +57,10 @@ class TestQulacs(TestCase):
         qc.ry(-1.9, 1)
         qc.rz(-0.2, 1)
         sv_qulacs = co.run_circuit_without_transpilation(
-            qc, "qulacs", return_statevector=True
+            qc, QULACS, return_statevector=True
         )
         sv_qiskit = co.run_circuit_without_transpilation(
-            qc, co.SV_SIM, return_statevector=True
+            qc, isl.backends.python_default_backends.SV_SIM, return_statevector=True
         )
         self.assertTrue(np.allclose(sv_qiskit, sv_qulacs, 1e-10))
 
@@ -76,9 +78,9 @@ class TestQulacs(TestCase):
         qc.z(0)
         qc.cz(1, 0)
         sv_qulacs = co.run_circuit_without_transpilation(
-            qc, "qulacs", return_statevector=True
+            qc, QULACS, return_statevector=True
         )
         sv_qiskit = co.run_circuit_without_transpilation(
-            qc, co.SV_SIM, return_statevector=True
+            qc, isl.backends.python_default_backends.SV_SIM, return_statevector=True
         )
         self.assertTrue(np.allclose(sv_qiskit, sv_qulacs, 1e-10))
