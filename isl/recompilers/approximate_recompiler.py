@@ -70,6 +70,7 @@ class ApproximateRecompiler(ABC):
             general_initial_state=False,
             starting_circuit=None,
             optimise_local_cost=False,
+            soften_global_cost=False,
             cu_algorithm=None,
             tenpy_cut_off=None,
             itensor_chi=None,
@@ -144,6 +145,7 @@ class ApproximateRecompiler(ABC):
         self.zero_mps = mps_from_circuit(QuantumCircuit(self.total_num_qubits),
                                          return_preprocessed=True)
         self.optimise_local_cost = optimise_local_cost
+        self.soften_global_cost = soften_global_cost
 
         if initial_state is not None and general_initial_state:
             raise ValueError(

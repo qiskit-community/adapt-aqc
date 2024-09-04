@@ -14,6 +14,8 @@ class QulacsBackend(AQCBackend):
         self.simulator = None
 
     def evaluate_global_cost(self, compiler):
+        if compiler.soften_global_cost:
+            raise NotImplementedError("soften_global_cost is currently only implemented for AerMPSBackend")
         sv = self.evaluate_circuit(compiler)
         cost = 1 - (np.absolute(sv[0])) ** 2
         return cost
@@ -37,7 +39,7 @@ class QulacsBackend(AQCBackend):
     def measure_qubit_expectation_values(self, compiler):
         sv = self.evaluate_circuit(compiler)
         expectation_values = []
-        n_qubits = sv.num_qubits
+        n_qubits = sv.num_qubits    # TODO qulacs sv doesn't have attribute num_qubits, fix
         for i in range(n_qubits):
             if i >= n_qubits:
                 raise ValueError("qubit_index outside of register range")

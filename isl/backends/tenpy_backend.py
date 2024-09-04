@@ -13,6 +13,8 @@ class TenpyBackend(AQCBackend):
         self.tenpy_cut_off = cut_off
 
     def evaluate_global_cost(self, compiler):
+        if compiler.soften_global_cost:
+            raise NotImplementedError("soften_global_cost is currently only implemented for AerMPSBackend")
         circ_mps = self.evaluate_circuit(compiler)
         cost = (
             1

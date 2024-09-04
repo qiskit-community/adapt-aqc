@@ -21,6 +21,8 @@ class ITensorBackend(AQCBackend):
         self.cutoff = cutoff
 
     def evaluate_global_cost(self, compiler):
+        if compiler.soften_global_cost:
+            raise NotImplementedError("soften_global_cost is currently only implemented for AerMPSBackend")
         psi = self.evaluate_circuit(compiler)
 
         n = compiler.total_num_qubits

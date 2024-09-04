@@ -16,6 +16,8 @@ class CuQuantumBackend(AQCBackend):
         self.cu_algorithm = cu_algorithm
 
     def evaluate_global_cost(self, compiler):
+        if compiler.soften_global_cost:
+            raise NotImplementedError("soften_global_cost is currently only implemented for AerMPSBackend")
         circ_mps = self.evaluate_circuit(compiler)
         cost = (
             1

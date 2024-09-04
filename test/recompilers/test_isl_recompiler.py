@@ -821,6 +821,57 @@ class TestISL(TestCase):
         overlap = co.calculate_overlap_between_circuits(qc, result.circuit)
         self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
 
+    def test_given_soften_global_cost_when_recompile_then_works(self):
+        qc = co.create_random_initial_state_circuit(3)
+
+        recompiler = ISLRecompiler(qc, backend=MPS_SIM, soften_global_cost=True)
+        result = recompiler.recompile()
+
+        overlap = co.calculate_overlap_between_circuits(qc, result.circuit)
+        self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
+
+    @patch('isl.backends.aer_mps_backend.AerMPSBackend.evaluate_hamming_weight_one_overlaps')
+    def test_given_soften_global_cost_true_or_false_when_evaluate_cost_then_appropriate_logic_executed(self, mock):
+        # This test checks that when evaluate_cost is called, the Hamming-weight-one overlaps are
+        # calculated if soften_global_cost=True and not calculated if soften_global_cost=False.
+        recompiler = ISLRecompiler(
+            QuantumCircuit(3),
+            backend=MPS_SIM,
+            soften_global_cost=False,
+        )
+        recompiler.global_cost_history = []
+        recompiler.evaluate_cost()
+        mock.assert_not_called()
+
+        recompiler = ISLRecompiler(
+            QuantumCircuit(3),
+            backend=MPS_SIM,
+            soften_global_cost=True,
+        )
+        recompiler.global_cost_history = []
+        recompiler.evaluate_cost()
+        mock.assert_called()
+
+    def test_given_soften_global_cost_and_aer_sv_backend_then_error(self):
+        qc = co.create_random_initial_state_circuit(3)
+        recompiler = ISLRecompiler(
+            qc,
+            backend=SV_SIM,
+            soften_global_cost=True,
+        )
+        with self.assertRaises(NotImplementedError):
+            recompiler.recompile()
+
+    def test_given_soften_global_cost_and_qiskit_sampling_backend_then_error(self):
+        qc = co.create_random_initial_state_circuit(3)
+        recompiler = ISLRecompiler(
+            qc,
+            backend=QASM_SIM,
+            soften_global_cost=True,
+        )
+        with self.assertRaises(NotImplementedError):
+            recompiler.recompile()
+
 
 class TestISLCheckpointing(TestCase):
 
@@ -958,6 +1009,16 @@ class TestISLQulacs(TestCase):
         num_2q_before = co.find_num_gates(qc)[0]
         num_2q_after = co.find_num_gates(result.circuit)[0]
         self.assertLessEqual(num_2q_after, num_2q_before)
+
+    def test_given_soften_global_cost_and_qulacs_backend_then_error(self):
+        qc = co.create_random_initial_state_circuit(3)
+        recompiler = ISLRecompiler(
+            qc,
+            backend=QULACS,
+            soften_global_cost=True,
+        )
+        with self.assertRaises(NotImplementedError):
+            recompiler.recompile()
 
 try:
     import cuquantum
@@ -1097,6 +1158,16 @@ class TestISLCuquantum(TestCase):
         reconstruct_circuit = initial_ansatz_part + isql_part + middle_part + starting_circuit_part
         self.assertEqual(recompiler.full_circuit.data, reconstruct_circuit)
 
+    def test_given_soften_global_cost_and_cuquantum_backend_then_error(self):
+        qc = co.create_random_initial_state_circuit(3)
+        recompiler = ISLRecompiler(
+            qc,
+            backend=CUQUANTUM_SIM,
+            soften_global_cost=True,
+        )
+        with self.assertRaises(NotImplementedError):
+            recompiler.recompile()
+
 
 try:
     from qiskit_tenpy_converter.simulation.simulator import Simulator
@@ -1105,7 +1176,6 @@ try:
     module_failed_tenpy = False
 except ImportError:
     module_failed_tenpy = True
-
 
 
 class TestISLTenpy(TestCase):
@@ -1178,6 +1248,16 @@ class TestISLTenpy(TestCase):
         overlap = abs(mps_dot(cached_target, cached_target_after_layers_added))**2
         self.assertAlmostEqual(overlap, 1)
 
+    def test_given_soften_global_cost_and_tenpy_backend_then_error(self):
+        qc = co.create_random_initial_state_circuit(3)
+        recompiler = ISLRecompiler(
+            qc,
+            backend=TENPY_SIM,
+            soften_global_cost=True,
+        )
+        with self.assertRaises(NotImplementedError):
+            recompiler.recompile()
+
 try:
     from itensornetworks_qiskit.utils import qiskit_circ_to_it_circ
     from juliacall import Main as jl, JuliaError
@@ -1242,3 +1322,13 @@ class TestITensor(TestCase):
 
         overlap = jl.overlap_itensors(cached_target, cached_target_after_layers_added)
         self.assertAlmostEqual(overlap, 1)
+
+    def test_given_soften_global_cost_and_itensor_backend_then_error(self):
+        qc = co.create_random_initial_state_circuit(3)
+        recompiler = ISLRecompiler(
+            qc,
+            backend=ITENSOR_SIM,
+            soften_global_cost=True,
+        )
+        with self.assertRaises(NotImplementedError):
+            recompiler.recompile()

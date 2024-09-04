@@ -11,6 +11,8 @@ class AerSVBackend(AQCBackend):
         self.simulator = simulator
 
     def evaluate_global_cost(self, compiler):
+        if compiler.soften_global_cost:
+            raise NotImplementedError("soften_global_cost is currently only implemented for AerMPSBackend")
         sv = self.evaluate_circuit(compiler)
         cost = 1 - (np.absolute(sv[0])) ** 2
         return cost

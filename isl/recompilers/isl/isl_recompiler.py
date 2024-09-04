@@ -59,6 +59,7 @@ class ISLRecompiler(ApproximateRecompiler):
         use_rotoselect=True,
         perform_final_minimisation=False,
         optimise_local_cost=False,
+        soften_global_cost=False,
         debug_log_full_ansatz=False,
         initial_single_qubit_layer=False,
         cu_algorithm=None,
@@ -92,7 +93,14 @@ class ISLRecompiler(ApproximateRecompiler):
         not appropriate for chosen ansatz.
         :param perform_final_minimisation: Perform a final cost minimisation
         once ISL has ended
-        :param optimise_local_cost: Optimise layers with respect to the LLET cost function (arXiv:1908.04416). ISL will still use the global cost function when deciding if compiling is completed.
+        :param optimise_local_cost: Choose the cost function with which to optimise layers:
+            - True: 'local' cost function: C_l = 1/2 * (1 - sum_i(<Z_i>)/n) (arXiv:1908.04416, eq. 11)
+            - False: 'global' cost function: C_g = 1 - |<0|ψ>|^2 (arXiv:1908.04416, eq. 9)
+        ISL will still use the global cost function when deciding if compiling is completed.
+        :param soften_global_cost: Set to True to modify the global cost to:
+        C_ɑ = C_g - ɑ * sum_i(|<0|X_i|ψ>|^2) (arXiv:2301.08609, eq. 8). ɑ is chosen to be:
+        ɑ = |C' - C_s| where C' is the cost, C_ɑ, reached during optimisation of the previous layer,
+        and C_s is the sufficient cost.
         :param debug_log_full_ansatz: When True, debug logging will print the entire ansatz at
         every step, as opposed to just the most recently optimised layer.
         :param initial_single_qubit_layer: When True, the first layer of the ISL ansatz will be
@@ -202,6 +210,10 @@ class ISLRecompiler(ApproximateRecompiler):
             self.generators = gr.get_generators(self.layer_2q_gate, use_rotoselect, inverse=True)
             self.inverse_zero_ansatz = transpile(self.layer_2q_gate).inverse()
 
+        self.soften_global_cost = soften_global_cost
+        if self.soften_global_cost and self.optimise_local_cost:
+            raise ValueError("soften_global_cost must be False when optimising local cost")
+
     def construct_layer_2q_gate(self, custom_layer_2q_gate):
         if custom_layer_2q_gate is None:
             qc = QuantumCircuit(2)
@@ -248,7 +260,8 @@ class ISLRecompiler(ApproximateRecompiler):
             logger.info("ISL started")
             logger.debug(f"ISL coupling map {self.coupling_map}")
             self.cost_evaluation_counter = 0
-            self.global_cost, self.local_cost, num_1q_gates, num_2q_gates, self.cnot_depth = None, None, None, None, None
+            self.global_cost, self.local_cost = None, None
+            num_1q_gates, num_2q_gates, self.cnot_depth = None, None, None
 
             self.global_cost_history = []
             if self.optimise_local_cost:
@@ -355,7 +368,13 @@ class ISLRecompiler(ApproximateRecompiler):
             self.full_circuit, True, True, gate_range=self.g_range()
         )
 
-        final_global_cost = self.backend.evaluate_global_cost(self)
+        # Calculate the final global cost, as 1 - |<solution|target>|^2
+        if self.soften_global_cost:
+            self.soften_global_cost = False
+            final_global_cost = self.backend.evaluate_global_cost(self)
+            self.soften_global_cost = True
+        else:
+            final_global_cost = self.backend.evaluate_global_cost(self)
         logger.info(f"Final global cost: {final_global_cost}")
         self.global_cost_history.append(final_global_cost)
         if checkpoint_every > 0:

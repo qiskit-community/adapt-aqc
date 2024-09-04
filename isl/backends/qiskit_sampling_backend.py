@@ -12,6 +12,8 @@ class QiskitSamplingBackend(AQCBackend):
         self.simulator = simulator
 
     def evaluate_global_cost(self, compiler):
+        if compiler.soften_global_cost:
+            raise NotImplementedError("soften_global_cost is currently only implemented for AerMPSBackend")
         counts = self.evaluate_circuit(compiler)
         total_qubits = (
             2 * compiler.total_num_qubits

@@ -1,7 +1,7 @@
 import logging
 
 import numpy as np
-from aqc_research.mps_operations import mps_from_circuit, mps_dot, mps_expectation
+from aqc_research.mps_operations import mps_from_circuit, mps_dot, mps_expectation, extract_amplitude
 from qiskit_aer import AerSimulator
 
 from isl.backends.aqc_backend import AQCBackend
@@ -33,13 +33,14 @@ class AerMPSBackend(AQCBackend):
 
     def evaluate_global_cost(self, compiler):
         circ_mps = self.evaluate_circuit(compiler)
-        return (
-            1
-            - np.absolute(
-                mps_dot(circ_mps, compiler.zero_mps, already_preprocessed=True)
-            )
-            ** 2
-        )
+        global_cost = 1 - np.absolute(mps_dot(circ_mps, compiler.zero_mps, already_preprocessed=True)) ** 2
+        if not compiler.soften_global_cost:
+            return global_cost
+        else:
+            previous_cost = compiler.global_cost_history[-1] if len(compiler.global_cost_history) > 0 else 1
+            alpha = abs(previous_cost - compiler.isl_config.sufficient_cost)
+            hamming_weight_one_overlaps = self.evaluate_hamming_weight_one_overlaps(circ_mps)
+            return global_cost - alpha * sum(hamming_weight_one_overlaps)
 
     def evaluate_local_cost(self, compiler):
         evals = self.measure_qubit_expectation_values(compiler)
@@ -56,3 +57,10 @@ class AerMPSBackend(AQCBackend):
             for i in range(compiler.full_circuit.num_qubits)
         ]
         return expectation_values
+    
+    def evaluate_hamming_weight_one_overlaps(self, mps):
+        overlaps = [
+            abs(extract_amplitude(mps, 2**i, already_preprocessed=True)) ** 2
+            for i in range(len(mps))
+            ]
+        return overlaps
