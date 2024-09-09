@@ -19,9 +19,6 @@ from isl.utils.circuit_operations.circuit_operations_basic import (
     create_1q_gate,
     create_2q_gate,
 )
-from isl.utils.circuit_operations.circuit_operations_qulacs import (
-    QULACS_BASIS_GATES,
-)
 
 
 def find_register(circuit, bit):
@@ -297,12 +294,6 @@ def transpile(circuit, **transpile_kwargs):
     if transpile_kwargs is None:
         transpile_kwargs = {}
 
-    if "backend" in transpile_kwargs and transpile_kwargs["backend"] == "qulacs":
-        backend_removed_kwargs = dict(transpile_kwargs)
-        del backend_removed_kwargs["backend"]
-        # if 'basis_gates' not in backend_removed_kwargs:
-        backend_removed_kwargs["basis_gates"] = QULACS_BASIS_GATES
-        return qiskit_transpile(circuit, **backend_removed_kwargs)
     return qiskit_transpile(circuit, **transpile_kwargs)
 
 

@@ -15,8 +15,6 @@ from scipy.linalg import eig
 import isl.utils.circuit_operations as co
 from isl.backends.aer_mps_backend import AerMPSBackend
 from isl.backends.aqc_backend import AQCBackend
-from isl.backends.cuquantum_backend import CuQuantumBackend
-from isl.backends.tenpy_backend import TenpyBackend
 from isl.utils.utilityfunctions import is_statevector_backend
 
 logger = logging.getLogger(__name__)
@@ -65,7 +63,7 @@ def calculate_entanglement_measure(
                 circuit, backend, return_statevector=True
             )
             rho = partial_trace(statevector, qubit_1, qubit_2)
-        elif isinstance(backend, AerMPSBackend) or isinstance(backend, CuQuantumBackend) or isinstance(backend, TenpyBackend):
+        elif isinstance(backend, AerMPSBackend):
             rho = mpsops.partial_trace(mps, [qubit_1, qubit_2], already_preprocessed=True)
         else:
             rho = perform_quantum_tomography(

@@ -7,7 +7,6 @@ from aqc_research.mps_operations import mps_dot, mps_from_circuit
 
 import isl.backends.aer_mps_backend
 import isl.backends.python_default_backends
-from isl.backends.python_default_backends import QULACS
 import isl.utils.constants as vconstants
 import isl.utils.circuit_operations as co
 
@@ -41,12 +40,10 @@ class TestCircuitOperationsRunning(TestCase):
 
     def test_run_circuit_without_transpilation(self):
         """
-        run_circuit_without_transpilation has 5 possible return paths:
-        1. if isinstance(backend, QulacsBackend) and return_statevector==True
-        2. if isinstance(backend, QulacsBackend) and return_statevector==False
-        3. if is_statevector_backend(backend)==True and return_statevector==True
-        4. if is_statevector_backend(backend)==True and return_statevector==False
-        5. if none of the above
+        run_circuit_without_transpilation has 3 possible return paths:
+        1. if is_statevector_backend(backend)==True and return_statevector==True
+        2. if is_statevector_backend(backend)==True and return_statevector==False
+        3. if none of the above
         """
         qc = QuantumCircuit(5)
         qc.h(0)
@@ -54,20 +51,6 @@ class TestCircuitOperationsRunning(TestCase):
             qc.cx(i, i + 1)
 
         # 1.
-        sv = co.run_circuit_without_transpilation(
-            qc.copy(), backend=QULACS, return_statevector=True
-        )
-        self.assertEqual(sv[0], 1 / np.sqrt(2))
-        self.assertEqual(sv[-1], 1 / np.sqrt(2))
-
-        # 2.
-        counts = co.run_circuit_without_transpilation(
-            qc.copy(), backend=QULACS
-        )
-        self.assertEqual(counts["00000"] / sum(counts.values()), 0.5)
-        self.assertEqual(counts["11111"] / sum(counts.values()), 0.5)
-
-        # 3.
         data = co.run_circuit_without_transpilation(
             qc.copy(), backend=isl.backends.python_default_backends.SV_SIM, return_statevector=True
         )
@@ -75,14 +58,14 @@ class TestCircuitOperationsRunning(TestCase):
         self.assertAlmostEqual(sv[0], 1 / np.sqrt(2))
         self.assertAlmostEqual(sv[-1], 1 / np.sqrt(2))
 
-        # 4.
+        # 2.
         counts = co.run_circuit_without_transpilation(
             qc.copy(), backend=isl.backends.python_default_backends.SV_SIM
         )
         self.assertAlmostEqual(counts["00000"] / sum(counts.values()), 0.5)
         self.assertAlmostEqual(counts["11111"] / sum(counts.values()), 0.5)
 
-        # 5. (must add measurement gates, otherwise no counts)
+        # 3. (must add measurement gates, otherwise no counts)
         qc.measure_all()
         counts = co.run_circuit_without_transpilation(qc.copy())
         sigma = 1/np.sqrt(1024)
@@ -92,11 +75,9 @@ class TestCircuitOperationsRunning(TestCase):
     def test_run_circuit_with_transpilation(self):
         """
         test the same return paths as run_circuit_without_transpilation:
-        1. if isinstance(backend, QulacsBackend) and return_statevector==True
-        2. if isinstance(backend, QulacsBackend) and return_statevector==False
-        3. if is_statevector_backend(backend)==True and return_statevector==True
-        4. if is_statevector_backend(backend)==True and return_statevector==False
-        5. if none of the above
+        1. if is_statevector_backend(backend)==True and return_statevector==True
+        2. if is_statevector_backend(backend)==True and return_statevector==False
+        3. if none of the above
 
 
         NOTE this transpiles the input circuit (returned as a new circuit),
@@ -113,18 +94,6 @@ class TestCircuitOperationsRunning(TestCase):
             qc.cx(i, i + 1)
 
         # 1.
-        sv = co.run_circuit_with_transpilation(
-            qc.copy(), backend=QULACS, return_statevector=True
-        )
-        self.assertAlmostEqual(abs(sv[0]) ** 2, 0.5)
-        self.assertAlmostEqual(abs(sv[-1]) ** 2, 0.5)
-
-        # 2.
-        counts = co.run_circuit_with_transpilation(qc.copy(), backend=QULACS)
-        self.assertEqual(counts["00000"] / sum(counts.values()), 0.5)
-        self.assertEqual(counts["11111"] / sum(counts.values()), 0.5)
-
-        # 3.
         data = co.run_circuit_with_transpilation(
             qc.copy(), backend=isl.backends.python_default_backends.SV_SIM, return_statevector=True
         )
@@ -132,12 +101,12 @@ class TestCircuitOperationsRunning(TestCase):
         self.assertAlmostEqual(abs(sv[0]) ** 2, 0.5)
         self.assertAlmostEqual(abs(sv[-1]) ** 2, 0.5)
 
-        # 4.
+        # 2.
         counts = co.run_circuit_with_transpilation(qc.copy(), backend=isl.backends.python_default_backends.SV_SIM)
         self.assertAlmostEqual(counts["00000"] / sum(counts.values()), 0.5)
         self.assertAlmostEqual(counts["11111"] / sum(counts.values()), 0.5)
 
-        # 5. (must add measurement gates, otherwise no counts)
+        # 3. (must add measurement gates, otherwise no counts)
         qc.measure_all()
         counts = co.run_circuit_with_transpilation(qc.copy())
         self.assertAlmostEqual(counts["00000"] / sum(counts.values()), 0.5, 1)

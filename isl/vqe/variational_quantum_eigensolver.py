@@ -6,7 +6,6 @@ from openfermion import QubitOperator
 from qiskit import QuantumCircuit
 
 from isl.backends.python_default_backends import SV_SIM
-from isl.backends.qulacs_backend import QulacsBackend
 import isl.utils.circuit_operations as co
 from isl.utils.cost_minimiser import CostMinimiser
 from isl.utils.utilityfunctions import is_statevector_backend
@@ -75,9 +74,7 @@ class VariationalQuantumEigensolver(ABC):
     def parse_default_execute_kwargs(self, execute_kwargs):
         kwargs = {} if execute_kwargs is None else dict(execute_kwargs)
         if "shots" not in kwargs:
-            if isinstance(self.backend, QulacsBackend):
-                kwargs["shots"] = 2**30
-            elif not is_statevector_backend(self.backend):
+            if not is_statevector_backend(self.backend):
                 kwargs["shots"] = 8192
             else:
                 kwargs["shots"] = 1

@@ -23,7 +23,6 @@ setup(
         "openfermion~=1.6",
         "sympy",
         "aqc_research @ git+ssh://git@github.com/bjader/aqc-research-qduc.git",
-        "qulacs",
         "physics-tenpy~=1.0.2",
     ],
 )

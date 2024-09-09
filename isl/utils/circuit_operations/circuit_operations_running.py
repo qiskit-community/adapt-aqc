@@ -10,12 +10,8 @@ from scipy.optimize import curve_fit
 from isl.backends.aer_sv_backend import AerSVBackend
 from isl.backends.python_default_backends import QASM_SIM
 from isl.backends.qiskit_sampling_backend import QiskitSamplingBackend
-from isl.backends.qulacs_backend import QulacsBackend
 from isl.utils.circuit_operations.circuit_operations_full_circuit import (
     unroll_to_basis_gates,
-)
-from isl.utils.circuit_operations.circuit_operations_qulacs import (
-    run_on_qulacs_noiseless,
 )
 from isl.utils.utilityfunctions import (
     counts_data_from_statevector,
@@ -32,10 +28,7 @@ def run_circuit_with_transpilation(
         execute_kwargs=None,
         return_statevector=False,
 ):
-    if isinstance(backend, QulacsBackend):
-        transpiled_circuit = unroll_to_basis_gates(circuit)
-    else:
-        transpiled_circuit = transpile(circuit, backend.simulator)
+    transpiled_circuit = transpile(circuit, backend.simulator)
     return run_circuit_without_transpilation(
         transpiled_circuit, backend, backend_options, execute_kwargs, return_statevector
     )
@@ -43,31 +36,13 @@ def run_circuit_with_transpilation(
 
 def run_circuit_without_transpilation(
         circuit: QuantumCircuit,
-        backend: QiskitSamplingBackend | AerSVBackend | QulacsBackend = QASM_SIM,
+        backend: QiskitSamplingBackend | AerSVBackend = QASM_SIM,
         backend_options=None,
         execute_kwargs=None,
         return_statevector=False,
 ):
     if execute_kwargs is None:
         execute_kwargs = {}
-
-    if isinstance(backend, QulacsBackend):
-        sv = run_on_qulacs_noiseless(circuit, False)
-        if (
-                "noise_model" in execute_kwargs
-                and execute_kwargs["noise_model"] is not None
-        ):
-            raise ValueError(f"Noisy emulations on qulacs are not supported yet")
-        if return_statevector:
-            return sv
-        else:
-            if execute_kwargs is not None and "shots" in execute_kwargs:
-                output = counts_data_from_statevector(
-                    sv, num_shots=execute_kwargs["shots"]
-                )
-            else:
-                output = counts_data_from_statevector(sv)
-            return output
 
     # Backend options only supported for simulators
     if backend_options is None or not isinstance(backend, AerBackend):

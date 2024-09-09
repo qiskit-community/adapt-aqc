@@ -16,7 +16,7 @@ Then navigate to your local copy, create a Python environment and install the re
 pip install .
 ```
 
-Certain features of ISL also require additional dependencies, namely `qulacs` and `nlopt`.
+Certain features of ISL also require additional dependencies, namely `nlopt`.
 
 You can check your development environment is ready by successfully running the scripts in `/isl/examples/`.
 

@@ -20,7 +20,6 @@ from isl.recompilers.approximate_recompiler import ApproximateRecompiler
 from isl.recompilers.isl.isl_config import ISLConfig
 from isl.recompilers.isl.isl_result import ISLResult
 from isl.utils import circuit_operations as co
-from isl.utils import cuquantum_functions as cu
 from isl.utils import gradients as gr
 from isl.utils.constants import CMAP_FULL, generate_coupling_map
 from isl.utils.entanglement_measures import (
@@ -62,8 +61,6 @@ class ISLRecompiler(ApproximateRecompiler):
         soften_global_cost=False,
         debug_log_full_ansatz=False,
         initial_single_qubit_layer=False,
-        cu_algorithm=None,
-        tenpy_cut_off=None,
         itensor_chi=None,
         itensor_cutoff=None,
     ):
@@ -105,12 +102,6 @@ class ISLRecompiler(ApproximateRecompiler):
         every step, as opposed to just the most recently optimised layer.
         :param initial_single_qubit_layer: When True, the first layer of the ISL ansatz will be
         a trainable single-qubit rotation on each qubit.
-        :param cu_algorithm: If using the cuquantum backend, this specifies the contract and
-        decompose algorithm to use for gate application. Can be either a `dict` or a
-        `ContractDecomposeAlgorithm`. If None set, the default used is
-        isl.utils.circuit_operations.DEFAULT_CU_ALGORITHM
-        :param tenpy_cut_off: Cutoff used by tenpy for singular values if gate acts on more than one
-        site.
         """
         super().__init__(
             target=target,
@@ -120,8 +111,6 @@ class ISLRecompiler(ApproximateRecompiler):
             general_initial_state=general_initial_state,
             starting_circuit=starting_circuit,
             optimise_local_cost=optimise_local_cost,
-            cu_algorithm=cu_algorithm,
-            tenpy_cut_off=tenpy_cut_off,
             itensor_chi=itensor_chi,
             itensor_cutoff=itensor_cutoff,
         )
@@ -183,15 +172,6 @@ class ISLRecompiler(ApproximateRecompiler):
 
         # Keep track of which layers have not been absorbed into the MPS
         self.layers_as_gates = []
-
-        if self.is_cuquantum_backend:
-            self.next_gate_to_cache_index = self.lhs_gate_count
-
-        if self.is_tenpy_backend:
-            for (q0, q1) in self.coupling_map:
-                if abs(q0 - q1) != 1:
-                    logger.warning("When using TenPy backend, a linear coupling map is recommended")
-                    break
 
         self.resume_from_layer = None
         self.prev_checkpoint_time_taken = None
@@ -302,8 +282,7 @@ class ISLRecompiler(ApproximateRecompiler):
             self.record_cnot_depth()
 
             # Caching layers as MPS requires that the number of gates remain constant
-            if self.remove_unnecessary_gates_during_isl and not (
-                self.is_aer_mps_backend or self.is_cuquantum_backend):
+            if self.remove_unnecessary_gates_during_isl and not self.is_aer_mps_backend:
                 co.remove_unnecessary_gates_from_circuit(self.full_circuit, False, False,
                                                          gate_range=self.g_range())
 
@@ -496,11 +475,6 @@ class ISLRecompiler(ApproximateRecompiler):
                 "ISL successfully found approximate circuit using provided ansatz only"
             )
 
-        if self.is_cuquantum_backend:
-            # Cache initial_ansatz
-            self._cache_n_gates_mps_cuquantum(n=len(initial_ansatz))
-            self.next_gate_to_cache_index += len(initial_ansatz)
-
         if self.is_aer_mps_backend:
             # Absorb optimised initial_ansatz into MPS and add gates to ref_circuit_as_gates
             gates_absorbed = self._absorb_n_gates_into_mps(n=len(initial_ansatz))
@@ -569,7 +543,7 @@ class ISLRecompiler(ApproximateRecompiler):
                 alg_kwargs={"seek_global_minimum": True},
             )
 
-        if self.is_aer_mps_backend or self.is_cuquantum_backend:
+        if self.is_aer_mps_backend:
             self.layers_as_gates.append(index)
 
             num_layers_to_absorb = self._calculate_num_layers_to_absorb(index)
@@ -583,9 +557,6 @@ class ISLRecompiler(ApproximateRecompiler):
                 if self.is_aer_mps_backend:
                     gates_absorbed = self._absorb_n_gates_into_mps(num_gates_to_absorb)
                     co.add_to_circuit(self.layers_saved_to_mps, gates_absorbed)
-                if self.is_cuquantum_backend:
-                    self._cache_n_gates_mps_cuquantum(num_gates_to_absorb)
-                    self.next_gate_to_cache_index += num_gates_to_absorb
 
                 # Update layers_as_gates
                 del self.layers_as_gates[:num_layers_to_absorb]
@@ -814,7 +785,7 @@ class ISLRecompiler(ApproximateRecompiler):
         # Generate MPS from circuit once if using MPS backend
         if isinstance(self.backend, ITensorBackend):
             raise NotImplementedError("ISL mode not supported for ITensor")
-        if self.is_aer_mps_backend or self.is_cuquantum_backend or self.is_tenpy_backend:
+        if self.is_aer_mps_backend:
             self.circ_mps = self.backend.evaluate_circuit(self)
         else:
             self.circ_mps = None
@@ -923,24 +894,6 @@ class ISLRecompiler(ApproximateRecompiler):
         self.general_gradient_history.append(None)
         self.qubit_pair_history.append((None, None))
         self.pair_selection_method_history.append(None)
-
-    def _cache_n_gates_mps_cuquantum(self, n):
-        """
-        Takes the circuit:
-        -|0>--|mps(V†(n-1)U|0>)|--|layer_n_gates|--|starting_circuit_inverse|-
-        and returns:
-        -|0>--|mps(V†(n)U|0>)|--|starting_circuit_inverse|-
-
-        Overwrites self.cu_cached_mps with MPS calculated using
-        cuquantum with new optimised layer.
-
-        """
-        # Convert n gates to index range
-        index_range_to_cache = (self.next_gate_to_cache_index, self.next_gate_to_cache_index + n)
-        gates_to_cache = co.extract_inner_circuit(self.full_circuit, index_range_to_cache)
-        new_cached_mps = cu.mps_from_circuit_and_starting_mps(gates_to_cache, self.cu_cached_mps, self.cu_algorithm)
-        # Replace self.cu_cached_mps with new layer added
-        self.cu_cached_mps = new_cached_mps
 
     def _get_layer_added(self, layer_count):
         layer_added = self.ref_circuit_as_gates.copy() if self.is_aer_mps_backend else self.full_circuit.copy()

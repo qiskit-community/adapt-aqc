@@ -12,13 +12,10 @@ from qiskit import ClassicalRegister, QuantumCircuit, QuantumRegister
 from qiskit.providers import Backend
 from qiskit_aer import Aer
 
-import isl.utils.cuquantum_functions as cu
 from isl.backends.aer_mps_backend import AerMPSBackend
 from isl.backends.aqc_backend import AQCBackend
-from isl.backends.cuquantum_backend import CuQuantumBackend
 from isl.backends.itensor_backend import ITensorBackend
 from isl.backends.qiskit_sampling_backend import QiskitSamplingBackend
-from isl.backends.tenpy_backend import TenpyBackend
 from isl.utils import circuit_operations as co
 from isl.backends.python_default_backends import QASM_SIM
 from isl.utils.circuit_operations.circuit_operations_full_circuit import (
@@ -71,8 +68,6 @@ class ApproximateRecompiler(ABC):
             starting_circuit=None,
             optimise_local_cost=False,
             soften_global_cost=False,
-            cu_algorithm=None,
-            tenpy_cut_off=None,
             itensor_chi=None,
             itensor_cutoff=None,
 
@@ -104,27 +99,6 @@ class ApproximateRecompiler(ABC):
         )
         self.is_statevector_backend = is_statevector_backend(self.backend)
         self.is_aer_mps_backend = isinstance(self.backend, AerMPSBackend)
-        self.is_cuquantum_backend = isinstance(self.backend, CuQuantumBackend)
-        self.is_tenpy_backend = isinstance(self.backend, TenpyBackend)
-        if self.is_tenpy_backend:
-            try:
-                from qiskit_tenpy_converter.simulation.simulator import Simulator
-            except ModuleNotFoundError as e:
-                logger.error(e)
-                raise ModuleNotFoundError("qiskit_tenpy_converter not installed. Try a different backend.")
-            logger.warning("TenPy is an experimental backend with many missing features")
-            self.tenpy_sim = Simulator()
-            self.tenpy_cut_off = tenpy_cut_off
-            self.tenpy_target_mps = None
-        if self.is_cuquantum_backend:
-            try:
-                import cupy
-                import cuquantum
-                self.cu_target_mps = None
-                self.cu_cached_mps = None
-            except ModuleNotFoundError as e:
-                logger.error(e)
-                raise ModuleNotFoundError("Cuquantum not installed. Try a different backend.")
         if isinstance(self.backend, ITensorBackend):
             logger.warning("ITensor is an experimental backend with many missing features")
             self.itensor_target = None
@@ -195,14 +169,6 @@ class ApproximateRecompiler(ABC):
                 target_mps_circuit.set_matrix_product_state(target_mps)
                 # Return a circuit with the target MPS embedded inside
                 return target_mps_circuit
-            if self.is_cuquantum_backend:
-                logger.info("Pre-computing target circuit as MPS using CuQuantum")
-                self.cu_target_mps = (
-                    cu.mps_from_circuit(prepared_circuit, algorithm=self.backend.cu_algorithm))
-                self.cu_cached_mps = self.cu_target_mps.copy()
-            if self.is_tenpy_backend:
-                logger.info("Pre-computing target circuit as MPS using Tenpy")
-                self.tenpy_target_mps = self.tenpy_sim.simulate(prepared_circuit.copy(), cut_off=self.tenpy_cut_off)
             if isinstance(self.backend, ITensorBackend):
                 from itensornetworks_qiskit.utils import qiskit_circ_to_it_circ
                 from juliacall import Main as jl
@@ -418,7 +384,7 @@ class ApproximateRecompiler(ABC):
         qr = QuantumRegister(total_qubits)
         qc = QuantumCircuit(qr)
 
-        # only populate transpile_kwargs is not cuquantum backend
+        # TODO update this to use new custom backend class
         transpile_kwargs = {"backend": self.backend} if (
             isinstance(self.backend, Backend)) else None
 

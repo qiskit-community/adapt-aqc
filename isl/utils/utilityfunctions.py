@@ -11,7 +11,6 @@ from qiskit.result import Counts
 from qiskit_aer.backends.compatibility import Statevector
 
 from isl.backends.aer_sv_backend import AerSVBackend
-from isl.backends.qulacs_backend import QulacsBackend
 
 
 # ------------------Trigonometric functions------------------ #
@@ -111,7 +110,7 @@ def is_statevector_backend(backend):
     :param backend: Simulator backend
     :return: Boolean
     """
-    if isinstance(backend, QulacsBackend) or isinstance(backend, AerSVBackend):
+    if isinstance(backend, AerSVBackend):
         return True
     return False
 
