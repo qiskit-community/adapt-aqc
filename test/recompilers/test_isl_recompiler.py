@@ -3,6 +3,7 @@ import os
 import pickle
 import shutil
 import tempfile
+import copy
 from unittest import TestCase
 from unittest.mock import patch
 
@@ -953,6 +954,144 @@ class TestISLCheckpointing(TestCase):
             result = loaded_recompiler.recompile()
             self.assertEqual(len(os.listdir(d)), len(result.qubit_pair_history))
 
+    def test_given_resume_and_freeze_layers_when_compile_then_works(self):
+        qc = co.create_random_initial_state_circuit(3)
+        for backend in [SV_SIM, MPS_SIM]:
+            recompiler = ISLRecompiler(qc, backend=backend)
+            with tempfile.TemporaryDirectory() as d:
+                recompiler.recompile(checkpoint_every=1, checkpoint_dir=d)
+                with open(os.path.join(d, "2"), "rb") as myfile:
+                    loaded_recompiler = pickle.load(myfile)
+                result = loaded_recompiler.recompile(freeze_prev_layers=True)
+                overlap = co.calculate_overlap_between_circuits(result.circuit, qc)
+                self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
+
+    def test_given_resume_and_freeze_layers_multiple_times_when_compile_then_works(
+        self,
+    ):
+        qc = co.create_random_initial_state_circuit(3)
+        sc = QuantumCircuit(3)
+        sc.h([0, 2])
+        for backend in [SV_SIM, MPS_SIM]:
+            recompiler = ISLRecompiler(qc, backend=backend, starting_circuit=sc)
+            with tempfile.TemporaryDirectory() as d:
+                recompiler.recompile(checkpoint_every=1, checkpoint_dir=d)
+                with open(os.path.join(d, "0"), "rb") as myfile:
+                    # Load recompiler after layer 0, freeze layer 0, recompile
+                    loaded_recompiler_0 = pickle.load(myfile)
+
+            with tempfile.TemporaryDirectory() as d:
+                loaded_recompiler_0.recompile(
+                    checkpoint_every=1, checkpoint_dir=d, freeze_prev_layers=True
+                )
+                with open(os.path.join(d, "1"), "rb") as myfile:
+                    # Load recompiler after layer 1, freeze layers 0, 1, recompile
+                    loaded_recompiler_1 = pickle.load(myfile)
+
+            with tempfile.TemporaryDirectory() as d:
+                loaded_recompiler_1.recompile(
+                    checkpoint_every=1, checkpoint_dir=d, freeze_prev_layers=True
+                )
+                with open(os.path.join(d, "2"), "rb") as myfile:
+                    # Load recompiler after layer 2, freeze layers 0, 1, 2, recompile
+                    loaded_recompiler_2 = pickle.load(myfile)
+
+            result = loaded_recompiler_2.recompile(freeze_prev_layers=True)
+            overlap = co.calculate_overlap_between_circuits(result.circuit, qc)
+            self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
+
+    def test_given_freeze_prev_layers_then_parameters_unchanged_sv(self):
+        # This tests that given freeze_prev_layers=False(True), then the layers added before the
+        # checkpoint are(are not) changed during the resumed recompilation.
+        qc = co.create_random_initial_state_circuit(3)
+        target_length = len(qc)
+        # We will load the compiler after two layers have been added, so if we freeze those layers,
+        # these gates should be in the range:
+        frozen_gate_range = (target_length, target_length + 10)
+        recompiler = ISLRecompiler(qc, backend=SV_SIM)
+        with tempfile.TemporaryDirectory() as d:
+            recompiler.recompile(checkpoint_every=1, checkpoint_dir=d)
+            with open(os.path.join(d, "1"), "rb") as myfile:
+                recompiler_freeze = pickle.load(myfile)
+                recompiler_no_freeze = copy.deepcopy(recompiler_freeze)
+
+            layers_added_before_checkpoint = co.extract_inner_circuit(
+                recompiler_freeze.full_circuit, frozen_gate_range
+            )
+            recompiler_freeze.recompile(freeze_prev_layers=True)
+            recompiler_no_freeze.recompile(freeze_prev_layers=False)
+
+            layers_after_recompiling_with_freezing = co.extract_inner_circuit(
+                recompiler_freeze.full_circuit, frozen_gate_range
+            )
+            layers_after_recompiling_without_freezing = co.extract_inner_circuit(
+                recompiler_no_freeze.full_circuit, frozen_gate_range
+            )
+
+            self.assertEqual(
+                layers_added_before_checkpoint, layers_after_recompiling_with_freezing
+            )
+            self.assertNotEqual(
+                layers_added_before_checkpoint,
+                layers_after_recompiling_without_freezing,
+            )
+
+    def test_given_freeze_prev_layers_then_parameters_unchanged_mps(self):
+        # This test is the same above, but for the aer mps backend.
+        qc = co.create_random_initial_state_circuit(3)
+        # For mps backend, the target is a set_matrix_product_state in recompiler.ref_circuit_as_gates
+        frozen_gate_range = (1, 11)
+        recompiler = ISLRecompiler(qc, backend=MPS_SIM)
+        with tempfile.TemporaryDirectory() as d:
+            recompiler.recompile(checkpoint_every=1, checkpoint_dir=d)
+            with open(os.path.join(d, "1"), "rb") as myfile:
+                recompiler_freeze = pickle.load(myfile)
+                recompiler_no_freeze = copy.deepcopy(recompiler_freeze)
+
+            layers_added_before_checkpoint = co.extract_inner_circuit(
+                recompiler_freeze.ref_circuit_as_gates, frozen_gate_range
+            )
+            recompiler_freeze.recompile(freeze_prev_layers=True)
+            recompiler_no_freeze.recompile(freeze_prev_layers=False)
+
+            layers_after_recompiling_with_freezing = co.extract_inner_circuit(
+                recompiler_freeze.ref_circuit_as_gates, frozen_gate_range
+            )
+            layers_after_recompiling_without_freezing = co.extract_inner_circuit(
+                recompiler_no_freeze.ref_circuit_as_gates, frozen_gate_range
+            )
+
+            self.assertEqual(
+                layers_added_before_checkpoint, layers_after_recompiling_with_freezing
+            )
+            self.assertNotEqual(
+                layers_added_before_checkpoint,
+                layers_after_recompiling_without_freezing,
+            )
+
+    def test_given_freeze_prev_layers_then_lhs_gate_count_different_from_orig_during_recompiling(self):
+        # When doing rotosolve, ISLRecompiler._calculate_multi_layer_optimisation_indices is called
+        # with "ansatz_start_index" as argument. This is equal to variational_circuit_range()[0],
+        # which is equal to lhs_gate_count. We can check that this is different from
+        # original_lhs_gate_count
+        qc = co.create_random_initial_state_circuit(3)
+        recompiler = ISLRecompiler(qc)
+        with tempfile.TemporaryDirectory() as d:
+            recompiler.recompile(checkpoint_every=1, checkpoint_dir=d)
+            with open(os.path.join(d, "1"), "rb") as myfile:
+                loaded_recompiler = pickle.load(myfile)
+
+        # Since we loaded the recompiler after two layers had been added, we expect the
+        # lhs_gate_count used during recompilation to be: old_lhs + 10
+        expected_input = loaded_recompiler.original_lhs_gate_count + 10
+
+        with patch.object(loaded_recompiler, '_calculate_multi_layer_optimisation_indices') as mock:
+            # Dummy return value
+            mock.return_value = loaded_recompiler.variational_circuit_range()
+            # Recompile and assert that all calls to the function use the right input
+            loaded_recompiler.recompile(freeze_prev_layers=True)
+            for call in mock.call_args_list:
+                self.assertEqual(call.args[0], expected_input)
 
 try:
     from itensornetworks_qiskit.utils import qiskit_circ_to_it_circ

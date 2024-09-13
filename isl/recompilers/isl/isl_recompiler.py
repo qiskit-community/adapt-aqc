@@ -176,8 +176,6 @@ class ISLRecompiler(ApproximateRecompiler):
         self.resume_from_layer = None
         self.prev_checkpoint_time_taken = None
 
-        self.lhs_moved_by_initial_ansatz = 0
-
         if self.isl_config.method == "rxx_gradient" and custom_layer_2q_gate != ans.identity_resolvable():
             logger.warning("rxx_gradient method is designed to work with the identity_resolvable ansatz "
                            "and may perform badly with a different ansatz")
@@ -215,7 +213,7 @@ class ISLRecompiler(ApproximateRecompiler):
         return qc
 
     def recompile(self, initial_ansatz: QuantumCircuit = None, optimise_initial_ansatz=True,
-                  checkpoint_every=0, checkpoint_dir='checkpoint/', delete_prev_chkpt=False):
+                  checkpoint_every=0, checkpoint_dir='checkpoint/', delete_prev_chkpt=False, freeze_prev_layers=False):
         """
         Perform recompilation algorithm.
         :param initial_ansatz: A trial ansatz to start the recompilation
@@ -228,6 +226,8 @@ class ISLRecompiler(ApproximateRecompiler):
         :param checkpoint_dir: Directory to place checkpoints in. Will be created if not already
         existing.
         :param delete_prev_chkpt: Delete the last checkpoint each time a new one is made.
+        :param freeze_prev_layers: When resuming compilation from a checkpoint, set to True to not
+        modify the parameters of any layers added before the checkpoint.
         Termination criteria: SUFFICIENT_COST reached; max_layers reached;
         std(last_5_costs)/avg(last_5_costs) < TOL
         :return: ISLResult object
@@ -249,6 +249,10 @@ class ISLRecompiler(ApproximateRecompiler):
             self.circuit_history = []
             self.cnot_depth_history = []
             self.g_range = self.variational_circuit_range
+            self.original_lhs_gate_count = self.lhs_gate_count
+
+            if freeze_prev_layers:
+                logger.warning("freeze_prev_layers only applies when resuming from a checkpoint")
 
             # If an initial ansatz has been provided, add that and run minimization
             self.initial_ansatz_already_successful = False
@@ -261,6 +265,17 @@ class ISLRecompiler(ApproximateRecompiler):
             logger.info(f"ISL resuming from layer: {start_point}")
             if initial_ansatz is not None:
                 logger.warning("An initial ansatz will be ignored when resuming recompilation from a checkpoint")
+
+            if freeze_prev_layers:
+                if self.is_aer_mps_backend:
+                    # Absorb all gates, apart from starting_circuit, into MPS and add gates to ref_circuit_as_gates
+                    num_gates = len(self.full_circuit) - self.rhs_gate_count - 1
+                    gates_absorbed = self._absorb_n_gates_into_mps(n=num_gates)
+                    co.add_to_circuit(self.layers_saved_to_mps, gates_absorbed)
+                    self._update_reference_circuit()
+                else:
+                    # Make lhs_gate_count include all layers added before checkpoint
+                    self.lhs_gate_count = self.variational_circuit_range()[1]
 
         if checkpoint_every > 0:
             Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
@@ -340,8 +355,9 @@ class ISLRecompiler(ApproximateRecompiler):
             # Replace full_circuit with ref_circuit_as_gates, otherwise no way to remove unnecessary gates
             self.full_circuit = self.ref_circuit_as_gates
 
-        # Add initial_ansatz indices back into variational_circuit_range(), if any
-        self.lhs_gate_count -= self.lhs_moved_by_initial_ansatz
+        else:
+            # Reset lhs_gate_count to what it was at the start of compiling
+            self.lhs_gate_count = self.original_lhs_gate_count
 
         co.remove_unnecessary_gates_from_circuit(
             self.full_circuit, True, True, gate_range=self.g_range()
@@ -482,8 +498,7 @@ class ISLRecompiler(ApproximateRecompiler):
             self._update_reference_circuit()
         else:
             # Ensure initial_ansatz is not modified again
-            self.lhs_moved_by_initial_ansatz = len(initial_ansatz)
-            self.lhs_gate_count += self.lhs_moved_by_initial_ansatz
+            self.lhs_gate_count = self.variational_circuit_range()[1]
 
     def _add_layer(self, index):
         """
@@ -962,10 +977,18 @@ class ISLRecompiler(ApproximateRecompiler):
 
     def record_cnot_depth(self):
         if self.is_aer_mps_backend:
-            ansatz_circ = co.extract_inner_circuit(self.ref_circuit_as_gates, gate_range=(1, len(self.ref_circuit_as_gates)))
+            ansatz_circ = co.extract_inner_circuit(
+                self.ref_circuit_as_gates,
+                gate_range=(1, len(self.ref_circuit_as_gates)),
+            )
         else:
-            start, end = self.variational_circuit_range()
-            # Shift start to include initial ansatz
-            ansatz_circ = co.extract_inner_circuit(self.full_circuit, gate_range=(start - self.lhs_moved_by_initial_ansatz, end))
+            # Make sure initial ansatz and any "frozen" layers are included
+            ansatz_circ = co.extract_inner_circuit(
+                self.full_circuit,
+                gate_range=(
+                    self.original_lhs_gate_count,
+                    self.variational_circuit_range()[1],
+                ),
+            )
         self.cnot_depth = multi_qubit_gate_depth(ansatz_circ)
         self.cnot_depth_history.append(self.cnot_depth)
