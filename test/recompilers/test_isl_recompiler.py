@@ -886,7 +886,7 @@ class TestISLCheckpointing(TestCase):
         recompiler = ISLRecompiler(qc, isl_config=ISLConfig(max_layers=2))
         with tempfile.TemporaryDirectory() as d:
             recompiler.recompile(checkpoint_every=1, checkpoint_dir=d, delete_prev_chkpt=True)
-            with open(os.path.join(d, "1"), 'rb') as myfile:
+            with open(os.path.join(d, "1.pkl"), 'rb') as myfile:
                 loaded_recompiler = pickle.load(myfile)
             loaded_recompiler.recompile(checkpoint_every=1, checkpoint_dir=d,
                                         delete_prev_chkpt=True)
@@ -921,7 +921,7 @@ class TestISLCheckpointing(TestCase):
         with tempfile.TemporaryDirectory() as d:
             result = recompiler.recompile(checkpoint_every=1, checkpoint_dir=d)
             for c in ["0", "1"]:
-                with open(os.path.join(d, c), 'rb') as myfile:
+                with open(os.path.join(d, c + ".pkl"), 'rb') as myfile:
                     loaded_recompiler = pickle.load(myfile)
                 result_1 = loaded_recompiler.recompile()
                 for key in result.__dict__.keys():
@@ -934,7 +934,7 @@ class TestISLCheckpointing(TestCase):
         with tempfile.TemporaryDirectory() as d:
             result = recompiler.recompile(checkpoint_every=1, checkpoint_dir=d)
             for c in ["0", "1", "2", "3", "4"]:
-                with open(os.path.join(d, c), 'rb') as myfile:
+                with open(os.path.join(d, c + ".pkl"), 'rb') as myfile:
                     loaded_recompiler = pickle.load(myfile)
                 result_1 = loaded_recompiler.recompile()
                 self.assertAlmostEqual(result.time_taken, result_1.time_taken,
@@ -946,10 +946,10 @@ class TestISLCheckpointing(TestCase):
         recompiler = ISLRecompiler(qc)
         with tempfile.TemporaryDirectory() as d:
             recompiler.recompile(checkpoint_every=1, checkpoint_dir=d)
-            with open(os.path.join(d, "0"), 'rb') as myfile:
+            with open(os.path.join(d, "0.pkl"), 'rb') as myfile:
                 loaded_recompiler = pickle.load(myfile)
             loaded_recompiler.recompile(checkpoint_every=1, checkpoint_dir=d)
-            with open(os.path.join(d, "1"), 'rb') as myfile:
+            with open(os.path.join(d, "1.pkl"), 'rb') as myfile:
                 loaded_recompiler = pickle.load(myfile)
             result = loaded_recompiler.recompile()
             self.assertEqual(len(os.listdir(d)), len(result.qubit_pair_history))
@@ -960,7 +960,7 @@ class TestISLCheckpointing(TestCase):
             recompiler = ISLRecompiler(qc, backend=backend)
             with tempfile.TemporaryDirectory() as d:
                 recompiler.recompile(checkpoint_every=1, checkpoint_dir=d)
-                with open(os.path.join(d, "2"), "rb") as myfile:
+                with open(os.path.join(d, "2.pkl"), "rb") as myfile:
                     loaded_recompiler = pickle.load(myfile)
                 result = loaded_recompiler.recompile(freeze_prev_layers=True)
                 overlap = co.calculate_overlap_between_circuits(result.circuit, qc)
@@ -976,7 +976,7 @@ class TestISLCheckpointing(TestCase):
             recompiler = ISLRecompiler(qc, backend=backend, starting_circuit=sc)
             with tempfile.TemporaryDirectory() as d:
                 recompiler.recompile(checkpoint_every=1, checkpoint_dir=d)
-                with open(os.path.join(d, "0"), "rb") as myfile:
+                with open(os.path.join(d, "0.pkl"), "rb") as myfile:
                     # Load recompiler after layer 0, freeze layer 0, recompile
                     loaded_recompiler_0 = pickle.load(myfile)
 
@@ -984,7 +984,7 @@ class TestISLCheckpointing(TestCase):
                 loaded_recompiler_0.recompile(
                     checkpoint_every=1, checkpoint_dir=d, freeze_prev_layers=True
                 )
-                with open(os.path.join(d, "1"), "rb") as myfile:
+                with open(os.path.join(d, "1.pkl"), "rb") as myfile:
                     # Load recompiler after layer 1, freeze layers 0, 1, recompile
                     loaded_recompiler_1 = pickle.load(myfile)
 
@@ -992,7 +992,7 @@ class TestISLCheckpointing(TestCase):
                 loaded_recompiler_1.recompile(
                     checkpoint_every=1, checkpoint_dir=d, freeze_prev_layers=True
                 )
-                with open(os.path.join(d, "2"), "rb") as myfile:
+                with open(os.path.join(d, "2.pkl"), "rb") as myfile:
                     # Load recompiler after layer 2, freeze layers 0, 1, 2, recompile
                     loaded_recompiler_2 = pickle.load(myfile)
 
@@ -1011,7 +1011,7 @@ class TestISLCheckpointing(TestCase):
         recompiler = ISLRecompiler(qc, backend=SV_SIM)
         with tempfile.TemporaryDirectory() as d:
             recompiler.recompile(checkpoint_every=1, checkpoint_dir=d)
-            with open(os.path.join(d, "1"), "rb") as myfile:
+            with open(os.path.join(d, "1.pkl"), "rb") as myfile:
                 recompiler_freeze = pickle.load(myfile)
                 recompiler_no_freeze = copy.deepcopy(recompiler_freeze)
 
@@ -1044,7 +1044,7 @@ class TestISLCheckpointing(TestCase):
         recompiler = ISLRecompiler(qc, backend=MPS_SIM)
         with tempfile.TemporaryDirectory() as d:
             recompiler.recompile(checkpoint_every=1, checkpoint_dir=d)
-            with open(os.path.join(d, "1"), "rb") as myfile:
+            with open(os.path.join(d, "1.pkl"), "rb") as myfile:
                 recompiler_freeze = pickle.load(myfile)
                 recompiler_no_freeze = copy.deepcopy(recompiler_freeze)
 
@@ -1078,7 +1078,7 @@ class TestISLCheckpointing(TestCase):
         recompiler = ISLRecompiler(qc)
         with tempfile.TemporaryDirectory() as d:
             recompiler.recompile(checkpoint_every=1, checkpoint_dir=d)
-            with open(os.path.join(d, "1"), "rb") as myfile:
+            with open(os.path.join(d, "1.pkl"), "rb") as myfile:
                 loaded_recompiler = pickle.load(myfile)
 
         # Since we loaded the recompiler after two layers had been added, we expect the

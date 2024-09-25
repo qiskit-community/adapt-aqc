@@ -419,12 +419,12 @@ class ISLRecompiler(ApproximateRecompiler):
         self.resume_from_layer = layer_count + 1
         current_chkpt_time_taken = timeit.default_timer() - start_time
         self.prev_checkpoint_time_taken = self.time_taken + current_chkpt_time_taken
-        file_name = str(layer_count)
+        file_name = f"{layer_count}.pkl"
         with open(os.path.join(checkpoint_dir, file_name), 'wb') as f:
             pickle.dump(self, f)
         if delete_prev_chkpt:
             try:
-                os.remove(os.path.join(checkpoint_dir, str(layer_count - checkpoint_every)))
+                os.remove(os.path.join(checkpoint_dir, f"{layer_count - checkpoint_every}.pkl"))
             except FileNotFoundError:
                 pass
 
