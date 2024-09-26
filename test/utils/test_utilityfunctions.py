@@ -3,6 +3,7 @@ from unittest import TestCase
 import numpy as np
 from numpy.testing import assert_array_almost_equal
 from qiskit import QuantumCircuit
+from qiskit.quantum_info import Statevector
 
 from isl.backends.python_default_backends import QASM_SIM, SV_SIM
 import isl.utils.circuit_operations as co
@@ -13,32 +14,24 @@ from isl.utils.utilityfunctions import (
     multi_qubit_gate_depth,
     remove_permutations_from_coupling_map,
     tenpy_to_qiskit_mps,
+    tenpy_chi_1_mps_to_circuit,
 )
 
-import aqc_research.mps_operations as mpsops
-from tenpy.networks.mps import MPS
+from tenpy import MPS, SpinChain
+from tenpy.algorithms import dmrg
 from tenpy.models import XXZChain
 
+import aqc_research.mps_operations as mpsops
 
-def get_random_tenpy_mps(num_sites=4):
-    model = XXZChain(
-        {
-            "L": num_sites,
-            "Jxx": 1.0,
-            "Jz": 1.0,
-            "hz": 0.0,
-            "bc_MPS": "finite",
-        }
-    )
-    state_labels = list(model.lat.mps_sites()[0].state_labels.keys())
-    neel_state = [state_labels[i % 2] for i in range(num_sites)]
-    tenpy_mps = MPS.from_random_unitary_evolution(
-        model.lat.mps_sites(),
-        int(2 ** (num_sites / 2)),
-        neel_state,
-        bc=model.lat.bc_MPS,
+
+def get_random_tenpy_mps(num_sites=4, chi=None):
+    model_params = dict(
+        S=0.5, L=num_sites, Jx=1.0, Jy=1.0, Jz=1.0, hz=1.0, bc_MPS="finite", conserve="None"
     )
 
+    model = SpinChain(model_params)
+    tenpy_chi = 2**(num_sites // 2) if chi is None else chi
+    tenpy_mps = MPS.from_desired_bond_dimension(model.lat.mps_sites(), tenpy_chi)
     return tenpy_mps
 
 
@@ -281,3 +274,70 @@ class TestTenpyToQiskitMPS(TestCase):
                 lambda_before = np.array(qiskit_mps[1][i])
                 lambda_after = np.array(mps_after_circuit[1][i])
                 np.testing.assert_allclose(lambda_before, lambda_after)
+
+
+class TestTenpyChi1MPSToCircuit(TestCase):
+
+    def test_given_random_tenpy_mps_when_map_to_circuit_then_correct_number_of_gates(
+        self,
+    ):
+        mps = get_random_tenpy_mps(chi=1)
+        qc = tenpy_chi_1_mps_to_circuit(mps)
+        self.assertLess(len(qc), 13)
+
+    def test_given_mps_with_chi_greater_than_1_then_error(self):
+        mps = get_random_tenpy_mps(chi=2)
+        with self.assertRaises(Exception):
+            tenpy_chi_1_mps_to_circuit(mps)
+
+    def test_given_random_chi_1_tenpy_mps_when_map_to_circuit_then_fidelity_1_with_mps(
+        self,
+    ):
+        mps = get_random_tenpy_mps(chi=1)
+        qc = tenpy_chi_1_mps_to_circuit(mps)
+
+        mps_from_tenpy = tenpy_to_qiskit_mps(mps)
+        mps_from_qc = mpsops.mps_from_circuit(qc)
+
+        fidelity = np.abs(mpsops.mps_dot(mps_from_qc, mps_from_tenpy)) ** 2
+        self.assertAlmostEqual(fidelity, 1)
+
+    def test_given_random_large_chi_1_tenpy_mps_when_map_to_circuit_then_fidelity_1_with_mps(
+        self,
+    ):
+        mps = get_random_tenpy_mps(num_sites=100, chi=1)
+        qc = tenpy_chi_1_mps_to_circuit(mps)
+
+        mps_from_tenpy = tenpy_to_qiskit_mps(mps)
+        mps_from_qc = mpsops.mps_from_circuit(qc)
+
+        fidelity = np.abs(mpsops.mps_dot(mps_from_qc, mps_from_tenpy)) ** 2
+        self.assertAlmostEqual(fidelity, 1)
+
+    def test_given_random_compressed_chi_1_mps_when_map_to_circuit_then_fidelity_1_with_compress_mps(
+        self,
+    ):
+        mps = get_random_tenpy_mps(chi=4)
+        compression_options = {
+            "compression_method": "variational",
+            "trunc_params": {"chi_max": 1},
+            "max_trunc_err": 1,
+            "max_sweeps": 100,
+            "min_sweeps": 50,}
+        mps.compress(compression_options)
+        qc = tenpy_chi_1_mps_to_circuit(mps)
+        mps_from_tenpy = tenpy_to_qiskit_mps(mps)
+        mps_from_qc = mpsops.mps_from_circuit(qc)
+
+        fidelity = np.abs(mpsops.mps_dot(mps_from_qc, mps_from_tenpy))**2
+        self.assertAlmostEqual(fidelity, 1)
+
+    def test_given_neel_state_when_map_to_circuit_then_correct(self):
+        model = XXZChain({"L": 3})
+        neel_state = ["up", "down", "up"]
+        mps = MPS.from_product_state(model.lat.mps_sites(), neel_state)
+        qc = tenpy_chi_1_mps_to_circuit(mps)
+        sv = Statevector(qc).data
+        expected_sv = np.array([0, 0, 0, 0, 0, 1, 0, 0])
+
+        np.testing.assert_allclose(sv, expected_sv, atol=1e-10)

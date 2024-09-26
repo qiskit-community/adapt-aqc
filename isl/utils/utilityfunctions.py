@@ -1,4 +1,5 @@
 """Contains functions """
+
 import copy
 import functools
 from collections.abc import Iterable
@@ -9,6 +10,8 @@ import numpy as np
 from qiskit import QuantumCircuit
 from qiskit.result import Counts
 from qiskit_aer.backends.compatibility import Statevector
+from qiskit import transpile
+from tenpy.networks.mps import MPS
 
 from isl.backends.aer_sv_backend import AerSVBackend
 
@@ -289,3 +292,21 @@ def tenpy_to_qiskit_mps(tenpy_mps):
     qiskit_mps = (gam, lam)
 
     return copy.deepcopy(qiskit_mps)
+
+
+def tenpy_chi_1_mps_to_circuit(mps: MPS) -> QuantumCircuit:
+    if not np.allclose(mps.chi, 1):
+        raise Exception("MPS must have bond dimension 1 for all bonds.")
+    
+    qc = QuantumCircuit(mps.L)
+    for i in range(mps.L):
+        array = mps.get_B(i, form="B").to_ndarray()
+        # Make unitary with column 0 corresponding to the state of site i
+        U = np.zeros((2, 2), dtype=array.dtype)
+        U[:, 0] = array[0, :, 0]
+        U[0, 1] = np.conj(U[1, 0])
+        U[1, 1] = -np.conj(U[0, 0])
+        qc.unitary(U, i)
+
+    qc = transpile(qc, basis_gates=["rx", "ry", "rz"])
+    return qc
