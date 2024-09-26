@@ -1,12 +1,15 @@
 from unittest import TestCase
 
+import aqc_research.mps_operations as mpsops
 import numpy as np
 from numpy.testing import assert_array_almost_equal
 from qiskit import QuantumCircuit
 from qiskit.quantum_info import Statevector
+from tenpy import MPS, SpinChain
+from tenpy.models import XXZChain
 
-from isl.backends.python_default_backends import QASM_SIM, SV_SIM
 import isl.utils.circuit_operations as co
+from isl.backends.python_default_backends import QASM_SIM, SV_SIM
 from isl.utils.utilityfunctions import (
     _expectation_value_of_qubit,
     expectation_value_of_qubits,
@@ -15,19 +18,12 @@ from isl.utils.utilityfunctions import (
     remove_permutations_from_coupling_map,
     tenpy_to_qiskit_mps,
     tenpy_chi_1_mps_to_circuit,
+    qiskit_to_tenpy_mps,
 )
-
-from tenpy import MPS, SpinChain
-from tenpy.algorithms import dmrg
-from tenpy.models import XXZChain
-
-import aqc_research.mps_operations as mpsops
 
 
 def get_random_tenpy_mps(num_sites=4, chi=None):
-    model_params = dict(
-        S=0.5, L=num_sites, Jx=1.0, Jy=1.0, Jz=1.0, hz=1.0, bc_MPS="finite", conserve="None"
-    )
+    model_params = dict(L=num_sites, conserve="None")
 
     model = SpinChain(model_params)
     tenpy_chi = 2**(num_sites // 2) if chi is None else chi
@@ -341,3 +337,78 @@ class TestTenpyChi1MPSToCircuit(TestCase):
         expected_sv = np.array([0, 0, 0, 0, 0, 1, 0, 0])
 
         np.testing.assert_allclose(sv, expected_sv, atol=1e-10)
+
+
+class TestQiskitToTenpyMPS(TestCase):
+
+    def test_given_qiskit_to_tenpy_mps_then_mps_normalised(self):
+        for prep in [True, False]:
+            qc = co.create_random_initial_state_circuit(3)
+            qiskit_mps = mpsops.mps_from_circuit(qc, return_preprocessed=prep)
+            tenpy_mps = qiskit_to_tenpy_mps(qiskit_mps)
+
+            self.assertAlmostEqual(tenpy_mps.norm, 1)
+
+    def test_given_qiskit_mps_to_tenpy_mps_then_statevectors_equal(self):
+        for prep in [True, False]:
+            n = 4
+            qc = co.create_random_initial_state_circuit(n)
+            qiskit_mps = mpsops.mps_from_circuit(qc, return_preprocessed=prep)
+            tenpy_mps = qiskit_to_tenpy_mps(qiskit_mps)
+
+            # NOTE: tenpy uses the opposite notation to qiskit. I.e. the state q0 = |1>, q1 = |0> would
+            # be |10> = [0, 0, 1, 0] in tenpy but |01> = [0, 1, 0, 0] in qiskit.
+            tenpy_sv = tenpy_mps.get_theta(0, n).to_ndarray().reshape([2] * n)
+            tenpy_sv = np.transpose(tenpy_sv, axes=range(n)[::-1])
+            tenpy_sv = tenpy_sv.flatten()
+            qiskit_sv = mpsops.mps_to_vector(qiskit_mps, already_preprocessed=prep)
+
+            np.testing.assert_allclose(tenpy_sv, qiskit_sv)
+
+    def test_given_neel_state_then_tenpy_mps_as_expected(self):
+        for prep in [True, False]:
+            n = 3
+            qc = QuantumCircuit(n)
+            qc.x([0, 2])
+            qiskit_mps = mpsops.mps_from_circuit(qc, return_preprocessed=prep)
+            tenpy_mps = qiskit_to_tenpy_mps(qiskit_mps)
+
+            # Convert to sv
+            tenpy_sv = tenpy_mps.get_theta(0, n).to_ndarray().reshape([2] * n)
+            tenpy_sv = np.transpose(tenpy_sv, axes=range(n)[::-1])
+            tenpy_sv = tenpy_sv.flatten()
+
+            expected_sv = [0, 0, 0, 0, 0, 1, 0, 0]
+
+            np.testing.assert_allclose(tenpy_sv, expected_sv)
+
+    def test_converter_functions_are_inverses(self):
+        for prep in [True, False]:
+            n = 4
+            # Tenpy -> Qiskit -> Tenpy
+            tenpy_mps = get_random_tenpy_mps(n)
+            qiskit_mps = tenpy_to_qiskit_mps(tenpy_mps)
+            if prep:
+                qiskit_mps = mpsops._preprocess_mps(qiskit_mps)
+            tenpy_mps_reconstructed = qiskit_to_tenpy_mps(qiskit_mps)
+
+            fidelity = np.abs(tenpy_mps.overlap(tenpy_mps_reconstructed)) ** 2
+            self.assertAlmostEqual(fidelity, 1)
+
+            # Qiskit -> Tenpy -> Qiskit
+            qc = co.create_random_initial_state_circuit(n)
+            qiskit_mps = mpsops.mps_from_circuit(qc, return_preprocessed=prep)
+            tenpy_mps = qiskit_to_tenpy_mps(qiskit_mps)
+            qiskit_mps_reconstructed = tenpy_to_qiskit_mps(tenpy_mps)
+            if prep:
+                qiskit_mps_reconstructed = mpsops._preprocess_mps(qiskit_mps_reconstructed)
+
+            fidelity = (
+                np.abs(
+                    mpsops.mps_dot(
+                        qiskit_mps, qiskit_mps_reconstructed, already_preprocessed=prep
+                    )
+                )
+                ** 2
+            )
+            self.assertAlmostEqual(fidelity, 1)

@@ -3,13 +3,14 @@
 import copy
 import functools
 from collections.abc import Iterable
-from typing import Union, Dict
+from typing import Union, Dict, List
 
 import aqc_research.mps_operations as mpsop
 import numpy as np
 from qiskit import QuantumCircuit
 from qiskit.result import Counts
 from qiskit_aer.backends.compatibility import Statevector
+from tenpy import MPS, SpinHalfSite
 from qiskit import transpile
 from tenpy.networks.mps import MPS
 
@@ -297,7 +298,7 @@ def tenpy_to_qiskit_mps(tenpy_mps):
 def tenpy_chi_1_mps_to_circuit(mps: MPS) -> QuantumCircuit:
     if not np.allclose(mps.chi, 1):
         raise Exception("MPS must have bond dimension 1 for all bonds.")
-    
+
     qc = QuantumCircuit(mps.L)
     for i in range(mps.L):
         array = mps.get_B(i, form="B").to_ndarray()
@@ -310,3 +311,15 @@ def tenpy_chi_1_mps_to_circuit(mps: MPS) -> QuantumCircuit:
 
     qc = transpile(qc, basis_gates=["rx", "ry", "rz"])
     return qc
+
+
+def qiskit_to_tenpy_mps(qiskit_mps):
+    # If not preprocessed, preprocess MPS
+    if isinstance(qiskit_mps[0], List):
+        qiskit_mps = mpsop._preprocess_mps(qiskit_mps)
+
+    N = len(qiskit_mps)
+    sites = [SpinHalfSite(conserve=None)] * N
+    tenpy_mps = MPS.from_Bflat(sites, qiskit_mps, SVs=None)
+
+    return tenpy_mps
