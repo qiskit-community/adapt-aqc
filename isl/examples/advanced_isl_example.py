@@ -30,7 +30,7 @@ config = ISLConfig(
     # Choose Rotosolve to modify only the last 10 layers.
     max_layers_to_modify=10,
     # Setting this value > 0 prioritises not using the same qubit pairs too often.
-    entanglement_reuse_exponent=1,
+    reuse_exponent=1,
     # Increase the amount the cost needs to decrease by to terminate Rotosolve. This stops spending
     # too much time fine-tuning the angles.
     rotosolve_tol=1e-2,

@@ -681,46 +681,46 @@ class ISLRecompiler(ApproximateRecompiler):
             self.entanglement_measures_history.append(ems)
             return self._find_best_entanglement_qubit_pair(ems)
 
-        if self.isl_config.method == "rxx_gradient":
-            logger.debug("Computing Rxx gradients of pairs")
-            gradients = gr.xx_grad_of_pairs(self.full_circuit, self.coupling_map, self.backend)
-            logger.debug(f"Rxx gradient of all pairs: {gradients}")
-            self.rxx_gradient_history.append(gradients)
-            self.pair_selection_method_history.append(f"rxx_gradient")
-            return self.coupling_map[np.argmax(gradients)]
-
         if self.isl_config.method == "general_gradient":
             logger.debug("Computing gradients of pairs")
-
-            # Get the full_circuit without starting_circuit
-            if self.starting_circuit is not None:
-                range = (0, len(self.full_circuit) - len(self.starting_circuit))
-            else:
-                range = (0, len(self.full_circuit))
-            circuit = co.extract_inner_circuit(self.full_circuit, range)
-
-            gradients = gr.general_grad_of_pairs(
-                circuit,
-                self.inverse_zero_ansatz,
-                self.generators,
-                self.coupling_map,
-                self.starting_circuit,
-                self.backend,
-            )
-            logger.debug(f"Gradient of all pairs: {gradients}")
+            gradients = self._get_all_qubit_pair_gradients()
             self.general_gradient_history.append(gradients)
             self.pair_selection_method_history.append(f"general_gradient")
-            return self.coupling_map[np.argmax(gradients)]
+            return self._find_best_gradient_qubit_pair(gradients)
 
         raise ValueError(
-            f"Invalid ISL method {self.isl_config.method}. "f"Method must be one of ISL, expectation, random, basic, rxx_gradient, general_gradient")
+            f"Invalid ISL method {self.isl_config.method}. "f"Method must be one of ISL, expectation, random, basic, general_gradient")
+
+    def _find_best_gradient_qubit_pair(self, gradients):
+        reuse_priorities = self._get_all_qubit_pair_reuse_priorities(
+            self.isl_config.reuse_exponent)
+        combined_priority = np.multiply(gradients, reuse_priorities)
+        return self.coupling_map[np.argmax(combined_priority)]
+
+    def _get_all_qubit_pair_gradients(self):
+        # Get the full_circuit without starting_circuit
+        if self.starting_circuit is not None:
+            range = (0, len(self.full_circuit) - len(self.starting_circuit))
+        else:
+            range = (0, len(self.full_circuit))
+        circuit = co.extract_inner_circuit(self.full_circuit, range)
+        gradients = gr.general_grad_of_pairs(
+            circuit,
+            self.inverse_zero_ansatz,
+            self.generators,
+            self.coupling_map,
+            self.starting_circuit,
+            self.backend,
+        )
+        logger.debug(f"Gradient of all pairs: {gradients}")
+        return gradients
 
     def _find_best_entanglement_qubit_pair(self, entanglement_measures):
         """
         Returns the qubit pair with the largest entanglement multiplied by the reuse priority of
         that pair.
         """
-        reuse_priorities = self._get_all_qubit_pair_reuse_priorities(self.isl_config.entanglement_reuse_exponent)
+        reuse_priorities = self._get_all_qubit_pair_reuse_priorities(self.isl_config.reuse_exponent)
 
         # First check if the previous qubit pair was 'bad'
         if len(self.entanglement_measures_history) >= 2 + int(self.initial_single_qubit_layer):
@@ -773,7 +773,7 @@ class ISLRecompiler(ApproximateRecompiler):
         priority of that pair.
         @return: The pair of qubits with the highest multiplied e_val priority and reuse priority.
         """
-        reuse_priorities = self._get_all_qubit_pair_reuse_priorities(self.isl_config.expectation_reuse_exponent)
+        reuse_priorities = self._get_all_qubit_pair_reuse_priorities(self.isl_config.reuse_exponent)
 
         e_vals = self.backend.measure_qubit_expectation_values(self)
         self.e_val_history.append(e_vals)

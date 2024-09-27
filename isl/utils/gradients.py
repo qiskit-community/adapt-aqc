@@ -9,42 +9,6 @@ from isl.backends.aer_mps_backend import AerMPSBackend
 from isl.backends.python_default_backends import MPS_SIM
 
 
-def xx_grad_of_pairs(circuit: QuantumCircuit, coupling_map: List[Tuple],
-                     backend: AerMPSBackend = MPS_SIM):
-    """
-    Returns the magnitude of the cost-gradient of each qubit pair in the coupling map w.r.t Rxx(θ) at θ=0
-    The gradient takes the form:
-    dC/dθ|θ=0 = -imag(<0|XX|ψ><ψ|0>)
-    where XX acts on the qubit pair, and |ψ> is the state prepared by circuit
-
-    Args:
-        circuit (QuantumCircuit): a circuit representing |ψ>
-        coupling_map (List[Tuple]): the list of all pairs of qubits for which to calculate the gradient
-        backend (AerSimulator): Aer MPS simulator used to generate relevant states
-    Returns:
-        gradients (List): List of gradients w.r.t. Rxx(θ) at θ=0 for each pair
-    """
-    gradients = []
-    circ_mps = mpsop.mps_from_circuit(circuit.copy(), return_preprocessed=True,
-                                      sim=backend.simulator)
-    zero_mps = mpsop.mps_from_circuit(
-        QuantumCircuit(circuit.num_qubits), return_preprocessed=True, sim=backend.simulator
-    )
-    # Find <ψ|0>
-    zero_overlap = mpsop.mps_dot(circ_mps, zero_mps, already_preprocessed=True)
-    for control, target in coupling_map:
-        circ = circuit.copy()
-        circ.x(control)
-        circ.x(target)
-        xx_mps = mpsop.mps_from_circuit(circ, return_preprocessed=True, sim=backend.simulator)
-        # Find <0|XX|ψ>
-        xx_overlap = mpsop.mps_dot(zero_mps, xx_mps, already_preprocessed=True)
-        gradient = -1 * np.imag(xx_overlap * zero_overlap)
-        gradients.append(abs(gradient))
-
-    return gradients
-
-
 def general_grad_of_pairs(
     circuit: QuantumCircuit,
     inverse_zero_ansatz: QuantumCircuit,

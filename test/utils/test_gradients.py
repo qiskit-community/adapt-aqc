@@ -2,43 +2,15 @@ from unittest import TestCase
 
 import numpy as np
 from qiskit import QuantumCircuit
-from qiskit.compiler import transpile
 from qiskit.circuit.random import random_circuit
+from qiskit.compiler import transpile
 from qiskit.quantum_info import Statevector
 
 import isl.backends.python_default_backends
 import isl.utils.gradients as gr
-import isl.utils.circuit_operations as co
-
-
-class TestXXGradOfPairs(TestCase):
-
-    def test_given_zero_state_when_xx_grad_then_zero(self):
-        qc = QuantumCircuit(2)
-        self.assertEqual([0.0], gr.xx_grad_of_pairs(qc, [(0, 1)]))
-
-    def test_given_random_state_when_xx_grad_then_as_expected(self):
-        """
-        Given a state [a,b,c,d], applying Rxx(θ) and calculating the cost-gradient at θ=0 gives:
-        dC/dθ|θ=0 = -Im(conj(a)d).
-        """
-        qc = transpile(random_circuit(2, 5), basis_gates=["cx", "ry", "rz", "rx"])
-        sv = Statevector(qc)
-        a = sv.data[0]
-        d = sv.data[3]
-        expected_grad = -1 * np.imag(np.conj(a) * d)
-        actual_grad = gr.xx_grad_of_pairs(qc, [(0, 1)])[0]
-        self.assertAlmostEqual(abs(expected_grad), actual_grad, places=10)
-
-    def test_when_xx_grad_then_result_same_length_as_num_pairs(self):
-        qc = QuantumCircuit(5)
-        self.assertEqual(
-            4, len(gr.xx_grad_of_pairs(qc, [(i, i + 1) for i in range(4)]))
-        )
 
 
 class TestGeneralGradOfPairs(TestCase):
-
     def test_given_no_ansatz_then_no_gradient(self):
         qc = transpile(random_circuit(5, 5), basis_gates=["cx", "ry", "rz", "rx"])
         starting_circuit = transpile(
@@ -98,7 +70,6 @@ class TestGeneralGradOfPairs(TestCase):
 
 
 class TestGetGenerators(TestCase):
-
     def test_given_random_ansatz_then_correct_number_of_generators(self):
         ansatz = transpile(random_circuit(2, 3), basis_gates=["cx", "ry", "rz", "rx"])
         ops = ansatz.count_ops()

@@ -10,9 +10,9 @@ This is the core heuristic of ISL. When using this method, the ansatz is adaptiv
 by prioritising pairs of qubits which have larger pairwise entanglement.
 
 When
-`ISLConfig.entanglement_reuse_exponent = 0`, which is the default setting, the pair with the largest
+`ISLConfig.reuse_exponent = 0`, which is the default setting, the pair with the largest
 entanglement is always picked, except for picking the same pair twice. For any other
-value of `entanglement_reuse_exponent`, the entanglement of the pair is weighted against how
+value of `reuse_exponent`, the entanglement of the pair is weighted against how
 recently a layer has been applied to it.
 
 If the pairwise entanglement between all qubits in the coupling map is zero, this method falls
@@ -58,18 +58,26 @@ of `bad_qubit_pair_memory` is to make sure that by the time the pair is acted on
 the state of connected qubits has sufficiently changed so that optimising the bad pairs will lead
 to new optimal angles.
 
-## entanglement_reuse_exponent
+## reuse_exponent
 
 **What is it:** \
-For the ISL method, this controls how much priority should be given to picking qubits not recently
+For the ISL, expectation or general_gradient methods, this controls how much priority should be given to picking qubits not recently
 acted on. Specifically, given a qubit pair has been last acted on $l$ layers ago, it is given a
 reuse priority $P_r$ of
 
 $$P_r = 1-2^{\frac{-l}{k}},$$
 
-where $k$ is the value of `entanglement_reuse_exponent`. This is then multiplied with an
-entanglement measure $E$ to produce the combined priority $P_c$ = $E*P_r$. The qubit pair with the
-highest combined priority is then picked for the next layer.
+where $k$ is the value of `reuse_exponent`. This is then multiplied with the 
+entanglement measure or gradient (for ISL and general_gradient respectively) to produce the 
+combined priority $P_c$ = $E*P_r$. For expectation mode, the combined priority is calculated 
+differently. Given a pair of qubits, the combined priority is calculated as
+
+$$P_c = (2 - \langle Z_1 \rangle + \langle Z_2 \rangle) *P_r$$,
+
+where $\langle Z_1 \rangle$ ($\langle Z_2 \rangle$) is the $\\hat{\sigma}_z$ expectation value of qubit
+1 (2).
+
+The qubit pair with the highest combined priority is then picked for the next layer.
 
 This means that for larger $k$, more weighting is given to how recently the pair was used.
 Conversely, if $k=0$ then no
@@ -81,17 +89,6 @@ a target state **with less depth** than the original circuit. The aim of this he
 ISL depth-aware, so that e.g., the same pairs of qubits are not repeatedly picked if they are only
 marginally higher entanglement than other pairs that haven't been used. Ultimately, compiling
 with a larger exponent produces shallower solutions, at the cost of longer compiling times.
-
-## expectation_reuse_exponent
-
-A very similar functionality to above, but for the case when compiling is done
-with `method=expectation`. The same formula is used to compute $P_r$, however the combined priority
-is calculated differently. Given a pair of qubits, the combined priority is calculated as
-
-$$P_c = (2 - \langle Z_1 \rangle + \langle Z_2 \rangle) *P_r$$,
-
-where $\langle Z_1 \rangle$ ($\langle Z_2 \rangle$) is the $\\hat{\sigma}_z$ expectation value of qubit
-1 (2).
 
 ## reuse_priority_mode
 

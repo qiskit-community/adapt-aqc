@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import numpy as np
 from aqc_research.model_sp_lhs.trotter.trotter import trotter_circuit
-from aqc_research.mps_operations import mps_from_circuit, mps_dot
+from aqc_research.mps_operations import mps_from_circuit, mps_dot, rand_mps_vec
 from qiskit import ClassicalRegister, QuantumCircuit, QuantumRegister
 from qiskit.compiler import transpile
 from qiskit.quantum_info import Statevector
@@ -18,6 +18,7 @@ from tenpy.algorithms import tebd
 from tenpy.models import XXZChain
 from tenpy.networks.mps import MPS
 
+from isl.backends.aer_mps_backend import mps_sim_with_args, AerMPSBackend
 from isl.backends.python_default_backends import SV_SIM, MPS_SIM, QASM_SIM
 import isl.utils.circuit_operations as co
 import isl.utils.ansatzes as ans
@@ -516,7 +517,7 @@ class TestISL(TestCase):
     def test_given_exponent_equal_to_one_when_find_qubit_reuse_priorities_then_correct(self):
         qc = co.create_random_initial_state_circuit(4)
         config = ISLConfig(
-            rotosolve_frequency=1e5, entanglement_reuse_exponent=1, reuse_priority_mode="qubit"
+            rotosolve_frequency=1e5, reuse_exponent=1, reuse_priority_mode="qubit"
         )
         compiler = ISLRecompiler(
             qc,
@@ -537,8 +538,7 @@ class TestISL(TestCase):
     def test_given_random_exponents_when_add_layer_then_same_qubit_pair_never_acted_on_twice_in_a_row(self):
         qc = co.create_random_initial_state_circuit(4)
         config = ISLConfig(rotosolve_frequency=1e5,
-                           entanglement_reuse_exponent=np.random.rand() * 2,
-                           expectation_reuse_exponent=np.random.rand() * 2,
+                           reuse_exponent=np.random.rand() * 2,
                            )
         compiler = ISLRecompiler(
             qc,
@@ -553,7 +553,7 @@ class TestISL(TestCase):
 
     def test_given_circuit_when_manually_find_correct_pair_to_act_on_then_pair_acted_on_by_add_layer(self):
         qc = co.create_random_initial_state_circuit(4)
-        config = ISLConfig(rotosolve_frequency=1e5, entanglement_reuse_exponent=1)
+        config = ISLConfig(rotosolve_frequency=1e5, reuse_exponent=1)
         compiler = ISLRecompiler(
             qc,
             isl_config=config,
@@ -791,17 +791,6 @@ class TestISL(TestCase):
 
         self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
 
-    def test_given_rxx_gradient_method_when_recompile_then_works(self):
-        qc = co.create_random_initial_state_circuit(3)
-
-        config = ISLConfig(method="rxx_gradient")
-        recompiler = ISLRecompiler(qc, backend=MPS_SIM, isl_config=config,
-                                   custom_layer_2q_gate=ans.identity_resolvable())
-        result = recompiler.recompile()
-
-        overlap = co.calculate_overlap_between_circuits(qc, result.circuit)
-        self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
-
     def test_given_general_gradient_method_when_recompile_then_works(self):
         qc = co.create_random_initial_state_circuit(3)
 
@@ -812,6 +801,30 @@ class TestISL(TestCase):
 
         overlap = co.calculate_overlap_between_circuits(qc, result.circuit)
         self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
+
+    def test_given_general_gradient_when_recompile_with_reuse_exponent_then_works(self):
+        qc = co.create_random_initial_state_circuit(3)
+
+        config = ISLConfig(method="general_gradient", reuse_exponent=1)
+        recompiler = ISLRecompiler(qc, backend=MPS_SIM, isl_config=config,
+                                   custom_layer_2q_gate=ans.identity_resolvable())
+        result = recompiler.recompile()
+
+        overlap = co.calculate_overlap_between_circuits(qc, result.circuit)
+        self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
+
+    def test_given_general_gradient_when_recompile_then_different_soln_with_reuse_exp(self):
+        target = rand_mps_vec(4, seed=1, num_layers=1)
+        config1 = ISLConfig(method="general_gradient", reuse_exponent=100)
+        recompiler1 = ISLRecompiler(target, backend=(MPS_SIM), isl_config=config1,
+                                    custom_layer_2q_gate=ans.identity_resolvable())
+        result1 = recompiler1.recompile()
+
+        config2 = ISLConfig(method="general_gradient")
+        recompiler2 = ISLRecompiler(target, backend=(MPS_SIM), isl_config=config2,
+                                    custom_layer_2q_gate=ans.identity_resolvable())
+        result2 = recompiler2.recompile()
+        self.assertNotEqual(result1.circuit, result2.circuit)
 
     def test_given_soften_global_cost_when_recompile_then_works(self):
         qc = co.create_random_initial_state_circuit(3)

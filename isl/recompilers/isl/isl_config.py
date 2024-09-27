@@ -13,8 +13,7 @@ class ISLConfig:
         max_layers_to_modify=100,
         method="ISL",
         bad_qubit_pair_memory=10,
-        entanglement_reuse_exponent=0,
-        expectation_reuse_exponent=1,
+        reuse_exponent=0,
         reuse_priority_mode="pair",
         rotosolve_frequency=1,
         rotoselect_tol=1e-5,
@@ -45,11 +44,10 @@ class ISLConfig:
         :param bad_qubit_pair_memory: For the ISL method, if acting on a qubit pair leads to
         entanglement increasing, it is labelled a "bad pair". After this, for a number of layers
         corresponding to the bad_qubit_pair_memory, this pair will not be selected.
-        :param entanglement_reuse_exponent: For the ISL method, this
+        :param reuse_exponent: For ISL, expectation or general_gradient method, this
         controls how much priority should be given to picking qubits not recently acted on. If 0,
         the priority system is turned off and all qubits have the same reuse priority when adding
         a new layer. Note ISL never reuses the same pair of qubits regardless of this setting.
-        :param expectation_reuse_exponent: Same as above but for the expectation method.
         :param reuse_priority_mode: For the priority system, given qubit pair (q1, q2) has been used
         before, should priority be given to:
         (a) not reusing the same pair of qubits (q1, q2) (set param to "pair")
@@ -77,8 +75,7 @@ class ISLConfig:
         self.rotoselect_tol = rotoselect_tol
         self.rotosolve_tol = rotosolve_tol
         self.entanglement_threshold = entanglement_threshold
-        self.entanglement_reuse_exponent = entanglement_reuse_exponent
-        self.expectation_reuse_exponent = expectation_reuse_exponent
+        self.reuse_exponent = reuse_exponent
         self.reuse_priority_mode = reuse_priority_mode.lower()
 
     def __repr__(self):
