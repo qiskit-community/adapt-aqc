@@ -157,7 +157,6 @@ class ISLRecompiler(ApproximateRecompiler):
         self.pair_selection_method_history = []
         self.entanglement_measures_history = []
         self.e_val_history = []
-        self.rxx_gradient_history = []
         self.general_gradient_history = []
         self.time_taken = None
         self.debug_log_full_ansatz = debug_log_full_ansatz
@@ -175,12 +174,6 @@ class ISLRecompiler(ApproximateRecompiler):
 
         self.resume_from_layer = None
         self.prev_checkpoint_time_taken = None
-
-        if self.isl_config.method == "rxx_gradient" and custom_layer_2q_gate != ans.identity_resolvable():
-            logger.warning("rxx_gradient method is designed to work with the identity_resolvable ansatz "
-                           "and may perform badly with a different ansatz")
-        if self.isl_config.method == "rxx_gradient" and not self.is_aer_mps_backend:
-            raise ValueError("rxx_gradient method is only implemented for Aer MPS backend")
 
         if self.isl_config.method == "general_gradient":
             if not self.is_aer_mps_backend:
@@ -905,7 +898,6 @@ class ISLRecompiler(ApproximateRecompiler):
     def _first_layer_increment_results_dict(self):
         self.entanglement_measures_history.append([None])
         self.e_val_history.append(None)
-        self.rxx_gradient_history.append(None)
         self.general_gradient_history.append(None)
         self.qubit_pair_history.append((None, None))
         self.pair_selection_method_history.append(None)
