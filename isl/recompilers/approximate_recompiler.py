@@ -23,7 +23,7 @@ from isl.utils.circuit_operations.circuit_operations_full_circuit import (
 )
 from isl.utils.constants import QiskitMPS
 from isl.utils.cost_minimiser import CostMinimiser
-from isl.utils.utilityfunctions import is_statevector_backend
+from isl.utils.utilityfunctions import is_statevector_backend, qiskit_to_tenpy_mps, tenpy_chi_1_mps_to_circuit
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +115,7 @@ class ApproximateRecompiler(ABC):
             qubit_subset if qubit_subset else list(range(self.total_num_qubits))
         )
         self.general_initial_state = general_initial_state
-        self.starting_circuit = starting_circuit
+        self.starting_circuit = self.prepare_starting_circuit(starting_circuit)
         self.zero_mps = mps_from_circuit(QuantumCircuit(self.total_num_qubits),
                                          return_preprocessed=True)
         self.optimise_local_cost = optimise_local_cost
@@ -181,6 +181,33 @@ class ApproximateRecompiler(ABC):
                                                                    self.itensor_cutoff,
                                                                    self.itensor_sites)
             return prepared_circuit
+
+    def prepare_starting_circuit(self, starting_circuit):
+        if starting_circuit is None or isinstance(starting_circuit, QuantumCircuit):
+            return starting_circuit
+        elif starting_circuit == "tenpy_product_state":
+            if isinstance(self.backend, AerMPSBackend):
+                trunc_thr = self.backend.simulator.options.matrix_product_state_truncation_threshold
+            else:
+                trunc_thr = 1e-8
+            tenpy_mps = qiskit_to_tenpy_mps(
+                mps_from_circuit(self.circuit_to_recompile.copy(), trunc_thr=trunc_thr)
+            )
+
+            compression_options = {
+                "compression_method": "variational",
+                "trunc_params": {"chi_max": 1},
+                "max_trunc_err": 1,
+                "max_sweeps": 50,
+                "min_sweeps": 10,
+            }
+            tenpy_mps.compress(compression_options)
+
+            return tenpy_chi_1_mps_to_circuit(tenpy_mps)
+        else:
+            raise ValueError(
+                "starting_circuit must be a QuantumCircuit, None, or string: 'tenpy_product_state'"
+            )
 
     def parse_default_execute_kwargs(self, execute_kwargs):
         kwargs = {} if execute_kwargs is None else dict(execute_kwargs)

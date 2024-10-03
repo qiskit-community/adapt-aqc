@@ -571,15 +571,19 @@ class TestISL(TestCase):
         self.assertTrue(compiler.qubit_pair_history[-1] == correct_pair)
 
     def test_given_random_rotosolve_frequency_and_max_layers_to_modify_values_when_recompile_mps_then_works(self):
-        n = 4
+        n = 3
         starting_circuit = QuantumCircuit(n)
         starting_circuit.x(range(0, n, 2))
         for isql in [True, False]:
-            for sc in [starting_circuit, None]:
+            for sc in [starting_circuit, None, "tenpy_product_state"]:
                 qc = co.create_random_initial_state_circuit(n)
                 rotosolve_frequency = np.random.randint(1, 101)
                 max_layers_to_modify = np.random.randint(1, 101)
-                config = ISLConfig(rotosolve_frequency=rotosolve_frequency, max_layers_to_modify=max_layers_to_modify)
+                config = ISLConfig(
+                    rotosolve_frequency=rotosolve_frequency,
+                    max_layers_to_modify=max_layers_to_modify,
+                    cost_improvement_num_layers=100,
+                )
                 recompiler = ISLRecompiler(
                     qc,
                     backend=MPS_SIM,
@@ -876,6 +880,47 @@ class TestISL(TestCase):
         )
         with self.assertRaises(NotImplementedError):
             recompiler.recompile()
+
+    def test_given_tenpy_starting_circuit_when_recompile_then_works(self):
+        qc = co.create_random_initial_state_circuit(3)
+        recompiler = ISLRecompiler(qc, starting_circuit="tenpy_product_state")
+        result = recompiler.recompile()
+
+        overlap = co.calculate_overlap_between_circuits(result.circuit, qc)
+        self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
+
+    def test_given_tenpy_starting_circuit_then_solution_starts_with_rzryrz_on_each_qubit(self):
+        qc = co.create_random_initial_state_circuit(3)
+        recompiler = ISLRecompiler(qc, starting_circuit="tenpy_product_state")
+        result = recompiler.recompile()
+
+        qubit_0_gates = []
+        qubit_1_gates = []
+        qubit_2_gates = []
+
+        for instruction in result.circuit.data:
+            if min([len(qubit_0_gates), len(qubit_1_gates), len(qubit_2_gates)]) >= 3:
+                break
+            elif (instruction.qubits[0] == result.circuit.qubits[0]) and (len(qubit_0_gates) < 3):
+                qubit_0_gates.append(instruction.operation.name)
+            elif (instruction.qubits[0] == result.circuit.qubits[1]) and (len(qubit_1_gates) < 3):
+                qubit_1_gates.append(instruction.operation.name)
+            elif (instruction.qubits[0] == result.circuit.qubits[2]) and (len(qubit_2_gates) < 3):
+                qubit_2_gates.append(instruction.operation.name)
+
+        self.assertEqual(qubit_0_gates, ["rz", "ry", "rz"])
+        self.assertEqual(qubit_1_gates, ["rz", "ry", "rz"])
+        self.assertEqual(qubit_2_gates, ["rz", "ry", "rz"])
+
+    def test_given_tenpy_starting_circuit_then_better_starting_cost(self):
+        qc = co.create_random_initial_state_circuit(5)
+        recompiler_1 = ISLRecompiler(qc)
+        recompiler_2 = ISLRecompiler(qc, starting_circuit="tenpy_product_state")
+
+        cost_1 = recompiler_1.evaluate_cost()
+        cost_2 = recompiler_2.evaluate_cost()
+
+        self.assertGreater(cost_1, cost_2)
 
 
 class TestISLCheckpointing(TestCase):
