@@ -1158,8 +1158,6 @@ try:
     jl.seval("using ITensorNetworksQiskit")
     jl.seval("using ITensors: siteinds")
     module_failed = False
-except ImportError:
-    module_failed = True
 except Exception:
     module_failed = True
 
