@@ -19,6 +19,7 @@ from isl.utils.utilityfunctions import (
     tenpy_to_qiskit_mps,
     tenpy_chi_1_mps_to_circuit,
     qiskit_to_tenpy_mps,
+    find_rotation_indices,
 )
 
 
@@ -109,6 +110,24 @@ class TestUtilityFunctions(TestCase):
         self.assertEqual(
             remove_permutations_from_coupling_map(cmap), [(1, 2), (2, 3), (3, 4)]
         )
+
+    def test_find_rotation_indices(self):
+        qc = QuantumCircuit(3)
+        qc.x(0)
+        qc.y(1)
+        qc.cx(0, 2)
+        qc.rx(1.3, 0)
+        qc.ry(0.7, 0)
+        qc.cx(0, 1)
+        qc.rx(1.1, 2)
+        qc.rz(1.6, 2)
+
+        indices = [0, 2, 3, 4, 5, 7]
+
+        expected_rotation_indices = [3, 4, 7]
+        rotation_indices = find_rotation_indices(qc, indices)
+
+        self.assertEqual(expected_rotation_indices, rotation_indices)
 
 
 class TestExpectationValueOfQubitsMPS(TestCase):

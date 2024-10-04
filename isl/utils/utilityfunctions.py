@@ -15,6 +15,7 @@ from qiskit import transpile
 from tenpy.networks.mps import MPS
 
 from isl.backends.aer_sv_backend import AerSVBackend
+from isl.utils.circuit_operations import SUPPORTED_1Q_GATES
 
 
 # ------------------Trigonometric functions------------------ #
@@ -323,3 +324,16 @@ def qiskit_to_tenpy_mps(qiskit_mps):
     tenpy_mps = MPS.from_Bflat(sites, qiskit_mps, SVs=None)
 
     return tenpy_mps
+
+
+def find_rotation_indices(qc: QuantumCircuit, indices: List[int]) -> List[int]:
+    """
+    Given a QuantumCircuit and a list of indices, returns a list containing the subset of indices
+    corresponding to rotation gates in the circuit
+    """
+    rotation_indices = []
+    for index in indices:
+        if qc.data[index].operation.name in SUPPORTED_1Q_GATES:
+            rotation_indices.append(index)
+
+    return rotation_indices

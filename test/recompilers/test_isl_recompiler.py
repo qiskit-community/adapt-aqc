@@ -4,6 +4,7 @@ import pickle
 import shutil
 import tempfile
 import copy
+import random
 from unittest import TestCase
 from unittest.mock import patch
 
@@ -1150,6 +1151,76 @@ class TestISLCheckpointing(TestCase):
             loaded_recompiler.recompile(freeze_prev_layers=True)
             for call in mock.call_args_list:
                 self.assertEqual(call.args[0], expected_input)
+
+    def test_given_save_and_resume_then_rotosolve_fraction_is_not_overwritten(self):
+        qc = co.create_random_initial_state_circuit(3)
+        recompiler = ISLRecompiler(qc, rotosolve_fraction=0.5)
+
+        rotosolve_fractions = []
+        # Before recompilation
+        rotosolve_fractions.append(recompiler.minimizer.rotosolve_fraction)
+        with tempfile.TemporaryDirectory() as d:
+            recompiler.recompile(checkpoint_every=1, checkpoint_dir=d)
+            # After recompilation
+            rotosolve_fractions.append(recompiler.minimizer.rotosolve_fraction)
+            with open(os.path.join(d, "1.pkl"), 'rb') as myfile:
+                loaded_recompiler = pickle.load(myfile)
+
+            # After loading, before resuming recompilation
+            rotosolve_fractions.append(loaded_recompiler.minimizer.rotosolve_fraction)
+            loaded_recompiler.recompile(checkpoint_every=1, checkpoint_dir=d)
+            # After loading, after resuming recompilation
+            rotosolve_fractions.append(loaded_recompiler.minimizer.rotosolve_fraction)
+
+        self.assertEqual(rotosolve_fractions, [0.5, 0.5, 0.5, 0.5])
+
+
+class TestISLRandomRotosolve(TestCase):
+
+    def test_given_different_rotosolve_fractions_when_recompile_then_works(self):
+        qc = co.create_random_initial_state_circuit(3)
+
+        for rotosolve_fraction in [0.2, 0.5, 0.8]:
+            recompiler = ISLRecompiler(
+                qc, backend=MPS_SIM, rotosolve_fraction=rotosolve_fraction
+            )
+            result = recompiler.recompile()
+
+            overlap = co.calculate_overlap_between_circuits(qc, result.circuit)
+
+            self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
+
+    def test_given_rotosolve_fraction_then_results_reproducible(self):
+        qc = co.create_random_initial_state_circuit(3)
+
+        recompiler_1 = ISLRecompiler(qc, backend=MPS_SIM, rotosolve_fraction=0.5)
+        recompiler_2 = ISLRecompiler(qc, backend=MPS_SIM, rotosolve_fraction=0.5)
+
+        random.seed(1)
+        result_1 = recompiler_1.recompile()
+
+        random.seed(1)
+        result_2 = recompiler_2.recompile()
+
+        self.assertEqual(result_1.global_cost_history, result_2.global_cost_history)
+        self.assertEqual(result_1.circuit, result_2.circuit)
+
+    def test_given_invalid_or_valid_rotosolve_fraction_then_error_or_no_error(self):
+        qc = co.create_random_initial_state_circuit(3)
+
+        # Should error
+        with self.assertRaises(ValueError):
+            recompiler = ISLRecompiler(qc, backend=MPS_SIM, rotosolve_fraction=0)
+
+        with self.assertRaises(ValueError):
+            recompiler = ISLRecompiler(
+                qc, backend=MPS_SIM, rotosolve_fraction=1.000000001
+            )
+
+        # Shouldn't error
+        recompiler = ISLRecompiler(qc, backend=MPS_SIM, rotosolve_fraction=1)
+        recompiler = ISLRecompiler(qc, backend=MPS_SIM, rotosolve_fraction=0.000000001)
+
 
 try:
     from itensornetworks_qiskit.utils import qiskit_circ_to_it_circ

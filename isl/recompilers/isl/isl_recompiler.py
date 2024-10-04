@@ -56,6 +56,7 @@ class ISLRecompiler(ApproximateRecompiler):
         starting_circuit=None,
         use_roto_algos=True,
         use_rotoselect=True,
+        rotosolve_fraction=1.0,
         perform_final_minimisation=False,
         optimise_local_cost=False,
         soften_global_cost=False,
@@ -88,6 +89,8 @@ class ISLRecompiler(ApproximateRecompiler):
         Disable if custom_layer_2q_gate does not support rotosolve
         :param use_rotoselect: Whether to use rotoselect for cost minimisation. Disable if 
         not appropriate for chosen ansatz.
+        :param rotosolve_fraction: During each rotosolve cycle, modify a random sample of the
+        available gates. Set to 1 to modify all available gates, 0.5 to modify half, etc.
         :param perform_final_minimisation: Perform a final cost minimisation
         once ISL has ended
         :param optimise_local_cost: Choose the cost function with which to optimise layers:
@@ -113,6 +116,7 @@ class ISLRecompiler(ApproximateRecompiler):
             optimise_local_cost=optimise_local_cost,
             itensor_chi=itensor_chi,
             itensor_cutoff=itensor_cutoff,
+            rotosolve_fraction=rotosolve_fraction,
         )
 
         self.save_circuit_history = save_circuit_history

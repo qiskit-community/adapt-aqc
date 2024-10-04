@@ -3,6 +3,7 @@ import logging
 from typing import Tuple
 
 import numpy as np
+import random
 from scipy.optimize import minimize
 
 import isl.utils.circuit_operations as co
@@ -12,6 +13,7 @@ from isl.utils.utilityfunctions import (
     derivative_of_sinusoidal,
     has_stopped_improving,
     minimum_of_sinusoidal,
+    find_rotation_indices,
 )
 
 logger = logging.getLogger(__name__)
@@ -22,13 +24,14 @@ class CostMinimiser:
     Minimizer that minimizes a cost function
     """
 
-    def __init__(self, cost_finder, variational_circuit_range, full_circuit):
+    def __init__(self, cost_finder, variational_circuit_range, full_circuit, rotosolve_fraction=1.0):
         """
         :param cost_finder: Callable that returns cost(float)
         """
         self.cost_finder = cost_finder
         self.variational_circuit_range = variational_circuit_range
         self.full_circuit = full_circuit
+        self.rotosolve_fraction = rotosolve_fraction
 
     def minimize_cost(
         self,
@@ -246,7 +249,9 @@ class CostMinimiser:
         return cost
 
     def _reduce_cost(
-        self, change_1q_gate_kind=False, indexes_to_modify: Tuple[int, int] = None
+        self,
+        change_1q_gate_kind=False,
+        indexes_to_modify: Tuple[int, int] = None,
     ):
         """
         For each gate in the full circuit, find the optimal angle (and gate
@@ -268,7 +273,19 @@ class CostMinimiser:
                 max(indexes_to_modify[0], variational_circuit_range[0]),
                 min(indexes_to_modify[1], variational_circuit_range[1]),
             )
-        for index in range(*indexes_to_modify):
+
+        if self.rotosolve_fraction < 1.0 and not change_1q_gate_kind:
+            indexes_to_modify_list = list(range(*indexes_to_modify))
+            indexes_to_modify_list = find_rotation_indices(self.full_circuit, indexes_to_modify_list)
+            num_to_sample = int(
+                np.ceil(self.rotosolve_fraction * len(indexes_to_modify_list))
+            )
+            sample = random.sample(indexes_to_modify_list, num_to_sample)
+            sample.sort()
+        else:
+            sample = list(range(*indexes_to_modify))
+
+        for index in sample:
             old_gate = self.full_circuit.data[index][0]
 
             if change_1q_gate_kind and co.is_supported_1q_gate(old_gate):

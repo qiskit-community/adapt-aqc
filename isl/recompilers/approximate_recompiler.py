@@ -70,6 +70,7 @@ class ApproximateRecompiler(ABC):
             soften_global_cost=False,
             itensor_chi=None,
             itensor_cutoff=None,
+            rotosolve_fraction=1.0,
 
     ):
         """
@@ -128,7 +129,10 @@ class ApproximateRecompiler(ABC):
             )
 
         self.full_circuit, self.lhs_gate_count, self.rhs_gate_count, = self._prepare_full_circuit()
-        self.minimizer = CostMinimiser(self.evaluate_cost, self.variational_circuit_range, self.full_circuit)
+        if 0 < rotosolve_fraction <= 1:
+            self.minimizer = CostMinimiser(self.evaluate_cost, self.variational_circuit_range, self.full_circuit, rotosolve_fraction)
+        else:
+            raise ValueError("rotosolve_fraction must be in the range (0,1]")
 
         # Count number of cost evaluations
         self.cost_evaluation_counter = 0
