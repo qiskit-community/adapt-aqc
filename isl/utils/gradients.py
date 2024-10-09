@@ -7,12 +7,14 @@ from qiskit.compiler import transpile
 
 from isl.backends.aer_mps_backend import AerMPSBackend
 from isl.backends.python_default_backends import MPS_SIM
+from isl.utils.utilityfunctions import get_distinct_items_and_degeneracies
 
 
 def general_grad_of_pairs(
     circuit: QuantumCircuit,
     inverse_zero_ansatz: QuantumCircuit,
     generators: List[QuantumCircuit],
+    degeneracies: List[int],
     coupling_map: List[Tuple],
     starting_circuit=None,
     backend: AerMPSBackend = MPS_SIM,
@@ -34,6 +36,7 @@ def general_grad_of_pairs(
         circuit (QuantumCircuit): a circuit representing |ψ>
         inverse_zero_ansatz (QuantumCircuit): a circuit representing U†(0)
         generators (List[QuantumCircuit]): a list of quantum circuits representing (G_k)†
+        degeneracies (List[int]): a list of the degeneracies of the generators
         coupling_map (List[Tuple]): the list of all pairs of qubits for which to calculate the gradient
         starting_circuit (QuantumCircuit): a circuit representing |s>
         backend (AerSimulator): Aer MPS simulator used to generate relevant states
@@ -41,10 +44,12 @@ def general_grad_of_pairs(
         gradients (List): List of gradients g for each pair
     """
     gradients = []
+    ansatz_resolves_to_id = (inverse_zero_ansatz == QuantumCircuit(2))
 
     # Get MPS of |ψ>
-    circ_mps = mpsop.mps_from_circuit(circuit.copy(), return_preprocessed=True,
-                                      sim=backend.simulator)
+    circ_mps = mpsop.mps_from_circuit(
+        circuit.copy(), return_preprocessed=True, sim=backend.simulator
+    )
 
     # Get the starting circuit
     if starting_circuit is not None:
@@ -52,28 +57,42 @@ def general_grad_of_pairs(
     else:
         starting_circuit = QuantumCircuit(circuit.num_qubits)
 
-    # TODO optimise for when ansatz resolves to identity
-    for control, target in coupling_map:
-        # Find U†(0)|s>
-        ansatz_on_starting_circuit = starting_circuit.compose(
-            inverse_zero_ansatz, [control, target]
+    # Only calculate <ψ|U†(0)|s> = <ψ|s> once if ansatz resolves to identity
+    if ansatz_resolves_to_id:
+        # Find |s>
+        starting_circuit_mps = mpsop.mps_from_circuit(
+            starting_circuit.copy(), return_preprocessed=True, sim=backend.simulator
         )
-        ansatz_on_starting_circuit_mps = mpsop.mps_from_circuit(
-            ansatz_on_starting_circuit, return_preprocessed=True, sim=backend.simulator
-        )
-        # Find <ψ|U†(0)|s>
+        # Find <ψ|s>
         zero_ansatz_overlap = mpsop.mps_dot(
-            circ_mps, ansatz_on_starting_circuit_mps, already_preprocessed=True
+            circ_mps, starting_circuit_mps, already_preprocessed=True
         )
 
-        generator_gradients = []
-        for generator in generators:
+    for control, target in coupling_map:
+        # Calculate <ψ|U†(0)|s> for each pair if ansatz does not resolve to identity
+        if not ansatz_resolves_to_id:
+            # Find U†(0)|s>
+            ansatz_on_starting_circuit = starting_circuit.compose(
+                inverse_zero_ansatz, [control, target]
+            )
+            ansatz_on_starting_circuit_mps = mpsop.mps_from_circuit(
+                ansatz_on_starting_circuit, return_preprocessed=True, sim=backend.simulator
+            )
+            # Find <ψ|U†(0)|s>
+            zero_ansatz_overlap = mpsop.mps_dot(
+                circ_mps, ansatz_on_starting_circuit_mps, already_preprocessed=True
+            )
+
+        gradient = 0
+        for i, generator in enumerate(generators):
             # Find (G_k)†|s>
             generator_on_starting_circuit = starting_circuit.compose(
                 generator, [control, target]
             )
             generator_on_starting_circuit_mps = mpsop.mps_from_circuit(
-                generator_on_starting_circuit, return_preprocessed=True, sim=backend.simulator
+                generator_on_starting_circuit,
+                return_preprocessed=True,
+                sim=backend.simulator,
             )
             # Find <s|G_k|ψ>, computed as the dot product of (G_k)†|s> and |ψ>
             generator_overlap = mpsop.mps_dot(
@@ -81,18 +100,19 @@ def general_grad_of_pairs(
             )
 
             generator_gradient = -1 * np.imag(generator_overlap * zero_ansatz_overlap)
-            generator_gradients.append(generator_gradient)
+
+            # Add contribution to gradient from generator, accounting for degeneracy
+            gradient += (generator_gradient**2) * degeneracies[i]
 
         # Calculate the Euclidean norm of the gradients for each generator
-        grad_norm = np.sqrt(
-            sum([generator_gradient**2 for generator_gradient in generator_gradients])
-        )
+        grad_norm = np.sqrt(gradient)
+
         gradients.append(grad_norm)
 
     return gradients
 
 
-def get_generators(
+def get_generators_and_degeneracies(
     ansatz: QuantumCircuit, rotoselect: bool = False, inverse: bool = False
 ):
     """
@@ -113,6 +133,7 @@ def get_generators(
     Returns:
         generator_circuits (List[QuantumCircuit]): List of generators G_k (or their inverses), one
         for each parameterised gate if rotoselect=False, three if rotoselect=True.
+        degeneracies (List[int]): List of degeneracies of generators.
     """
     parameterised_gates = ["rx", "ry", "rz"]
     generator_circuits = []
@@ -130,7 +151,11 @@ def get_generators(
                 generator = get_generator(ansatz, i, operation.name)
                 generator_circuits.append(generator.inverse() if inverse else generator)
 
-    return generator_circuits
+    distinct_generators, degeneracies = get_distinct_items_and_degeneracies(
+        generator_circuits
+    )
+
+    return (distinct_generators, degeneracies)
 
 
 def get_generator(ansatz: QuantumCircuit, index: int, op: str):

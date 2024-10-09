@@ -20,6 +20,7 @@ from isl.utils.utilityfunctions import (
     tenpy_chi_1_mps_to_circuit,
     qiskit_to_tenpy_mps,
     find_rotation_indices,
+    get_distinct_items_and_degeneracies,
 )
 
 
@@ -128,6 +129,55 @@ class TestUtilityFunctions(TestCase):
         rotation_indices = find_rotation_indices(qc, indices)
 
         self.assertEqual(expected_rotation_indices, rotation_indices)
+
+    def test_get_distinct_items_and_degeneracies(self):
+        # Integers
+        list_int = [1, 2, 3, 4, 4, 5, 0, 1, 1, 1, 3]
+
+        distinct_list_int = [1, 2, 3, 4, 5, 0]
+        degeneracies_list_int = [4, 1, 2, 2, 1, 1]
+
+        distinct_items, degeneracies = get_distinct_items_and_degeneracies(list_int)
+
+        self.assertEqual(distinct_items, distinct_list_int)
+        self.assertEqual(degeneracies, degeneracies_list_int)
+
+        # Strings
+        list_str = ["a", "a", "b", "c", "a", "b"]
+
+        distinct_list_str = ["a", "b", "c"]
+        degeneracies_list_str = [3, 2, 1]
+
+        distinct_items, degeneracies = get_distinct_items_and_degeneracies(list_str)
+
+        self.assertEqual(distinct_items, distinct_list_str)
+        self.assertEqual(degeneracies, degeneracies_list_str)
+
+        # QCs
+        qc_0 = co.create_random_initial_state_circuit(2)
+        qc_1 = co.create_random_initial_state_circuit(3)
+        qc_2 = co.create_random_initial_state_circuit(2)
+
+        list_qc = [qc_1, qc_2, qc_0, qc_2, qc_2, qc_2]
+
+        distinct_list_qc = [qc_1, qc_2, qc_0]
+        degeneracies_list_qc = [1, 4, 1]
+
+        distinct_items, degeneracies = get_distinct_items_and_degeneracies(list_qc)
+
+        self.assertEqual(distinct_items, distinct_list_qc)
+        self.assertEqual(degeneracies, degeneracies_list_qc)
+
+        # Mixed
+        list_mix = ["a", 1, qc_0, "a", "a", 2, 4, qc_2, qc_0, "b", 1, "b"]
+
+        distinct_list_mix = ["a", 1, qc_0, 2, 4, qc_2, "b"]
+        degeneracies_list_mix = [3, 2, 2, 1, 1, 1, 2]
+
+        distinct_items, degeneracies = get_distinct_items_and_degeneracies(list_mix)
+
+        self.assertEqual(distinct_items, distinct_list_mix)
+        self.assertEqual(degeneracies, degeneracies_list_mix)
 
 
 class TestExpectationValueOfQubitsMPS(TestCase):

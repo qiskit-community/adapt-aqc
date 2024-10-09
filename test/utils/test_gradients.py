@@ -8,6 +8,7 @@ from qiskit.quantum_info import Statevector
 
 import isl.backends.python_default_backends
 import isl.utils.gradients as gr
+import isl.utils.ansatzes as ans
 
 
 class TestGeneralGradOfPairs(TestCase):
@@ -19,12 +20,13 @@ class TestGeneralGradOfPairs(TestCase):
 
         ansatz = QuantumCircuit(2)
 
-        generators = gr.get_generators(ansatz)
+        generators, degeneracies = gr.get_generators_and_degeneracies(ansatz)
         sim = isl.backends.python_default_backends.MPS_SIM
         gradients = gr.general_grad_of_pairs(
             qc,
             ansatz,
             generators,
+            degeneracies,
             coupling_map=[(0, 1), (1, 2), (2, 3), (3, 4)],
             starting_circuit=starting_circuit,
             backend=sim,
@@ -60,26 +62,26 @@ class TestGeneralGradOfPairs(TestCase):
         ansatz.rx(0, 0)
         ansatz.ry(0, 1)
 
-        generators = gr.get_generators(ansatz, rotoselect=False, inverse=True)
+        generators, degeneracies = gr.get_generators_and_degeneracies(ansatz, rotoselect=False, inverse=True)
         inverse_zero_ansatz = transpile(ansatz.inverse())
         actual_grad = gr.general_grad_of_pairs(
-            qc, inverse_zero_ansatz, generators, coupling_map=[(0, 1)]
+            qc, inverse_zero_ansatz, generators, degeneracies, coupling_map=[(0, 1)]
         )[0]
 
         self.assertAlmostEqual(expected_grad, actual_grad, places=10)
 
 
 class TestGetGenerators(TestCase):
-    def test_given_random_ansatz_then_correct_number_of_generators(self):
+    def test_given_random_ansatz_then_correct_sum_of_degeneracies(self):
         ansatz = transpile(random_circuit(2, 3), basis_gates=["cx", "ry", "rz", "rx"])
         ops = ansatz.count_ops()
         num_rotations = ops.get("rx", 0) + ops.get("ry", 0) + ops.get("rz", 0)
 
-        generators_no_rotoselect = gr.get_generators(ansatz, rotoselect=False)
-        generators_rotoselect = gr.get_generators(ansatz, rotoselect=True)
+        _, degeneracies_no_rotoselect = gr.get_generators_and_degeneracies(ansatz, rotoselect=False)
+        _, degeneracies_rotoselect = gr.get_generators_and_degeneracies(ansatz, rotoselect=True)
 
-        self.assertEqual(len(generators_no_rotoselect), num_rotations)
-        self.assertEqual(len(generators_rotoselect), 3 * num_rotations)
+        self.assertEqual(sum(degeneracies_no_rotoselect), num_rotations)
+        self.assertEqual(sum(degeneracies_rotoselect), 3 * num_rotations)
 
     def test_given_known_ansatz_then_correct_generators(self):
         ansatz = QuantumCircuit(2)
@@ -106,16 +108,16 @@ class TestGetGenerators(TestCase):
         gen_5.cx(0, 1)
         gen_5.z(0)
 
-        generators_no_rotoselect = gr.get_generators(
+        generators_no_rotoselect, _ = gr.get_generators_and_degeneracies(
             ansatz, rotoselect=False, inverse=False
         )
-        generators_rotoselect = gr.get_generators(
+        generators_rotoselect, _ = gr.get_generators_and_degeneracies(
             ansatz, rotoselect=True, inverse=False
         )
-        inv_generators_no_rotoselect = gr.get_generators(
+        inv_generators_no_rotoselect, _ = gr.get_generators_and_degeneracies(
             ansatz, rotoselect=False, inverse=True
         )
-        inv_generators_rotoselect = gr.get_generators(
+        inv_generators_rotoselect, _ = gr.get_generators_and_degeneracies(
             ansatz, rotoselect=True, inverse=True
         )
 
@@ -143,3 +145,48 @@ class TestGetGenerators(TestCase):
         expected_generator.y(0)
 
         self.assertEqual(generator, expected_generator)
+
+    def test_given_ansatz_with_degenerate_generators_then_correct_generators_and_degeneracies(self):
+        ansatz = QuantumCircuit(2)
+        ansatz.rx(0, 0)
+        ansatz.cx(0, 1)
+        ansatz.ry(0, 1)
+        ansatz.cx(0, 1)
+        ansatz.rx(0, 0)
+
+        gen_0 = QuantumCircuit(2)
+        gen_0.x(0)
+        gen_1 = QuantumCircuit(2)
+        gen_1.cx(0, 1)
+        gen_1.y(1)
+        gen_1.cx(0, 1)
+
+        generators, degeneracies = gr.get_generators_and_degeneracies(ansatz)
+
+        self.assertEqual(generators, [gen_0, gen_1])
+        self.assertEqual(degeneracies, [2, 1])
+
+    def test_given_default_ansatzes_then_correct_number_of_generators(self):
+        ansatzes = [
+            ans.fully_dressed_cnot(),
+            ans.heisenberg(),
+            ans.identity_resolvable(),
+            ans.thinly_dressed_cnot(),
+            ans.u4(),
+        ]
+
+        num_distinct_generators_no_rotoselect = [8, 5, 4, 4, 11]
+        total_num_generators_no_rotoselect = [12, 5, 6, 4, 15]
+        num_distinct_generators_rotoselect = [12, 15, 12, 12, 21]
+        total_num_generators_rotoselect = [36, 15, 18, 12, 45]
+
+        for i, ansatz in enumerate(ansatzes):
+            # No rotoselect
+            generators, degeneracies = gr.get_generators_and_degeneracies(ansatz, rotoselect=False)
+            self.assertEqual(len(generators), num_distinct_generators_no_rotoselect[i])
+            self.assertEqual(sum(degeneracies), total_num_generators_no_rotoselect[i])
+
+            # Rotoselect
+            generators, degeneracies = gr.get_generators_and_degeneracies(ansatz, rotoselect=True)
+            self.assertEqual(len(generators), num_distinct_generators_rotoselect[i])
+            self.assertEqual(sum(degeneracies), total_num_generators_rotoselect[i])

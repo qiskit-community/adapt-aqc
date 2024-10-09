@@ -3,7 +3,7 @@
 import copy
 import functools
 from collections.abc import Iterable
-from typing import Union, Dict, List
+from typing import Union, Dict, List, Tuple
 
 import aqc_research.mps_operations as mpsop
 import numpy as np
@@ -337,3 +337,31 @@ def find_rotation_indices(qc: QuantumCircuit, indices: List[int]) -> List[int]:
             rotation_indices.append(index)
 
     return rotation_indices
+
+
+def get_distinct_items_and_degeneracies(items: List) -> Tuple[List, List[int]]:
+    """
+    Given a list of items, return a list containing the distinct items, along with their
+    degeneracies (number of repetitions).
+
+    Args:
+        items: List of items.
+    Returns:
+        distinct_items: List of distinct items.
+        degeneracies: List of degeneracies.
+    """
+    distinct_items = []
+    degeneracies = []
+    for i in range(len(items)):
+        item = items[i]
+        distinct = True
+        for j in range(len(distinct_items)):
+            if item == distinct_items[j]:
+                degeneracies[j] += 1
+                distinct = False
+                break
+        if distinct:
+            distinct_items.append(item)
+            degeneracies.append(1)
+
+    return (distinct_items, degeneracies)

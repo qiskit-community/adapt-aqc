@@ -181,8 +181,12 @@ class ISLRecompiler(ApproximateRecompiler):
 
         if self.isl_config.method == "general_gradient":
             if not self.is_aer_mps_backend:
-                raise ValueError("general_gradient method is only implemented for Aer MPS backend")
-            self.generators = gr.get_generators(self.layer_2q_gate, use_rotoselect, inverse=True)
+                raise ValueError(
+                    "general_gradient method is only implemented for Aer MPS backend"
+                )
+            self.generators, self.degeneracies = gr.get_generators_and_degeneracies(
+                self.layer_2q_gate, use_rotoselect, inverse=True
+            )
             self.inverse_zero_ansatz = transpile(self.layer_2q_gate).inverse()
 
         self.soften_global_cost = soften_global_cost
@@ -705,6 +709,7 @@ class ISLRecompiler(ApproximateRecompiler):
             circuit,
             self.inverse_zero_ansatz,
             self.generators,
+            self.degeneracies,
             self.coupling_map,
             self.starting_circuit,
             self.backend,
