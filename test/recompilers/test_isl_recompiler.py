@@ -992,7 +992,8 @@ class TestISLCheckpointing(TestCase):
         recompiler = ISLRecompiler(qc)
         with tempfile.TemporaryDirectory() as d:
             result = recompiler.recompile(checkpoint_every=1, checkpoint_dir=d)
-            for c in ["0", "1", "2", "3", "4"]:
+            int_cn = [int(cn[:-4]) for cn in os.listdir(d)]
+            for c in [str(i) for i in range(max(int_cn) + 1)]:
                 with open(os.path.join(d, c + ".pkl"), 'rb') as myfile:
                     loaded_recompiler = pickle.load(myfile)
                 result_1 = loaded_recompiler.recompile()
@@ -1269,7 +1270,6 @@ class TestITensor(TestCase):
         overlap = jl.overlap_itensors(cached_target, actual_target)
         self.assertAlmostEqual(overlap, 1)
 
-
     def test_given_itensor_backend_then_cache_not_modified(self):
         qc = co.create_random_initial_state_circuit(3)
         qc = transpile(qc, basis_gates=["cx", "rx", "ry", "rz"])
@@ -1294,3 +1294,85 @@ class TestITensor(TestCase):
         )
         with self.assertRaises(NotImplementedError):
             recompiler.recompile()
+
+
+class TestBrickwall(TestCase):
+
+    def test_given_brickwall_pair_selection_method_when_recompile_then_works(self):
+        qc = co.create_random_initial_state_circuit(3)
+        config = ISLConfig(method="brickwall")
+        recompiler = ISLRecompiler(qc, isl_config=config)
+
+        result = recompiler.recompile()
+
+        overlap = co.calculate_overlap_between_circuits(qc, result.circuit)
+
+        self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
+
+    def test_given_brickwall_mode_and_all_options_when_recompile_then_works(self):
+        qc = co.create_random_initial_state_circuit(3)
+        starting_circuit = QuantumCircuit(3)
+        starting_circuit.x([0, 2])
+        initial_ansatz = QuantumCircuit(3)
+        initial_ansatz.ry(0.5, 0)
+
+        config = ISLConfig(
+            cost_improvement_num_layers=50,
+            max_layers_to_modify=5,
+            method="brickwall",
+            rotosolve_frequency=3,
+        )
+        recompiler = ISLRecompiler(
+            qc,
+            backend=MPS_SIM,
+            isl_config=config,
+            custom_layer_2q_gate=ans.identity_resolvable(),
+            starting_circuit=starting_circuit,
+            rotosolve_fraction=0.8,
+            soften_global_cost=True,
+            initial_single_qubit_layer=True,
+        )
+
+        result = recompiler.recompile(
+            initial_ansatz=initial_ansatz, optimise_initial_ansatz=True
+        )
+
+        overlap = co.calculate_overlap_between_circuits(qc, result.circuit)
+
+        self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
+
+    def test_given_brickwall_mode_then_qubit_pair_history_correct(self):
+        # Odd number of qubits
+        qc = QuantumCircuit(5)
+        expected_order = [(0, 1), (2, 3), (1, 2), (3, 4)]
+        config = ISLConfig(max_layers=10, method="brickwall")
+        recompiler = ISLRecompiler(qc, isl_config=config)
+        [recompiler._add_layer(i) for i in range(5 * len(expected_order))]
+        for i, pair in enumerate(recompiler.qubit_pair_history):
+            expected_pair = expected_order[i % len(expected_order)]
+            self.assertEqual(pair, expected_pair)
+
+        # Even number of qubits
+        qc = QuantumCircuit(4)
+        expected_order = [(0, 1), (2, 3), (1, 2)]
+        config = ISLConfig(max_layers=10, method="brickwall")
+        recompiler = ISLRecompiler(qc, isl_config=config)
+        [recompiler._add_layer(i) for i in range(5 * len(expected_order))]
+        for i, pair in enumerate(recompiler.qubit_pair_history):
+            expected_pair = expected_order[i % len(expected_order)]
+            self.assertEqual(pair, expected_pair)
+
+    def test_given_two_qubits_and_brickwall_mode_then_works(self):
+        qc = co.create_random_initial_state_circuit(2)
+        config = ISLConfig(method="brickwall")
+        recompiler = ISLRecompiler(qc, isl_config=config)
+        result = recompiler.recompile()
+        for pair in result.qubit_pair_history:
+            self.assertEqual(pair, (0, 1))
+
+    def test_given_less_than_two_qubits_and_brickwall_mode_then_error(self):
+        qc = QuantumCircuit(1)
+        config = ISLConfig(method="brickwall")
+        recompiler = ISLRecompiler(qc, isl_config=config)
+        with self.assertRaises(ValueError):
+            result = recompiler.recompile()

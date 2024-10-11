@@ -689,8 +689,31 @@ class ISLRecompiler(ApproximateRecompiler):
             self.pair_selection_method_history.append(f"general_gradient")
             return self._find_best_gradient_qubit_pair(gradients)
 
+        if self.isl_config.method == "brickwall":
+            n = self.full_circuit.num_qubits
+            if n < 2:
+                raise ValueError(
+                    "Cannot pick a pair if there are fewer than two qubits"
+                )
+            if (
+                len(self.qubit_pair_history) == 0           # This is the first layer
+                or n == 2                                   # There are only two qubits
+                or self.qubit_pair_history[-1][0] is None   # The first layer was single-qubit-layer
+            ):
+                return (0, 1)
+
+            previous_pair = self.qubit_pair_history[-1]
+            next_pair = (previous_pair[0] + 2, previous_pair[1] + 2)
+            n_odd = n % 2
+            if next_pair == (n, n + 1):
+                return (1 - n_odd, 2 - n_odd)
+            if next_pair == (n - 1, n):
+                return (0 + n_odd, 1 + n_odd)
+            else:
+                return next_pair
+
         raise ValueError(
-            f"Invalid ISL method {self.isl_config.method}. "f"Method must be one of ISL, expectation, random, basic, general_gradient")
+            f"Invalid ISL method {self.isl_config.method}. "f"Method must be one of ISL, expectation, random, basic, general_gradient, brickwall")
 
     def _find_best_gradient_qubit_pair(self, gradients):
         reuse_priorities = self._get_all_qubit_pair_reuse_priorities(
