@@ -21,7 +21,7 @@ from isl.recompilers.isl.isl_config import ISLConfig
 from isl.recompilers.isl.isl_result import ISLResult
 from isl.utils import circuit_operations as co
 from isl.utils import gradients as gr
-from isl.utils.constants import CMAP_FULL, generate_coupling_map
+from isl.utils.constants import (CMAP_FULL, generate_coupling_map)
 from isl.utils.entanglement_measures import (
     EM_TOMOGRAPHY_CONCURRENCE,
     calculate_entanglement_measure,
@@ -56,6 +56,7 @@ class ISLRecompiler(ApproximateRecompiler):
         starting_circuit=None,
         use_roto_algos=True,
         use_rotoselect=True,
+        use_advanced_transpilation=False,
         rotosolve_fraction=1.0,
         perform_final_minimisation=False,
         optimise_local_cost=False,
@@ -87,8 +88,11 @@ class ISLRecompiler(ApproximateRecompiler):
         because it disrupts the measurement of local entanglement between qubits.
         :param use_roto_algos: Whether to use rotoselect and rotosolve for cost minimisation.
         Disable if custom_layer_2q_gate does not support rotosolve
-        :param use_rotoselect: Whether to use rotoselect for cost minimisation. Disable if 
+        :param use_rotoselect: Whether to use rotoselect for cost minimisation. Disable if
         not appropriate for chosen ansatz.
+        :param use_advanced_transpilation: Whether to use optimization_level=2 transpilation on
+        variational circuit before each call to rotosolve. This should result in fewer redundant 
+        layers in the compiled circuit and faster optimisations.
         :param rotosolve_fraction: During each rotosolve cycle, modify a random sample of the
         available gates. Set to 1 to modify all available gates, 0.5 to modify half, etc.
         :param perform_final_minimisation: Perform a final cost minimisation
@@ -134,6 +138,11 @@ class ISLRecompiler(ApproximateRecompiler):
         self.remove_unnecessary_gates_during_isl = custom_layer_2q_gate is None
         self.use_roto_algos = use_roto_algos
         self.use_rotoselect = use_rotoselect
+        self.use_advanced_transpilation = use_advanced_transpilation
+        if self.use_advanced_transpilation:
+            logger.warning(
+                        "Using advanced qiskit transpilation (optimization_level=2) for variational circuit. This behaviour can be unpredicable with caching. You can turn this off in settings with use_advanced_transpilation=False."
+                    )
         if self.use_rotoselect and custom_layer_2q_gate in [ans.u4(), ans.fully_dressed_cnot(), ans.heisenberg()]:
             logger.warning("For ansatz designed to perform physically motivated or universal operations Rotoselect may "
                            "cause change from expected behaviour")
@@ -547,6 +556,23 @@ class ISLRecompiler(ApproximateRecompiler):
                         ansatz_start_index
                     )
                 )
+                if self.use_advanced_transpilation:
+                    # Now do optimization_level=2 transpilation on variational circuit before calling rotosolve
+                    variational_circuit = co.extract_inner_circuit(
+                        self.full_circuit, self.variational_circuit_range()
+                    )
+                    transpiled_variational_circuit = (
+                        co.advanced_circuit_transpilation(
+                            variational_circuit, self.coupling_map
+                        )
+                    )
+                    co.replace_inner_circuit(
+                        self.full_circuit,
+                        transpiled_variational_circuit,
+                        self.variational_circuit_range(),
+                    )
+                    if self.is_aer_mps_backend:
+                        self._update_reference_circuit()
                 cost = self.minimizer.minimize_cost(
                     algorithm_kind=vconstants.ALG_ROTOSOLVE,
                     tol=self.isl_config.rotosolve_tol,

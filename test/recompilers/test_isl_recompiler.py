@@ -922,6 +922,32 @@ class TestISL(TestCase):
         cost_2 = recompiler_2.evaluate_cost()
 
         self.assertGreater(cost_1, cost_2)
+    def test_given_advanced_transpilation_option_passed_then_compiled_circuits_equivalent(self):
+        qc = co.create_random_initial_state_circuit(4)
+        recompiler = ISLRecompiler(
+            qc,
+            use_advanced_transpilation=True,
+        )
+
+        result = recompiler.recompile()
+        circuit = result.circuit
+
+        overlap = co.calculate_overlap_between_circuits(qc, circuit)
+        self.assertGreater(overlap, 1 - DEFAULT_SUFFICIENT_COST)
+
+    def test_given_advanced_transpilation_option_passed_then_reference_circuit_updated_correctly(
+        self,
+    ):
+        qc = co.create_random_initial_state_circuit(3)
+        recompiler = ISLRecompiler(
+            qc,
+            backend=MPS_SIM,
+            use_advanced_transpilation=True,
+        )
+        for i in range(3):
+            recompiler._add_layer(i)
+        full_circuit = recompiler.full_circuit.copy()
+        self.assertEqual(recompiler.ref_circuit_as_gates.data, full_circuit.data)
 
 
 class TestISLCheckpointing(TestCase):

@@ -96,3 +96,24 @@ def coupling_map_ladder(num_qubits, both_dir=False, loop=False):
         c_map_rev = [(target, source) for (source, target) in c_map]
         c_map += c_map_rev
     return c_map
+
+
+def convert_cmap_to_qiskit_format(c_map):
+    """
+    Convert a list of tuples to a list of lists that qiskit expects for transpiling with a c_map.
+    :param c_map: List of tuples [(int, int)]
+    :return: List of lists [[int, int]]
+    """
+    return [list(pair) for pair in c_map]
+
+
+def get_initial_layout(circuit):
+    """
+    Extracts initial layout of a circuit.
+
+    :param circuit: The original circuit to determine the layout for.
+    :return: Dictionary for initial_layout in the form {logical_qubit: physical_qubit}
+    """
+    # map logical qubits to their indices in the circuit
+    initial_layout = {qubit: idx for idx, qubit in enumerate(circuit.qubits)}
+    return initial_layout

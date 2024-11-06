@@ -4,6 +4,7 @@ import numpy as np
 from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister
 from qiskit.quantum_info import Statevector
 from qiskit.circuit import Instruction
+from qiskit.compiler import transpile
 
 import isl.utils.circuit_operations as co
 
@@ -193,6 +194,36 @@ class TestOperationsFullCircuit(TestCase):
         )
         self.assertIsInstance(new_circuit, QuantumCircuit)
         self.assertFalse(co.are_circuits_identical(new_circuit, full_circuit))
+
+    def test_replace_inner_circuit_with_transpile_level_3(self):
+        full_circuit, partial_circuit = create_test_circuit_3()
+        partial_circuit.ry(1.5, 2)
+
+        gate_range_to_replace = (2, 7)
+        replaced_circuit_no_transpilation = full_circuit.copy()
+        replaced_circuit_with_transpilation = full_circuit.copy()
+        co.replace_inner_circuit(
+            replaced_circuit_no_transpilation,
+            partial_circuit,
+            gate_range_to_replace,
+        )
+        transpiled_partial_circuit = transpile(
+            partial_circuit,
+            basis_gates=["cx", "rx", "ry", "rz"],
+            optimization_level=2,
+        )
+        co.replace_inner_circuit(
+            replaced_circuit_with_transpilation,
+            transpiled_partial_circuit,
+            gate_range_to_replace,
+        )
+        self.assertAlmostEqual(
+            co.calculate_overlap_between_circuits(
+                replaced_circuit_no_transpilation,
+                replaced_circuit_with_transpilation,
+            ),
+            1,
+        )
 
     def test_find_num_gates(self):
         qc = QuantumCircuit(3)

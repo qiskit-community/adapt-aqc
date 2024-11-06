@@ -1,6 +1,7 @@
 import numpy as np
 from qiskit import QuantumCircuit
 from qiskit.synthesis import OneQubitEulerDecomposer
+from qiskit.compiler import transpile
 
 from isl.utils.circuit_operations.circuit_operations_basic import (
     is_supported_1q_gate,
@@ -8,6 +9,11 @@ from isl.utils.circuit_operations.circuit_operations_basic import (
 )
 from isl.utils.circuit_operations.circuit_operations_circuit_division import (
     find_previous_gate_on_qubit,
+)
+from isl.utils.constants import (
+    get_initial_layout,
+    generate_coupling_map,
+    convert_cmap_to_qiskit_format,
 )
 
 MINIMUM_ROTATION_ANGLE = 1e-3
@@ -187,3 +193,30 @@ def remove_unnecessary_2q_gates_from_circuit(circuit, gate_range=None):
             indexes_to_remove += [gate_index, prev_gate_index]
     for index in sorted(indexes_to_remove, reverse=True):
         del circuit.data[index]
+
+
+def advanced_circuit_transpilation(
+    circuit,
+    c_map,
+    optimization_level=2,
+    basis_gates=["cx", "rx", "ry", "rz"],
+):
+    """
+    Advanced circuit transpilation with chosen optimization_level.
+    :param circuit: Circuit to transpile
+    :param c_map: Directed coupling map for qiskit transpiler to target in mapping.
+    :param optimization_level: Order of optimization for transpiler to apply
+        Generally indicates how aggressively circuit transpilation will be done
+        Default = 2
+    :param basis_gates: Basis gates to transpile to.
+        Default = ["cx", "rx", "ry", "rz"]
+    """
+    return transpile(
+        circuit,
+        basis_gates=basis_gates,
+        coupling_map=convert_cmap_to_qiskit_format(c_map),
+        # ensure qubits are not re-ordered
+        layout_method="trivial",
+        initial_layout=get_initial_layout(circuit),
+        optimization_level=optimization_level,
+    )
