@@ -1,5 +1,6 @@
 import numpy as np
 from qiskit import QuantumCircuit
+from qiskit.circuit import CircuitInstruction
 from qiskit.circuit.library import U3Gate, U1Gate
 
 from isl.utils.circuit_operations.circuit_operations_basic import is_supported_1q_gate
@@ -20,7 +21,7 @@ def find_angles_in_circuit(circuit, gate_range=None):
         gate_range = (0, len(circuit.data))
     angle_index = 0
     for gate_index in range(*gate_range):
-        gate, _, _ = circuit.data[gate_index]
+        gate = circuit.data[gate_index].operation
         if is_supported_1q_gate(gate):
             # Normalize angle to between -pi and pi
             angles += [normalized_angles(gate.params[0])]
@@ -41,16 +42,19 @@ def update_angles_in_circuit(circuit: QuantumCircuit, angles, gate_range=None):
         gate_range = (0, len(circuit.data))
     angle_index = 0
     for gate_index in range(*gate_range):
-        gate, _, _ = circuit.data[gate_index]
+        circ_instr = circuit.data[gate_index]
+        gate = circ_instr.operation
         if is_supported_1q_gate(gate):
             gate.params[0] = angles[angle_index]
             angle_index += 1
+            circuit.data[gate_index] = circ_instr
 
 
 def create_variational_circuit(circuit: QuantumCircuit):
     new_circ = QuantumCircuit(*circuit.qregs, *circuit.cregs)
 
-    for (gate, qargs, cargs) in circuit.data:
+    for circ_instr in circuit.data:
+        gate = circ_instr.operation
         if isinstance(gate, U1Gate):
             gate.label = "rz"
         elif isinstance(gate, U3Gate):
@@ -60,5 +64,11 @@ def create_variational_circuit(circuit: QuantumCircuit):
                 0.5 * np.pi, gate.params[2]
             ):
                 gate.label = "rx"
-        new_circ.data.append((gate, qargs, cargs))
+        new_circ.data.append(
+            CircuitInstruction(
+                operation=gate,
+                qubits=circ_instr.qubits,
+                clbits=circ_instr.clbits
+            )
+        )
     return new_circ

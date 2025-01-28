@@ -57,7 +57,7 @@ class TestAnsatzes(TestCase):
     def test_given_custom_ansatz_when_add_layer_then_parameters_change(self):
         for ansatz in self.ansatz_list:
             with self.subTest(ansatz):
-                qc = co.create_random_initial_state_circuit(3, seed=1)
+                qc = co.create_random_initial_state_circuit(3, seed=0)
                 qc = co.unroll_to_basis_gates(qc)
                 isl_recompiler = ISLRecompiler(qc, custom_layer_2q_gate=ansatz())
 

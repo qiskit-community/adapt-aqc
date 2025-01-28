@@ -2,7 +2,7 @@ import random
 
 import numpy as np
 from qiskit import QuantumCircuit
-from qiskit.circuit import Gate
+from qiskit.circuit import Gate, CircuitInstruction
 from qiskit.circuit.library import RXGate, RYGate, RZGate, CZGate, CXGate
 from sympy import parse_expr
 
@@ -51,7 +51,8 @@ def add_gate(
               if qubit_indexes is not None else [])
     clbits = ([circuit.clbits[i] for i in clbit_indexes]
               if clbit_indexes is not None else [])
-    circuit.data.insert(gate_index, (gate, qubits, clbits))
+    circ_instr = CircuitInstruction(operation=gate, qubits=qubits, clbits=clbits)
+    circuit.data.insert(gate_index, circ_instr)
 
 
 def replace_1q_gate(circuit, gate_index, gate_name, angle):
@@ -64,12 +65,14 @@ def replace_1q_gate(circuit, gate_index, gate_name, angle):
     """
     if gate_name is None:
         return
-    old_gate, qargs, cargs = circuit.data[gate_index]
+    circ_instr = circuit.data[gate_index]
+    qargs = circ_instr.qubits
+    cargs = circ_instr.clbits
     if "#" in gate_name:
-        circuit.data[gate_index] = (
-            create_independent_parameterised_gate(*gate_name.split("#"), angle),
-            qargs,
-            cargs,
+        circuit.data[gate_index] = CircuitInstruction(
+            operation=create_independent_parameterised_gate(*gate_name.split("#"), angle),
+            qubits=qargs,
+            clbits=cargs
         )
         reevaluate_dependent_parameterised_gates(
             circuit, calculate_independent_variable_values(circuit)
@@ -77,9 +80,11 @@ def replace_1q_gate(circuit, gate_index, gate_name, angle):
     elif "@" in gate_name:
         raise ValueError("Cant replace dependent parameterised gate")
     else:
-        circuit.data[gate_index] = (
-            create_1q_gate(gate_name, angle),
-            qargs, cargs)
+        circuit.data[gate_index] = CircuitInstruction(
+            operation=create_1q_gate(gate_name, angle),
+            qubits=qargs,
+            clbits=cargs
+        )
 
 
 def replace_2q_gate(circuit, gate_index, control, target, gate_name="cx"):
@@ -91,11 +96,18 @@ def replace_2q_gate(circuit, gate_index, control, target, gate_name="cx"):
     :param target: New gate target qubit
     :param gate_name: New gate name
     """
-    _, old_qargs, cargs = circuit.data[gate_index]
+    circ_instr = circuit.data[gate_index]
+    old_qargs = circ_instr.qubits
+    cargs = circ_instr.clbits
+
     qr = old_qargs[0]._register
     new_qargs = [qr[control], qr[target]]
     new_gate = create_2q_gate(gate_name)
-    circuit.data[gate_index] = (new_gate, new_qargs, cargs)
+    circuit.data[gate_index] = CircuitInstruction(
+        operation=new_gate,
+        qubits=new_qargs,
+        clbits=cargs
+    )
 
 
 def is_supported_1q_gate(gate):
@@ -202,7 +214,8 @@ def create_dependent_parameterised_gate(gate_type, equation_string, angle=0):
 
 def calculate_independent_variable_values(circuit: QuantumCircuit):
     variable_dict = {}
-    for (gate, _, _) in circuit.data:
+    for circ_instr in circuit.data:
+        gate = circ_instr.operation
         if gate.label is not None and "#" in gate.label:
             variable_name = gate.label.split("#")[1]
             variable_value = gate.params[0]
@@ -213,26 +226,32 @@ def calculate_independent_variable_values(circuit: QuantumCircuit):
 def reevaluate_dependent_parameterised_gates(
         circuit: QuantumCircuit, independent_variable_values
 ):
-    for (gate, _, _) in circuit.data:
+    for i, circ_instr in enumerate(circuit.data):
+        gate = circ_instr.operation
         if gate.label is not None and "@" in gate.label:
             equation = gate.label.split("@")[1]
             result = parse_expr(equation, independent_variable_values)
             angle = float(result)
             gate.params[0] = angle
+            circuit.data[i] = circ_instr
 
 
 def add_subscript_to_all_variables(circuit: QuantumCircuit, subscript_value):
     substitution_dict = {}
-    for (gate, _, _) in circuit.data:
+    for i, circ_instr in enumerate(circuit.data):
+        gate = circ_instr.operation
         if gate.label is not None and "#" in gate.label:
             gate_type, variable_name = gate.label.split("#")
             gate.label = f"{gate_type}#{variable_name}_{subscript_value}"
+            circuit.data[i] = circ_instr
 
             substitution_dict[variable_name] = f"{variable_name}_{subscript_value}"
 
-    for (gate, _, _) in circuit.data:
+    for i, circ_instr in enumerate(circuit.data):
+        gate = circ_instr.operation
         if gate.label is not None and "@" in gate.label:
             gate_type, equation = gate.label.split("@")
             for old_name, new_name in substitution_dict.items():
                 equation = equation.replace(old_name, new_name)
             gate.label = f"{gate_type}@{equation}"
+            circuit.data[i] = circ_instr

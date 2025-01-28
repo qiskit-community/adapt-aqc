@@ -8,6 +8,7 @@ from qiskit.compiler import transpile
 from isl.backends.aer_mps_backend import AerMPSBackend
 from isl.backends.python_default_backends import MPS_SIM
 from isl.utils.utilityfunctions import get_distinct_items_and_degeneracies
+from isl.utils.circuit_operations import remove_unnecessary_2q_gates_from_circuit
 
 
 def general_grad_of_pairs(
@@ -137,8 +138,8 @@ def get_generators_and_degeneracies(
     """
     parameterised_gates = ["rx", "ry", "rz"]
     generator_circuits = []
-    for i, (operation, qubits, clbits) in enumerate(ansatz):
-        if operation.name in parameterised_gates:
+    for i, circ_instr in enumerate(ansatz):
+        if circ_instr.operation.name in parameterised_gates:
             if rotoselect:
                 # Get all Rx, Ry, Rz generators
                 for op in parameterised_gates:
@@ -148,7 +149,7 @@ def get_generators_and_degeneracies(
                     )
             else:
                 # Get the generator for the specific gate
-                generator = get_generator(ansatz, i, operation.name)
+                generator = get_generator(ansatz, i, circ_instr.operation.name)
                 generator_circuits.append(generator.inverse() if inverse else generator)
 
     distinct_generators, degeneracies = get_distinct_items_and_degeneracies(
@@ -161,7 +162,8 @@ def get_generators_and_degeneracies(
 def get_generator(ansatz: QuantumCircuit, index: int, op: str):
     """
     Given an ansatz consisting of only rx, ry, rz and cx gates, this function replaces the gate at
-    index=index with the generator of op, and then removes all rotation gates.
+    index=index with the generator of op, removes all other rotation gates, and removes consecutive
+    cx gates that would resolve to the identity.
 
     Example:
     index = 4, op = 'ry', ansatz:
@@ -190,7 +192,9 @@ def get_generator(ansatz: QuantumCircuit, index: int, op: str):
         raise ValueError("op must be one of rx, ry or rz")
 
     generator = QuantumCircuit(2)
-    for i, (operation, qubits, clbits) in enumerate(ansatz):
+    for i, circ_instr in enumerate(ansatz):
+        operation = circ_instr.operation
+        qubits = circ_instr.qubits
         if operation.name not in ["rx", "ry", "rz", "cx"]:
             raise ValueError("Circuit must only contain rx, ry, rz and cx gates")
         if i == index:
@@ -203,7 +207,7 @@ def get_generator(ansatz: QuantumCircuit, index: int, op: str):
         if operation.name == "cx":
             generator.cx(qubits[0], qubits[1])
 
-    # transpile to remove e.g. rotation gates of angle 0 or consecutive cx's
-    generator = transpile(generator, basis_gates=["x", "y", "z", "cx"])
+    # remove consecutive cx gates which resolve to the identity
+    remove_unnecessary_2q_gates_from_circuit(generator)
 
     return generator

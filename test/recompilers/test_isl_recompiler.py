@@ -122,7 +122,7 @@ class TestISL(TestCase):
         approx_circuit = result.circuit
         approx_overlap = result.overlap
         exact_overlap = result.exact_overlap
-        self.assertAlmostEquals(approx_overlap, exact_overlap, delta=1e-2)
+        self.assertAlmostEqual(approx_overlap, exact_overlap, delta=1e-2)
 
     def test_exact_overlap_calculated_correctly(self):
         qc = co.create_random_initial_state_circuit(3)
@@ -134,7 +134,7 @@ class TestISL(TestCase):
         approx_circuit = result.circuit
         exact_overlap1 = result.exact_overlap
         exact_overlap2 = co.calculate_overlap_between_circuits(approx_circuit, qc)
-        self.assertAlmostEquals(exact_overlap1, exact_overlap2, delta=1e-2)
+        self.assertAlmostEqual(exact_overlap1, exact_overlap2, delta=1e-2)
 
     def test_local_cost_sv(self):
         qc = co.create_random_initial_state_circuit(3)
@@ -274,7 +274,7 @@ class TestISL(TestCase):
             del compiled_qc.data[1:]
             overlap = np.abs(np.dot(Statevector(compiled_qc).conjugate(),
                                     Statevector(starting_ansatz_circuit))) ** 2
-            self.assertAlmostEquals(overlap, 1)
+            self.assertAlmostEqual(overlap, 1)
 
     def test_given_two_registers_when_recompiling_then_no_error(self):
         qr1 = QuantumRegister(2)

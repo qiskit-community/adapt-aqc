@@ -14,11 +14,16 @@ def find_previous_gate_on_qubit(circuit, gate_index):
     :param gate_index: The index of the specified gate
     :return: (previous_gate_object, index) (or (None,None) if no such gate)
     """
-    # circuit.data has form [(gate_object, [(register, qubit)], cargs)]
-    required_qubits = set(circuit.data[gate_index][1])
+    # circuit.data has form list[CircuitInstruction], with:
+    #   gate_object = CircuitInstruction.operation
+    #   [(register, qubit)] = CircuitInstruction.qubits
+    #   cargs = CircuitInstruction.clbits
+    required_qubits = set(circuit.data[gate_index].qubits)
     index = gate_index - 1
     while index >= 0:
-        gate, qargs, cargs = circuit.data[index]
+        circ_instr = circuit.data[index]
+        gate = circ_instr.operation
+        qargs = circ_instr.qubits
         # If at least one of the qargs (register, qubit) of the gate is the
         # same as the qargs of the specified circuit
         if len(required_qubits & set(qargs)) > 0:
@@ -107,7 +112,10 @@ def vertically_divide_circuit(circuit, max_depth_per_division=10):
             len(remaining_circuit.qubits) + len(remaining_circuit.clbits)
         )
         for i in range(len(remaining_circuit.data)):
-            instr, qargs, cargs = remaining_circuit.data[i]
+            circ_instr = remaining_circuit.data[i]
+            instr = circ_instr.operation
+            qargs = circ_instr.qubits
+            cargs = circ_instr.clbits
 
             next_gate_indexes = calculate_next_gate_indexes(
                 next_gate_indexes, remaining_circuit, qargs, cargs

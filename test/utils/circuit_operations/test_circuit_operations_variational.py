@@ -15,7 +15,9 @@ class TestCircuitOperationsVariational(TestCase):
         qc.cx(1, 0)
         qc.rz(3.1, 2)
         qc.rx(2.9, 2)
-        qc.data[-1][0].label = vconstants.FIXED_GATE_LABEL
+        instr = qc.data[-1]
+        instr.operation.label = vconstants.FIXED_GATE_LABEL
+        qc.data[-1] = instr
         qc.cx(1, 2)
         qc.ry(-1.4, 1)
         qc.measure_all()

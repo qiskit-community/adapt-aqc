@@ -5,7 +5,7 @@ from typing import Union
 import numpy as np
 from qiskit import ClassicalRegister, QuantumCircuit, QuantumRegister
 from qiskit import transpile as qiskit_transpile
-from qiskit.circuit import Clbit, Gate, Instruction, Qubit, Reset
+from qiskit.circuit import Clbit, Gate, Instruction, Qubit, Reset, CircuitInstruction
 from qiskit.quantum_info import random_statevector, Statevector
 
 from isl.utils.circuit_operations import (
@@ -139,19 +139,27 @@ def change_circuit_register(
             circuit.cregs = []
             circuit.add_register(new_circuit_reg)
 
-    for index, (gate, qargs, cargs) in enumerate(circuit.data):
+    for index, circ_instr in enumerate(circuit.data):
         if change_quantum:
             new_qargs = [
                 Qubit(new_circuit_reg, bit_mapping[find_bit_index(old_reg, qubit)])
-                for qubit in qargs
+                for qubit in circ_instr.qubits
             ]
-            circuit.data[index] = (gate, new_qargs, cargs)
+            circuit.data[index] = CircuitInstruction(
+                operation=circ_instr.operation,
+                qubits=new_qargs,
+                clbits=circ_instr.clbits
+            )
         else:
             new_cargs = [
                 Clbit(new_circuit_reg, bit_mapping[find_bit_index(old_reg, clbit)])
-                for clbit in cargs
+                for clbit in circ_instr.clbits
             ]
-            circuit.data[index] = (gate, qargs, new_cargs)
+            circuit.data[index] = CircuitInstruction(
+                operation=circ_instr.operation,
+                qubits=circ_instr.qubits,
+                clbits=new_cargs
+            )
 
 
 def add_to_circuit(
@@ -226,8 +234,8 @@ def extract_inner_circuit(circuit: QuantumCircuit, gate_range):
     [inner_circuit.add_register(qreg) for qreg in circuit.qregs]
     [inner_circuit.add_register(creg) for creg in circuit.cregs]
     for gate_index in range(*gate_range):
-        gate, qargs, cargs = circuit.data[gate_index]
-        inner_circuit.data.append((gate, qargs, cargs))
+        circ_instr = circuit.data[gate_index]
+        inner_circuit.data.append(circ_instr)
     return inner_circuit
 
 
@@ -278,13 +286,13 @@ def find_num_gates(
     num_1q_gates = 0
     for gate_index in range(*gate_range):
         if (
-            len(circuit.data[gate_index][1]) == 1
-            and len(circuit.data[gate_index][2]) == 0
+            len(circuit.data[gate_index].qubits) == 1
+            and len(circuit.data[gate_index].clbits) == 0
         ):
             num_1q_gates += 1
         elif (
-            len(circuit.data[gate_index][1]) == 2
-            and len(circuit.data[gate_index][2]) == 0
+            len(circuit.data[gate_index].qubits) == 2
+            and len(circuit.data[gate_index].clbits) == 0
         ):
             num_2q_gates += 1
     return num_2q_gates, num_1q_gates
@@ -319,16 +327,16 @@ def append_to_instruction(main_ins, ins_to_append):
 
 def remove_classical_operations(circuit: QuantumCircuit):
     gates_and_locations = []
-    for index, (gate, qargs, cargs) in list(enumerate(circuit.data))[::-1]:
-        if len(cargs) > 0:
-            gates_and_locations.append((index, (gate, qargs, cargs)))
+    for index, circ_instr in list(enumerate(circuit.data))[::-1]:
+        if len(circ_instr.clbits) > 0:
+            gates_and_locations.append((index, circ_instr))
             del circuit.data[index]
     return gates_and_locations[::-1]
 
 
 def add_classical_operations(circuit: QuantumCircuit, gates_and_locations):
-    for index, (gate, qargs, cargs) in gates_and_locations:
-        circuit.data.insert(index, (gate, qargs, cargs))
+    for index, circ_instr in gates_and_locations:
+        circuit.data.insert(index, circ_instr)
 
 
 def make_quantum_only_circuit(circuit: QuantumCircuit):
@@ -346,17 +354,19 @@ def make_quantum_only_circuit(circuit: QuantumCircuit):
 def circuit_by_inverting_circuit(circuit: QuantumCircuit):
     new_circuit = QuantumCircuit(*circuit.qregs, *circuit.cregs)
 
-    for (gate, qargs, cargs) in circuit.data[::-1]:
+    for circ_instr in circuit.data[::-1]:
+        gate = circ_instr.operation
         if not isinstance(gate, Gate):
-            new_circuit.data.append((gate, qargs, cargs))
+            new_circuit.data.append(circ_instr)
             continue
         if gate.label not in ["rx", "ry", "rz"]:
-            inverted_gate = gate.inverse()
+            inverted_gate = gate.inverse().to_mutable()
         else:
             inverted_gate = gate.copy()
             inverted_gate.params[0] *= -1
-        inverted_gate.to_mutable().label = gate.label
-        new_circuit.data.append((inverted_gate, qargs, cargs))
+        inverted_gate.label = gate.label
+        inverted_circ_instr = CircuitInstruction(operation=inverted_gate, qubits=circ_instr.qubits, clbits=circ_instr.clbits)
+        new_circuit.data.append(inverted_circ_instr)
     return new_circuit
 
 
@@ -429,7 +439,7 @@ def create_random_initial_state_circuit(num_qubits, return_statevector=False, se
 
     # Delete reset gates
     for i in range(len(qc.data) - 1, -1, -1):
-        gate, qargs, cargs = qc.data[i]
+        gate = qc.data[i].operation
         if isinstance(gate, Reset):
             del qc.data[i]
 
@@ -440,6 +450,6 @@ def create_random_initial_state_circuit(num_qubits, return_statevector=False, se
 
 
 def remove_reset_gates(circuit: QuantumCircuit):
-    for i, (gate, qargs, cargs) in list(enumerate(circuit.data))[::-1]:
-        if isinstance(gate, Reset):
+    for i, circ_instr in list(enumerate(circuit.data))[::-1]:
+        if isinstance(circ_instr.operation, Reset):
             del circuit.data[i]

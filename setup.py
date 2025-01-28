@@ -15,9 +15,9 @@ setup(
     long_description=open("README.md").read(),
     long_description_content_type='text/markdown',
     install_requires=[
-        "qiskit~=1.0.2",
-        "qiskit_aer~=0.13.1",
-        "qiskit_experiments~=0.6.0",
+        "qiskit~=1.3.1",
+        "qiskit_aer~=0.16.0",
+        "qiskit_experiments~=0.6.1",
         "numpy",
         "scipy",
         "openfermion~=1.6",

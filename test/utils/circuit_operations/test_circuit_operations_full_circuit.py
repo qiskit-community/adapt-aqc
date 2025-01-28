@@ -316,7 +316,7 @@ class TestOperationsFullCircuit(TestCase):
         circuit.cx(0, 2)
         circuit.h(0)
         circuit.cx(2, 1)
-        circuit.rx(2.3, 1)
+        circuit.rx(2.3, 1, label="my_label")
 
         inverted_circuit = co.circuit_by_inverting_circuit(circuit.copy())
         double_inverted_circuit = co.circuit_by_inverting_circuit(

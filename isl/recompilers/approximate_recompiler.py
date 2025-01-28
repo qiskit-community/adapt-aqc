@@ -314,14 +314,14 @@ class ApproximateRecompiler(ABC):
                 last_recompiled_subcircuit,
                 self.variational_circuit_range(),
                 True,
-                {"backend": self.backend},
+                {"backend": self.backend.simulator},
             )
             co.add_to_circuit(
                 self.full_circuit,
                 subcircuit,
                 self.variational_circuit_range()[1],
                 True,
-                {"backend": self.backend},
+                {"backend": self.backend.simulator}
             )
             partial_recompilation_result = self.recompile()
             last_recompiled_subcircuit = partial_recompilation_result.circuit

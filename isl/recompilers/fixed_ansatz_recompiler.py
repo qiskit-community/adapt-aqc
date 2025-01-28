@@ -4,12 +4,14 @@ import timeit
 
 import numpy as np
 from qiskit import QuantumCircuit
+from qiskit.providers import Backend
 from qiskit_aer import Aer
 
 import isl.utils.circuit_operations as co
 import isl.utils.constants as vconstants
 from isl.utils.constants import QiskitMPS
 from isl.recompilers.approximate_recompiler import ApproximateRecompiler
+from isl.backends.aer_sv_backend import AerSVBackend, AQCBackend
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +63,7 @@ class FixedAnsatzRecompiler(ApproximateRecompiler):
         optimization_algorithm_kind=vconstants.ALG_ROTOSOLVE,
         optimization_algorithm_identifier=None,
         optimization_algorithm_kwargs=None,
-        backend=Aer.get_backend("statevector_simulator"),
+        backend: AQCBackend = AerSVBackend(),
         execute_kwargs=None,
         general_initial_state=False,
         starting_circuit=None,
@@ -108,7 +110,7 @@ class FixedAnsatzRecompiler(ApproximateRecompiler):
             ansatz_inv,
             location=g_range()[1],
             transpile_before_adding=True,
-            transpile_kwargs={"backend": self.backend, "optimization_level": 0},
+            transpile_kwargs={"backend": self.backend.simulator, "optimization_level": 0},
             qubit_subset=self.qubit_subset_to_recompile,
         )
         if initial_params is not None:

@@ -286,7 +286,7 @@ class CostMinimiser:
             sample = list(range(*indexes_to_modify))
 
         for index in sample:
-            old_gate = self.full_circuit.data[index][0]
+            old_gate = self.full_circuit.data[index].operation
 
             if change_1q_gate_kind and co.is_supported_1q_gate(old_gate):
                 cost = self.replace_with_best_1q_gate(index)
@@ -332,7 +332,7 @@ class CostMinimiser:
         :return: best_gate_angle, best_cost
         """
         # Remember original gate
-        old_gate, qargs, cargs = self.full_circuit.data[gate_index]
+        circ_instr = self.full_circuit.data[gate_index]
 
         costs = []
         angles_to_run = [0, np.pi / 2, -np.pi / 2]
@@ -346,7 +346,7 @@ class CostMinimiser:
         theta_min, cost_min = minimum_of_sinusoidal(costs[0], costs[1], costs[2])
 
         # Replace with original gate
-        self.full_circuit.data[gate_index] = (old_gate, qargs, cargs)
+        self.full_circuit.data[gate_index] = circ_instr
         return theta_min, cost_min
 
     def _update_gradient_of_circuit(self, grad, method="parameter_shift"):
@@ -358,7 +358,7 @@ class CostMinimiser:
         angles = co.find_angles_in_circuit(self.full_circuit)
         angle_index = 0
         for gate_index in range(*self.variational_circuit_range()):
-            gate, _, _ = self.full_circuit.data[gate_index]
+            gate = self.full_circuit.data[gate_index].operation
             if co.is_supported_1q_gate(gate):
                 # Calculate partial derivative
                 if method == "parameter_shift":

@@ -94,7 +94,7 @@ def remove_unnecessary_1q_gates_from_circuit(
 
     # Reverse iterate over all gates
     for gate_index in range(gate_range[1] - 1, gate_range[0] - 1, -1):
-        gate, _, _ = circuit.data[gate_index]
+        gate = circuit.data[gate_index].operation
         if (
             gate_index in indexes_to_remove
             or gate_index in indexes_dealt_with
@@ -113,7 +113,7 @@ def remove_unnecessary_1q_gates_from_circuit(
         # theta) * Rz(lambda)
         # RXGate, RYGate, RZGate do not implement to_matrix() but their
         # definitions (U3Gate or U1Gate) do
-        matrix = circuit.data[gate_index][0].to_matrix()
+        matrix = circuit.data[gate_index].operation.to_matrix()
         prev_gate_indexes = [gate_index]
         prev_gate, prev_gate_index = find_previous_gate_on_qubit(circuit, gate_index)
 
@@ -136,7 +136,7 @@ def remove_unnecessary_1q_gates_from_circuit(
             else:
                 prev_gate_indexes += [prev_gate_index]
                 prev_gate_matrix = (
-                    circuit.data[prev_gate_index][0].to_matrix()
+                    circuit.data[prev_gate_index].operation.to_matrix()
                 )
                 matrix = np.matmul(matrix, prev_gate_matrix)
             prev_gate, prev_gate_index = find_previous_gate_on_qubit(
@@ -174,7 +174,9 @@ def remove_unnecessary_2q_gates_from_circuit(circuit, gate_range=None):
 
     # Reverse iterate over all gates
     for gate_index in range(gate_range[1] - 1, gate_range[0] - 1, -1):
-        gate, qargs, _ = circuit.data[gate_index]
+        circ_instr = circuit.data[gate_index]
+        gate = circ_instr.operation
+        qargs = circ_instr.qubits
         if gate.name not in ["cx", "cy", "cz"]:
             continue
         if gate_index in indexes_to_remove or gate_index in indexes_dealt_with:
@@ -189,7 +191,7 @@ def remove_unnecessary_2q_gates_from_circuit(circuit, gate_range=None):
             or prev_gate_index in indexes_dealt_with
         ):
             continue
-        if circuit.data[prev_gate_index][1] == qargs:
+        if circuit.data[prev_gate_index].qubits == qargs:
             indexes_to_remove += [gate_index, prev_gate_index]
     for index in sorted(indexes_to_remove, reverse=True):
         del circuit.data[index]

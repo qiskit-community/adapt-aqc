@@ -212,9 +212,11 @@ class ISLRecompiler(ApproximateRecompiler):
                 co.add_dressed_cnot(qc, 0, 1, True)
             return qc
         else:
-            for gate in custom_layer_2q_gate:
-                if gate[0].label is None and gate[0].name in co.SUPPORTED_1Q_GATES:
-                    gate[0].label = gate[0].name
+            for i, circ_instr in enumerate(custom_layer_2q_gate):
+                gate = circ_instr.operation
+                if gate.label is None and gate.name in co.SUPPORTED_1Q_GATES:
+                    gate.label = gate.name
+                    custom_layer_2q_gate.data[i] = circ_instr
             return custom_layer_2q_gate
 
     def get_layer_2q_gate(self, layer_index):
