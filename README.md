@@ -1,33 +1,23 @@
 
-# Incremental Structure Learning (ISL)
+# Adaptive approximate quantum compiling (ADAPT-AQC)
 
-An open-source implementation of ISL [1], an approximate quantum compiling (AQC) algorithm  for any circuit acting
-starting from the |0>|0>...|0> state. ISL uses the entanglement structure of the target state to adaptively build
-an ansatz, often resulting in shallower solutions than fixed-ansatz compilers.
+An open-source implementation of ADAPT-AQC [1], an approximate quantum compiling (AQC) and Matrix Product state (MPS) preparation algorithm.
+As supposed to assuming any particular ansatz structure, ADAPT-AQC adaptively builds
+an ansatz, adding a new two-qubit unitary every iteration.
 
-[1] B Jaderberg, A Agarwal, K Leonhardt, M Kiffner, D Jaksch, 2020 Quantum Sci. Technol. 5 034015
+ADAPT-AQC is the successor to ISL [2], using much of the same core code, routine and optimiser. The most significant difference
+however is its use of MPS simulators. This allows it to compile circuits at 50+ qubits, as well as directly prepare MPSs.
 
-## Contributing to ISL
+[1] https://arxiv.org/abs/2503.09683 \
+[2] https://github.com/abhishekagarwal2301/isl
 
-To make changes to ISL, first clone the repository.
-Then navigate to your local copy, create a Python environment and install the required dependencies
+## Installation
 
-```
-pip install .
-```
-
-Certain features of ISL also require additional dependencies, namely `nlopt`.
-
-You can check your development environment is ready by successfully running the scripts in `/isl/examples/`.
-
-## Installing ISL for another project
-
-Whilst a public version of ISL exists through `pip install quantum-isl`, this does not (yet) include the changes made
-in this repository. To use this internally developed version you have two options.
+This repository can be easily installed using `pip`. You have two options:
 
 Use a stable version based on the last commit to `master`
 ```
-pip install git+ssh://git@github.com/bjader/mps-isl.git
+pip install git+ssh://git@github.com/bjader/adapt-aqc.git
 ```
 
 Use an editable local version (after already cloning this repository)
@@ -35,91 +25,81 @@ Use an editable local version (after already cloning this repository)
 pip install -e PATH_TO_LOCAL_CLONE
 ```
 
-## Using ISL
+## Contributing
 
-### Minimal example
-A circuit can be recompiled and the result accessed with only 3 lines if using the 
+To make changes to ADAPT-AQC, first clone the repository.
+Then navigate to your local copy, create a Python environment and install the required dependencies
+
+```
+pip install .
+```
+
+You can check your development environment is ready by successfully running the scripts in `/examples/`.
+
+## Minimal examples
+
+### Compiling with statevector simulator
+A circuit can be compiled and the result accessed with only 3 lines if using the 
 default settings.
+
 ```python
-from isl.recompilers import ISLRecompiler
+from adaptaqc.compilers import AdaptCompiler
 from qiskit import QuantumCircuit
 
 # Setup the circuit
 qc = QuantumCircuit(3)
-qc.rx(1.23,0)
-qc.cx(0,1)
-qc.ry(2.5,1)
-qc.rx(-1.6,2)
-qc.ccx(2,1,0)
+qc.rx(1.23, 0)
+qc.cx(0, 1)
+qc.ry(2.5, 1)
+qc.rx(-1.6, 2)
+qc.ccx(2, 1, 0)
 
-# Recompile
-recompiler = ISLRecompiler(qc)
-result = recompiler.recompile()
-recompiled_circuit = result.circuit
+# Compile
+compiler = AdaptCompiler(qc)
+result = compiler.compile()
+compiled_circuit = result.circuit
 
-# See the recompiled output
-print(recompiled_circuit)
+# See the compiled output
+print(compiled_circuit)
+```
+
+### Compiling matrix product states
+
+Circuits beyond the size accessible to statevector simulators can be compiled via their 
+representation as matrix product states. To give a very simple example where most the qubits are 
+left in the $|0\rangle$ state.
+
+```python
+from qiskit import QuantumCircuit
+
+from adaptaqc.backends.aer_mps_backend import AerMPSBackend
+from adaptaqc.compilers import AdaptCompiler
+
+n = 50
+qc = QuantumCircuit(n)
+qc.h(0)
+qc.cx(0, 1)
+qc.h(2)
+qc.cx(2, 3)
+qc.h(range(4, n))
+
+# Create compiler with the default MPS simulator, which has very minimal truncation.
+adapt_compiler = AdaptCompiler(qc, backend=AerMPSBackend())
+
+result = adapt_compiler.compile()
+print(f"Overlap between circuits is {result.overlap}")
 ```
 
 ### Specifying additional configuration
 
-The default settings can be changed by specifying arguments when
-building `ISLRecompiler()`. Many of the configuration options are bundled into the 
-`ISLConfig` class.
-
-```python
-from isl.recompilers import ISLRecompiler, ISLConfig
-from qiskit.circuit.random import random_circuit
-
-qc = random_circuit(5, 5, seed=1)
-
-for i, (instr, _, _) in enumerate(qc.data):
-    if instr.name == "id":
-        qc.data.__delitem__(i)
-
-# Recompile
-config = ISLConfig(sufficient_cost=1e-2, max_2q_gates=25)
-recompiler = ISLRecompiler(qc, entanglement_measure='EM_TOMOGRAPHY_CONCURRENCE', isl_config=config)
-result = recompiler.recompile()
-recompiled_circuit = result.circuit
-
-# See the original circuit
-print(qc)
-
-# See the recompiled solution
-print(recompiled_circuit)
-```
-
-Here we have specified a number of things
-* `sufficient_cost=1e-2`: The state produced by the recompiled solution will have an overlap of at least 99% with respect to the state produced by the original circuit.
-* `max_2q_gates=25`: If our solution contains more than 25 CNOT gates, return early. Setting this to the number of 2-qubit gates in the original circuit provides a useful upper limit.
-* `entanglement_measure`: This argument on the recompiler itself specifies the type of entanglement measure used when deciding which qubits to add the next layer to.
-
-More configuration options can be explored in the documentation of `ISLConfig` and `ISLRecompiler`.
-
-### Comparing quantum resources
-Taking the above example, lets compare the number of gates and circuit depth before and after recompilation.
-```python
-from qiskit import transpile
-
-# Transpile the original circuits to the common basis set
-qc_in_basis_gates = transpile(qc, basis_gates=['u1', 'u2', 'u3', 'cx'], optimization_level=3)
-print(qc_in_basis_gates.count_ops())
-print(qc_in_basis_gates.depth())
-
-# Compare with recompiled circuit
-print(recompiled_circuit.count_ops())
-print(recompiled_circuit.depth())
-```
-In the above example, the original circuit contains 25 CNOT gates and 
-32 single-qubit gates with a depth of 33. By comparison, the recompiled solution
-prepares the same state to 99.9% overlap with on average 6 CNOT gates and
-8 two-qubit gates with a depth of 9 (average tested over 10 runs).
+For more advanced examples, please see `examples/advanced_mps_example.py` and 
+`advanced_sv_example.py`.
+For a full overview of the different configuration options, on top of the documentation, see
+`docs/running_options_explained.md`.
 
 ## Citing usage
 
-We respectfully ask any publication, project or whitepaper using ISL to cite the original literature:
+We respectfully ask any publication, project or whitepaper using ADAPT-AQC to cite the following 
+work:
 
-B Jaderberg, A Agarwal, K Leonhardt, M Kiffner, D Jaksch, 2020 Quantum Sci. Technol. 5 034015.
-https://doi.org/10.1088/2058-9565/ab972b
-
+[Jaderberg, B., Pennington, G., Marshall, K.V., Anderson, L.W., Agarwal, A., Lindoy, L.P., Rungger, I., Mensa, S. and Crain, J., 2025. Variational preparation of normal matrix product states on quantum computers. arXiv preprint arXiv:2503.09683](https://arxiv.org/abs/2503.09683)

@@ -3,7 +3,7 @@ from unittest import TestCase
 import numpy as np
 from qiskit import QuantumCircuit
 
-import isl.utils.circuit_operations as co
+import adaptaqc.utils.circuit_operations as co
 
 
 class TestCircuitOperationsOptimisation(TestCase):

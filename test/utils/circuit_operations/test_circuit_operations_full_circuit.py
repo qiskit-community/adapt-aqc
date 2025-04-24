@@ -2,11 +2,11 @@ from unittest import TestCase
 
 import numpy as np
 from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister
-from qiskit.quantum_info import Statevector
 from qiskit.circuit import Instruction
 from qiskit.compiler import transpile
+from qiskit.quantum_info import Statevector
 
-import isl.utils.circuit_operations as co
+import adaptaqc.utils.circuit_operations as co
 
 
 def create_test_circuit_1(qr):
@@ -64,12 +64,8 @@ class TestOperationsFullCircuit(TestCase):
         creg = ClassicalRegister(2, "c0")
         qc = QuantumCircuit(qreg, creg)
 
-        self.assertEqual(
-            co.find_register(qc, qc.qubits[0]), QuantumRegister(2, "q1")
-        )
-        self.assertEqual(
-            co.find_register(qc, qc.clbits[0]), ClassicalRegister(2, "c0")
-        )
+        self.assertEqual(co.find_register(qc, qc.qubits[0]), QuantumRegister(2, "q1"))
+        self.assertEqual(co.find_register(qc, qc.clbits[0]), ClassicalRegister(2, "c0"))
 
     def test_find_bit_index(self):
         qreg = QuantumRegister(2)
@@ -146,17 +142,11 @@ class TestOperationsFullCircuit(TestCase):
             qubit_subset=[1, 2],
         )
         self.assertAlmostEqual(
-            co.calculate_overlap_between_circuits(
-                left_circuit, expected_full_circuit
-            ),
+            co.calculate_overlap_between_circuits(left_circuit, expected_full_circuit),
             1,
         )
-        self.assertEqual(
-            len(expected_full_circuit.data), len(left_circuit.data)
-        )
-        self.assertTrue(
-            co.are_circuits_identical(left_circuit, expected_full_circuit)
-        )
+        self.assertEqual(len(expected_full_circuit.data), len(left_circuit.data))
+        self.assertTrue(co.are_circuits_identical(left_circuit, expected_full_circuit))
 
     def test_remove_inner_circuit(self):
         partial_circuit, qr = create_test_circuit_2()
@@ -166,22 +156,16 @@ class TestOperationsFullCircuit(TestCase):
         gate_range_to_remove = (2, 7)
         co.remove_inner_circuit(full_circuit, gate_range_to_remove)
         self.assertEqual(len(full_circuit.data), len(partial_circuit.data))
-        self.assertTrue(
-            co.are_circuits_identical(partial_circuit, full_circuit)
-        )
+        self.assertTrue(co.are_circuits_identical(partial_circuit, full_circuit))
 
     def test_extract_inner_circuit(self):
         full_circuit, partial_circuit = create_test_circuit_3()
         partial_circuit.ry(0.2, 1)
 
         gate_range_to_extract = (2, 7)
-        inner_circuit = co.extract_inner_circuit(
-            full_circuit, gate_range_to_extract
-        )
+        inner_circuit = co.extract_inner_circuit(full_circuit, gate_range_to_extract)
         self.assertLess(len(inner_circuit.data), len(full_circuit.data))
-        self.assertTrue(
-            co.are_circuits_identical(inner_circuit, partial_circuit)
-        )
+        self.assertTrue(co.are_circuits_identical(inner_circuit, partial_circuit))
 
     def test_replace_inner_circuit(self):
         full_circuit, partial_circuit = create_test_circuit_3()
@@ -189,9 +173,7 @@ class TestOperationsFullCircuit(TestCase):
 
         gate_range_to_replace = (2, 7)
         new_circuit = full_circuit.copy()
-        co.replace_inner_circuit(
-            new_circuit, partial_circuit, gate_range_to_replace
-        )
+        co.replace_inner_circuit(new_circuit, partial_circuit, gate_range_to_replace)
         self.assertIsInstance(new_circuit, QuantumCircuit)
         self.assertFalse(co.are_circuits_identical(new_circuit, full_circuit))
 
@@ -243,12 +225,8 @@ class TestOperationsFullCircuit(TestCase):
         qc.rx(0.3, 1)
 
         self.assertEqual(co.find_num_gates(None), (0, 0))
-        self.assertEqual(
-            co.find_num_gates(qc, False, gate_range=(2, 9)), (4, 3)
-        )
-        self.assertEqual(
-            co.find_num_gates(qc, True, {"optimization_level": 1}), (4, 5)
-        )
+        self.assertEqual(co.find_num_gates(qc, False, gate_range=(2, 9)), (4, 3))
+        self.assertEqual(co.find_num_gates(qc, True, {"optimization_level": 1}), (4, 5))
 
     def test_append_to_instruction(self):
         full_circuit, qr = create_test_circuit_2()
@@ -287,22 +265,16 @@ class TestOperationsFullCircuit(TestCase):
         classical_gates = classical_and_quantum_circuit.copy()
         classical_gates = co.remove_classical_operations(classical_gates)
         co.add_classical_operations(quantum_circuit, classical_gates)
+        self.assertTrue(any(gate[0].name == "measure" for gate in quantum_circuit.data))
         self.assertTrue(
-            any(gate[0].name == "measure" for gate in quantum_circuit.data)
-        )
-        self.assertTrue(
-            co.are_circuits_identical(
-                quantum_circuit, classical_and_quantum_circuit
-            )
+            co.are_circuits_identical(quantum_circuit, classical_and_quantum_circuit)
         )
 
     def test_make_quantum_only_circuit(self):
         creg, qreg, classical_and_quantum_circuit = create_test_circuit_4()
         classical_and_quantum_circuit.measure(0, 0)
 
-        classical_circuit = co.make_quantum_only_circuit(
-            classical_and_quantum_circuit
-        )
+        classical_circuit = co.make_quantum_only_circuit(classical_and_quantum_circuit)
         self.assertIsInstance(classical_circuit, QuantumCircuit)
         self.assertLess(
             len(classical_circuit.data), len(classical_and_quantum_circuit.data)
@@ -319,12 +291,8 @@ class TestOperationsFullCircuit(TestCase):
         circuit.rx(2.3, 1, label="my_label")
 
         inverted_circuit = co.circuit_by_inverting_circuit(circuit.copy())
-        double_inverted_circuit = co.circuit_by_inverting_circuit(
-            inverted_circuit
-        )
-        self.assertTrue(
-            co.are_circuits_identical(circuit, double_inverted_circuit)
-        )
+        double_inverted_circuit = co.circuit_by_inverting_circuit(inverted_circuit)
+        self.assertTrue(co.are_circuits_identical(circuit, double_inverted_circuit))
 
     def test_initial_state_to_circuit_and_unroll_to_basis_gates_and_remove_reset_gates(
         self,
@@ -344,15 +312,11 @@ class TestOperationsFullCircuit(TestCase):
         self.assertLess(overlap_minus_1, 1e-3)
 
     def test_create_random_initial_state_circuit(self):
-        qc, sv = co.create_random_initial_state_circuit(
-            3, return_statevector=True
-        )
+        qc, sv = co.create_random_initial_state_circuit(3, return_statevector=True)
 
         self.assertIsInstance(qc, QuantumCircuit)
         self.assertIsInstance(sv, np.ndarray)
-        self.assertEqual(
-            co.find_register(qc, qc.qubits[0]), QuantumRegister(3, "q")
-        )
+        self.assertEqual(co.find_register(qc, qc.qubits[0]), QuantumRegister(3, "q"))
 
     def test_are_circuits_identical(self):
         qc1 = co.create_random_initial_state_circuit(3)

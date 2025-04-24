@@ -8,9 +8,9 @@ from qiskit.quantum_info import Statevector
 from tenpy import MPS, SpinChain
 from tenpy.models import XXZChain
 
-import isl.utils.circuit_operations as co
-from isl.backends.python_default_backends import QASM_SIM, SV_SIM
-from isl.utils.utilityfunctions import (
+import adaptaqc.utils.circuit_operations as co
+from adaptaqc.backends.python_default_backends import QASM_SIM, SV_SIM
+from adaptaqc.utils.utilityfunctions import (
     _expectation_value_of_qubit,
     expectation_value_of_qubits,
     expectation_value_of_qubits_mps,
@@ -28,7 +28,7 @@ def get_random_tenpy_mps(num_sites=4, chi=None):
     model_params = dict(L=num_sites, conserve="None")
 
     model = SpinChain(model_params)
-    tenpy_chi = 2**(num_sites // 2) if chi is None else chi
+    tenpy_chi = 2 ** (num_sites // 2) if chi is None else chi
     tenpy_mps = MPS.from_desired_bond_dimension(model.lat.mps_sites(), tenpy_chi)
     return tenpy_mps
 
@@ -181,7 +181,6 @@ class TestUtilityFunctions(TestCase):
 
 
 class TestExpectationValueOfQubitsMPS(TestCase):
-
     def test_given_circuit_when_mps_expectation_value_then_callable_twice(self):
         """
         Qiskit cannot create a MPS for the same circuit object twice. This test checks that a copy
@@ -211,7 +210,6 @@ class TestExpectationValueOfQubitsMPS(TestCase):
 
 
 class TestMultiQubitGateDepth(TestCase):
-
     def test_given_no_gates_then_zero(self):
         qc = QuantumCircuit(1)
         self.assertEqual(multi_qubit_gate_depth(qc), 0)
@@ -255,7 +253,6 @@ class TestMultiQubitGateDepth(TestCase):
 
 
 class TestTenpyToQiskitMPS(TestCase):
-
     def test_given_tenpy_mps_then_not_qiskit_mps(self):
         tenpy_mps = get_random_tenpy_mps()
         is_qiskit_mps = mpsops.check_mps(tenpy_mps)
@@ -342,7 +339,6 @@ class TestTenpyToQiskitMPS(TestCase):
 
 
 class TestTenpyChi1MPSToCircuit(TestCase):
-
     def test_given_random_tenpy_mps_when_map_to_circuit_then_correct_number_of_gates(
         self,
     ):
@@ -388,13 +384,14 @@ class TestTenpyChi1MPSToCircuit(TestCase):
             "trunc_params": {"chi_max": 1},
             "max_trunc_err": 1,
             "max_sweeps": 100,
-            "min_sweeps": 50,}
+            "min_sweeps": 50,
+        }
         mps.compress(compression_options)
         qc = tenpy_chi_1_mps_to_circuit(mps)
         mps_from_tenpy = tenpy_to_qiskit_mps(mps)
         mps_from_qc = mpsops.mps_from_circuit(qc)
 
-        fidelity = np.abs(mpsops.mps_dot(mps_from_qc, mps_from_tenpy))**2
+        fidelity = np.abs(mpsops.mps_dot(mps_from_qc, mps_from_tenpy)) ** 2
         self.assertAlmostEqual(fidelity, 1)
 
     def test_given_neel_state_when_map_to_circuit_then_correct(self):
@@ -409,7 +406,6 @@ class TestTenpyChi1MPSToCircuit(TestCase):
 
 
 class TestQiskitToTenpyMPS(TestCase):
-
     def test_given_qiskit_to_tenpy_mps_then_mps_normalised(self):
         for prep in [True, False]:
             qc = co.create_random_initial_state_circuit(3)
@@ -470,7 +466,9 @@ class TestQiskitToTenpyMPS(TestCase):
             tenpy_mps = qiskit_to_tenpy_mps(qiskit_mps)
             qiskit_mps_reconstructed = tenpy_to_qiskit_mps(tenpy_mps)
             if prep:
-                qiskit_mps_reconstructed = mpsops._preprocess_mps(qiskit_mps_reconstructed)
+                qiskit_mps_reconstructed = mpsops._preprocess_mps(
+                    qiskit_mps_reconstructed
+                )
 
             fidelity = (
                 np.abs(

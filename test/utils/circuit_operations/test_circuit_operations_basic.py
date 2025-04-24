@@ -5,8 +5,8 @@ from qiskit import QuantumCircuit, QuantumRegister
 from qiskit.circuit import Gate
 from qiskit.circuit.library import RXGate
 
-import isl.utils.constants as vconstants
-import isl.utils.circuit_operations as co
+import adaptaqc.utils.circuit_operations as co
+import adaptaqc.utils.constants as vconstants
 
 
 def create_circuit_with_dep_and_indep_params():
@@ -15,9 +15,7 @@ def create_circuit_with_dep_and_indep_params():
     gate_2 = co.create_independent_parameterised_gate("ry", "theta_2", 0.6)
     gate_3 = co.create_independent_parameterised_gate("rz", "theta_3", -0.1)
     # create a gate which depends on gate_1
-    gate_4 = co.create_dependent_parameterised_gate(
-        "rz", "-2*theta_1+0.3", 0
-    )
+    gate_4 = co.create_dependent_parameterised_gate("rz", "-2*theta_1+0.3", 0)
     co.add_gate(qc, gate_1, qubit_indexes=[0])
     co.add_gate(qc, gate_2, qubit_indexes=[0])
     co.add_gate(qc, gate_3, qubit_indexes=[0])
@@ -90,9 +88,7 @@ class TestCircuitOperationsBasic(TestCase):
     def test_is_supported_1q_gate(self):
         assert co.is_supported_1q_gate(Gate("rx", 1, [0.5], "rx")) is True
         assert (
-            co.is_supported_1q_gate(
-                Gate("rx", 1, [0.5], vconstants.FIXED_GATE_LABEL)
-            )
+            co.is_supported_1q_gate(Gate("rx", 1, [0.5], vconstants.FIXED_GATE_LABEL))
             is False
         )
         assert co.is_supported_1q_gate(Gate("cx", 2, [])) is False

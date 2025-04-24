@@ -17,13 +17,13 @@ deep learning (https://arxiv.org/abs/1511.06807).
 ## add_local_minima_to_cost
 
 **What is it:** \
-If we have identified that ISL is stuck in a local minima, we could save the MPS $|LM\rangle$ at
+If we have identified that ADAPT-AQC is stuck in a local minima, we could save the MPS $|LM\rangle$ at
 this point. Then, we could explicitly add to the cost function a new term that would be the overlap
 of the trial solution to this MPS. So the cost would then be
 
 $$C = 1 - |\langle 0 | V^\dagger U|0\rangle|^2 + |\langle LM| V^\dagger U|0\rangle|^2$$$
 
-Since the cost is being minimised, this encourages ISL to minimise the overlap between the current
+Since the cost is being minimised, this encourages ADAPT-AQC to minimise the overlap between the current
 solution $V^\dagger U|0\rangle$ and the state that was in a local minima $|LM\rangle$.
 
 **What problem it aims to solve:** \
@@ -37,12 +37,12 @@ can repel the optimisation away from this area of the cost landscape.
 
 **What is it:** \
 Gradient descent is the most popular optimisation algorithm in classical and quantum ML alike. At
-the moment, ISL does not use gradient descent and instead uses non-gradient based sequential
+the moment, ADAPT-AQC does not use gradient descent and instead uses non-gradient based sequential
 optimisation in the form of the Rotosolve/Rotoselect algorithms.
 
 **What problem it aims to solve:** \
 Gradient descent was originally not used due to fears over encountering barren plateaus. However,
-when running ISL fully classically, barren plateaus should not be an issue as we can access
+when running ADAPT-AQC fully classically, barren plateaus should not be an issue as we can access
 observables with exponential precision. The benefit of gradient descent would be a potentially
 large performance improvement, as the gradients of each parameter can be calculated independently
 of one another. Note, however, that this improvement would be mostly dependent on calculating

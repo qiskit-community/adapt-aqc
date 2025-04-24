@@ -2,8 +2,8 @@ from unittest import TestCase
 
 from qiskit import QuantumCircuit, QuantumRegister
 
-import isl.utils.constants as vconstants
-import isl.utils.circuit_operations as co
+import adaptaqc.utils.circuit_operations as co
+import adaptaqc.utils.constants as vconstants
 
 
 class TestCircuitOperationsVariational(TestCase):

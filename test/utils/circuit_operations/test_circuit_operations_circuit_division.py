@@ -3,7 +3,7 @@ from unittest import TestCase
 from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister
 from qiskit.circuit.library import RYGate, CXGate, CZGate
 
-import isl.utils.circuit_operations as co
+import adaptaqc.utils.circuit_operations as co
 
 
 class TestCircuitOperationsCircuitDivision(TestCase):

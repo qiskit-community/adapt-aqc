@@ -1,16 +1,24 @@
-This document is to give a further in-detail explanation about the different ISL options made
-available through `ISLConfig` and `ISLRecompiler`.
+This document is to give a further in-detail explanation about the different ADAPT-AQC options made
+available through `AdaptConfig` and `AdaptCompiler`.
 
-# ISLConfig()
+# AdaptConfig()
+
+## method="general_gradient"
+
+This is the core heuristics of ADAPT-AQC, whereby the next two-qubit unitary is placed on the 
+pair of qubits which would give the largest cost gradient $\Vert\vec{\nabla} C\Vert$.
+For more details please see Appendix A of https://arxiv.org/abs/2503.09683.
 
 ## method="ISL"
 
 **What is it:** \
-This is the core heuristic of ISL. When using this method, the ansatz is adaptively constructed
-by prioritising pairs of qubits which have larger pairwise entanglement.
+When using this method, the ansatz is adaptively constructed
+by prioritising pairs of qubits which have larger pairwise entanglement. This is the original
+heuristic from https://github.com/abhishekagarwal2301/isl which has been kept as the default here
+as it is the only one which supports all backends.
 
 When
-`ISLConfig.reuse_exponent = 0`, which is the default setting, the pair with the largest
+`AdaptConfig.reuse_exponent = 0`, which is the default setting, the pair with the largest
 entanglement is always picked, except for picking the same pair twice. For any other
 value of `reuse_exponent`, the entanglement of the pair is weighted against how
 recently a layer has been applied to it.
@@ -31,7 +39,7 @@ This is another mode of operation for compiling. When using this method, the ans
 constructed by prioritising pairs which have smallest summed $\hat{\sigma}_z$ expectation values (
 i.e., the closest to the minimum value of -2)
 
-For the default value of `ISLConfig.expectation_reuse_exponent = 1` the pair with the smallest
+For the default value of `AdaptConfig.expectation_reuse_exponent = 1` the pair with the smallest
 expectation value is also weighted against how recently a layer has been applied to it.
 
 **What problem it aims to solve:** \
@@ -42,7 +50,7 @@ an expectation value of $\langle0|\hat{\sigma}_z|0\rangle = 1$
 ## bad_qubit_pair_memory
 
 **What is it:** \
-For the ISL method, if acting on a qubit pair leads to entanglement increasing, it is labelled a
+For the ADAPT-AQC method, if acting on a qubit pair leads to entanglement increasing, it is labelled a
 "bad pair". After this, for a number of layers corresponding to the bad_qubit_pair_memory,
 this pair will not be selected.
 
@@ -53,7 +61,7 @@ does
 not directly minimise entanglement. This means that in certain situations, the optimal angles of an
 ansatz layer could actually increase the entanglement. This would lead to a high priority for acting
 on that pair of qubits in the near-future, despite the fact that it was recently optimised. This
-can lead ISL to get stuck, particularly if there are several unconnected bad qubit pairs. The use
+can lead ADAPT-AQC to get stuck, particularly if there are several unconnected bad qubit pairs. The use
 of `bad_qubit_pair_memory` is to make sure that by the time the pair is acted on again,
 the state of connected qubits has sufficiently changed so that optimising the bad pairs will lead
 to new optimal angles.
@@ -61,14 +69,14 @@ to new optimal angles.
 ## reuse_exponent
 
 **What is it:** \
-For the ISL, expectation or general_gradient methods, this controls how much priority should be given to picking qubits not recently
+For the ADAPT-AQC, expectation or general_gradient methods, this controls how much priority should be given to picking qubits not recently
 acted on. Specifically, given a qubit pair has been last acted on $l$ layers ago, it is given a
 reuse priority $P_r$ of
 
 $$P_r = 1-2^{\frac{-l}{k}},$$
 
 where $k$ is the value of `reuse_exponent`. This is then multiplied with the 
-entanglement measure or gradient (for ISL and general_gradient respectively) to produce the 
+entanglement measure or gradient (for ADAPT-AQC and general_gradient respectively) to produce the 
 combined priority $P_c$ = $E*P_r$. For expectation mode, the combined priority is calculated 
 differently. Given a pair of qubits, the combined priority is calculated as
 
@@ -86,7 +94,7 @@ weighting is given.
 **What problem it aims to solve:** \
 The goal of approximate quantum compiling (AQC) is to produce a circuit that approximately prepares
 a target state **with less depth** than the original circuit. The aim of this heuristic is to make
-ISL depth-aware, so that e.g., the same pairs of qubits are not repeatedly picked if they are only
+ADAPT-AQC depth-aware, so that e.g., the same pairs of qubits are not repeatedly picked if they are only
 marginally higher entanglement than other pairs that haven't been used. Ultimately, compiling
 with a larger exponent produces shallower solutions, at the cost of longer compiling times.
 
@@ -112,14 +120,14 @@ that it receives maximum priority.
 **What problem it aims to solve:** \
 This heuristic is meant to reflect that, given a pair of qubits (a, b) was recently acted on, the
 depth of the compiled solution will increase if _either_ a or b are acted on in a new layer.
-Previously, the "pair" option was the only type of reuse priority in ISL, leading often to
+Previously, the "pair" option was the only type of reuse priority in ADAPT-AQC, leading often to
 solutions where successive layers might act on pairs (a, a+1), (a+1, a+2), (a+2, a+3)... These
 branch-like structures significantly increase the depth of the solution.
 
 ## rotosolve_frequency
 
 **What is it:** \
-The main optimisation algorithms used by ISL are the Rotoselect and Rotosolve algorithms, more
+The main optimisation algorithms used by ADAPT-AQC are the Rotoselect and Rotosolve algorithms, more
 details of which can be found at https://quantum-journal.org/papers/q-2021-01-28-391/. Put simply,
 the Roto algorithms use sequential optimisation. Given a set of $L$ parameterised gates, the procedure
 works by fixing $L-1$ of the gates and varying the remaining one to minimise the cost function.
@@ -129,9 +137,9 @@ repeatedly cycle over all rotation gates until a termination criteria is reached
 
 `rotosolve_frequency` defines how often the ansatz is optimised using specifically the Rotosolve
 algorithm, which only changes the angles of parameterised gates. Specifically, Rotosolve is called
-after every `rotosolve_frequency` number of layers have been added. In the context of ISL, it is
+after every `rotosolve_frequency` number of layers have been added. In the context of ADAPT-AQC, it is
 notable that _only rotosolve_ has the ability to modify previous layers. Specifically, the last
-`ISLConfig.max_layers_to_modify` layers will be optimised using Rotosolve. This makes it an
+`AdaptConfig.max_layers_to_modify` layers will be optimised using Rotosolve. This makes it an
 expensive step but often necessary to reach convergence.
 
 NOTE Setting the value `rotosolve_frequency=0` will disable rotosolve. This can lead to a large
@@ -144,18 +152,18 @@ previous layers may have changed. Thus it may be more efficient (in terms of fin
 to attempt to re-optimise previous layers than to only add new layers. As such, when not using
 Rotosolve, generally the solution will be deeper.
 
-# ISLRecompiler()
+# AdaptCompiler()
 
 ## coupling_map
 
 **What is it:** \
-A user specified list of tuples, each of which represents a connection between qubits. ISL will be
+A user specified list of tuples, each of which represents a connection between qubits. ADAPT-AQC will be
 restricted to only adding CNOT gates between pairs which are in this coupling map.
 
 **What problem it aims to solve:** \
-Often we want to run the ISL solution on a specific connectivity hardware (e.g., heavy hex). Without
+Often we want to run the ADAPT-AQC solution on a specific connectivity hardware (e.g., heavy hex). Without
 this option, it would be possible to convert any solution to a connectivity via SWAP gates, however
-this can be extremely expensive in terms of number of gates. This option exists to allow ISL to
+this can be extremely expensive in terms of number of gates. This option exists to allow ADAPT-AQC to
 restrict the solution space during compiling.
 
 ## custom_layer_2q_gate
@@ -164,7 +172,7 @@ restrict the solution space during compiling.
 A Qiskit `QuantumCircuit` to be used as the ansatz layers.
 
 **What problem it aims to solve:** \
-ISL uses by default a thinly-dressed CNOT gate (i.e., CNOT surrounded by 4 single qubit rotations).
+ADAPT-AQC uses by default a thinly-dressed CNOT gate (i.e., CNOT surrounded by 4 single qubit rotations).
 This ansatz is not universal and has not been shown to be objectively better than others, but is a
 heuristic that originally worked. As such it may be valuable to change what ansatz layer is used.
 
@@ -172,27 +180,27 @@ heuristic that originally worked. As such it may be valuable to change what ansa
 
 **What is it:** \
 This is a `QuantumCircuit` that will be used as a set of initial fixed gates for the compiled
-solution $\hat{V}$. Because during ISL we are variationally optimising $\hat{V}^\dagger$, the
+solution $\hat{V}$. Because during ADAPT-AQC we are variationally optimising $\hat{V}^\dagger$, the
 inverse of `starting_circuit` will be placed at the end of the ansatz.
 
 **What problem it aims to solve:** \
 `starting_circuit` is a useful heuristic when we have some knowledge of the structure of the
 solution. A good example of what this aims to solve is when a compilation target includes
 a distinct state preparation step. For example, consider compiling the evolution of a spin-chain
-starting in the Neel state. The compiling problem is much more efficient if ISL does not need to
+starting in the Neel state. The compiling problem is much more efficient if ADAPT-AQC does not need to
 learn to start by applying an X gate to every other qubit.
 
 ## local_cost_function
 
 **What is it:**\
-Normally, ISL uses a a cost $C_\mathrm{LET} = 1- |\langle 0 | V^\dagger U|0\rangle|^2$. The fidelity
+Normally, ADAPT-AQC uses a a cost $C_\mathrm{LET} = 1- |\langle 0 | V^\dagger U|0\rangle|^2$. The fidelity
 term,
 as defined in section IIIB of https://arxiv.org/abs/1908.04416, is generated using the Loschmidt
 Echo Test (LET), which is the formal name for acting $U|0\rangle$ followed by $V^\dagger$ to get
 the fidelity. We note that the cost is global with respect to the Hilbert space, since the overlap
 with the $|00...0\rangle$ state spans the full state vector.
 
-By contrast, when setting `local_cost_function=True`, ISL will use a cost derived from the Local
+By contrast, when setting `local_cost_function=True`, ADAPT-AQC will use a cost derived from the Local
 Loschmidt Echo Test (LLET). Specifically, the cost is defined as
 
 $$C_\mathrm{LLET} = 1 - \frac{1}{n} \sum_{j=1}^{n} \langle 0|\rho^j|0\rangle,$$
@@ -206,31 +214,31 @@ The distinction between global and local cost functions is very important in the
 trainability and barren plateaus (see https://www.nature.com/articles/s41467-021-21728-w), where
 a global cost function is difficult to train for large numbers of qubits. By contrast the local
 cost function is trainable. However, we note that $C_\mathrm{LLET} <= C_\mathrm{LET}$, meaning
-that ISL may not have achieved the desired global fidelity just because the local cost converges.
+that ADAPT-AQC may not have achieved the desired global fidelity just because the local cost converges.
 
 ## initial_single_qubit_layer
 
 **What is it:** \
-When `initial_single_qubit_layer=True`, the first layer of the ISL ansatz will be
+When `initial_single_qubit_layer=True`, the first layer of the ADAPT-AQC ansatz will be
 a trainable single-qubit rotation on each qubit. Since this layer will be optimised by Rotoselect,
 this means that both the angles and the bases of rotations can be modified. Note that since this
-is the first layer of the ISL ansatz $V^\dagger$, it will end up being the final layer of the
+is the first layer of the ADAPT-AQC ansatz $V^\dagger$, it will end up being the final layer of the
 returned solution $V$. So we can think of this feature as adding a trainable basis change before
 measuring the cost function.
 
 **What problem it aims to solve:** \
-ISL only applies layers in two-qubit blocks, which means that in certain situations ISL won't be
+ADAPT-AQC only applies layers in two-qubit blocks, which means that in certain situations ADAPT-AQC won't be
 able to find the optimal depth solution. A good example of this is when only a subset of the
 qubits are entangled. To demonstrate why, for the extreme case of compiling the $n$ qubit
-$|++..+\rangle$ state, ISL without this feature will need to apply $n$ CNOT gates. By contrast,
+$|++..+\rangle$ state, ADAPT-AQC without this feature will need to apply $n$ CNOT gates. By contrast,
 with `initial_single_qubit_layer=True`, a solution can be found in depth 1 with no CNOT gates.
-It is possible the same issue can arise for any target state, if during compiling ISL is left
+It is possible the same issue can arise for any target state, if during compiling ADAPT-AQC is left
 with an intermediate low-entangled state.
 
-## ISLRecompiler.recompile_in_parts()
+## AdaptCompiler.compile_in_parts()
 
 **What is it:** \
-Compiling in parts, (also called ladder-ISL), is the idea of splitting up a
+Compiling in parts, (also called ladder-ADAPT-AQC), is the idea of splitting up a
 circuit into chunks that we compile sequentially. For example, given a depth 50 circuit $U_
 {50}|0\rangle$, we can compile the first 10 depth of gates $U_{0-10}|0\rangle$ to produce
 $V_{0-10}^\dagger|0\rangle \approx U_{0-10}|0\rangle$. This can then be used to construct a new

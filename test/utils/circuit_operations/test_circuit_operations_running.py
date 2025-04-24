@@ -1,22 +1,22 @@
 from unittest import TestCase
 
 import numpy as np
-from qiskit import QuantumCircuit, QuantumRegister
-
 from aqc_research.mps_operations import mps_dot, mps_from_circuit
+from qiskit import QuantumCircuit
 
-import isl.backends.aer_mps_backend
-import isl.backends.python_default_backends
-import isl.utils.constants as vconstants
-import isl.utils.circuit_operations as co
+import adaptaqc.backends.aer_mps_backend
+import adaptaqc.backends.python_default_backends
+import adaptaqc.utils.circuit_operations as co
 
 
 class TestCircuitOperationsRunning(TestCase):
     def test_given_mps_sims_with_different_trunc_when_mps_from_circuit_then_different_mps(
         self,
     ):
-        sim1 = isl.backends.aer_mps_backend.mps_sim_with_args()
-        sim2 = isl.backends.aer_mps_backend.mps_sim_with_args(mps_truncation_threshold=1e-1)
+        sim1 = adaptaqc.backends.aer_mps_backend.mps_sim_with_args()
+        sim2 = adaptaqc.backends.aer_mps_backend.mps_sim_with_args(
+            mps_truncation_threshold=1e-1
+        )
 
         qc = co.create_random_circuit(10, 20)
 
@@ -28,8 +28,8 @@ class TestCircuitOperationsRunning(TestCase):
     def test_given_mps_sims_with_different_chi_when_mps_from_circuit_then_different_mps(
         self,
     ):
-        sim1 = isl.backends.aer_mps_backend.mps_sim_with_args()
-        sim2 = isl.backends.aer_mps_backend.mps_sim_with_args(max_chi=2)
+        sim1 = adaptaqc.backends.aer_mps_backend.mps_sim_with_args()
+        sim2 = adaptaqc.backends.aer_mps_backend.mps_sim_with_args(max_chi=2)
 
         qc = co.create_random_circuit(10, 20)
 
@@ -52,7 +52,9 @@ class TestCircuitOperationsRunning(TestCase):
 
         # 1.
         data = co.run_circuit_without_transpilation(
-            qc.copy(), backend=isl.backends.python_default_backends.SV_SIM, return_statevector=True
+            qc.copy(),
+            backend=adaptaqc.backends.python_default_backends.SV_SIM,
+            return_statevector=True,
         )
         sv = data.data
         self.assertAlmostEqual(sv[0], 1 / np.sqrt(2))
@@ -60,7 +62,7 @@ class TestCircuitOperationsRunning(TestCase):
 
         # 2.
         counts = co.run_circuit_without_transpilation(
-            qc.copy(), backend=isl.backends.python_default_backends.SV_SIM
+            qc.copy(), backend=adaptaqc.backends.python_default_backends.SV_SIM
         )
         self.assertAlmostEqual(counts["00000"] / sum(counts.values()), 0.5)
         self.assertAlmostEqual(counts["11111"] / sum(counts.values()), 0.5)
@@ -68,9 +70,13 @@ class TestCircuitOperationsRunning(TestCase):
         # 3. (must add measurement gates, otherwise no counts)
         qc.measure_all()
         counts = co.run_circuit_without_transpilation(qc.copy())
-        sigma = 1/np.sqrt(1024)
-        self.assertAlmostEqual(counts["00000"] / sum(counts.values()), 0.5, delta=5*sigma)
-        self.assertAlmostEqual(counts["11111"] / sum(counts.values()), 0.5, delta=5*sigma)
+        sigma = 1 / np.sqrt(1024)
+        self.assertAlmostEqual(
+            counts["00000"] / sum(counts.values()), 0.5, delta=5 * sigma
+        )
+        self.assertAlmostEqual(
+            counts["11111"] / sum(counts.values()), 0.5, delta=5 * sigma
+        )
 
     def test_run_circuit_with_transpilation(self):
         """
@@ -95,14 +101,18 @@ class TestCircuitOperationsRunning(TestCase):
 
         # 1.
         data = co.run_circuit_with_transpilation(
-            qc.copy(), backend=isl.backends.python_default_backends.SV_SIM, return_statevector=True
+            qc.copy(),
+            backend=adaptaqc.backends.python_default_backends.SV_SIM,
+            return_statevector=True,
         )
         sv = data.data
         self.assertAlmostEqual(abs(sv[0]) ** 2, 0.5)
         self.assertAlmostEqual(abs(sv[-1]) ** 2, 0.5)
 
         # 2.
-        counts = co.run_circuit_with_transpilation(qc.copy(), backend=isl.backends.python_default_backends.SV_SIM)
+        counts = co.run_circuit_with_transpilation(
+            qc.copy(), backend=adaptaqc.backends.python_default_backends.SV_SIM
+        )
         self.assertAlmostEqual(counts["00000"] / sum(counts.values()), 0.5)
         self.assertAlmostEqual(counts["11111"] / sum(counts.values()), 0.5)
 
