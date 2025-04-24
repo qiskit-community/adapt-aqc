@@ -167,8 +167,7 @@ class AdaptCompiler(ApproximateCompiler):
         self.coupling_map = [
             (q1, q2)
             for (q1, q2) in self.coupling_map
-            if q1 in self.qubit_subset_to_compile
-            and q2 in self.qubit_subset_to_compile
+            if q1 in self.qubit_subset_to_compile and q2 in self.qubit_subset_to_compile
         ]
         # Used to avoid adding thinly dressed CNOTs to the same qubit pair
         self.qubit_pair_history = []

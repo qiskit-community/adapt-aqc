@@ -396,9 +396,7 @@ class ApproximateCompiler(ABC):
         )
         qubit_map = {
             full_circ_index: subset_index
-            for subset_index, full_circ_index in enumerate(
-                self.qubit_subset_to_compile
-            )
+            for subset_index, full_circ_index in enumerate(self.qubit_subset_to_compile)
         }
         co.add_to_circuit(final_circuit, compiled_circuit, qubit_subset=qubit_map)
 
@@ -494,9 +492,7 @@ class ApproximateCompiler(ABC):
         if self.backend == QASM_SIM:
             if self.optimise_local_cost:
                 register_size = 2 if self.general_initial_state else 1
-                qc.add_register(
-                    ClassicalRegister(register_size, name="compiler_creg")
-                )
+                qc.add_register(ClassicalRegister(register_size, name="compiler_creg"))
             else:
                 qc.add_register(ClassicalRegister(total_qubits, name="compiler_creg"))
                 [qc.measure(i, i) for i in range(total_qubits)]

@@ -4,7 +4,6 @@ from aqc_research.model_sp_lhs.trotter.trotter import trotter_circuit
 from qiskit import QuantumCircuit
 
 import adaptaqc.utils.circuit_operations as co
-from adaptaqc import AdaptCompiler
 from adaptaqc.backends.python_default_backends import SV_SIM, MPS_SIM
 from adaptaqc.compilers import AdaptConfig
 from adaptaqc.utils.ansatzes import (
@@ -15,6 +14,7 @@ from adaptaqc.utils.ansatzes import (
     heisenberg,
 )
 from adaptaqc.utils.constants import DEFAULT_SUFFICIENT_COST
+from compilers.adapt.adapt_compiler import AdaptCompiler
 
 
 class TestAnsatzes(TestCase):
@@ -74,7 +74,7 @@ class TestAnsatzes(TestCase):
 
                 adapt_compiler._add_layer(0)
 
-                last_layer_instructions = adapt_compiler.full_circuit[-len(ansatz()) :]
+                last_layer_instructions = adapt_compiler.full_circuit[-len(ansatz()):]
                 for i, instruction in enumerate(last_layer_instructions):
                     if instruction.operation.name != "cx":
                         if ansatz is u4 and i in [14, 17]:
@@ -118,7 +118,7 @@ class TestAnsatzes(TestCase):
                 adapt_compiler._add_layer(0)
                 adapt_compiler._add_layer(1)
 
-                last_layer_instructions = adapt_compiler.full_circuit[-len(ansatz()) :]
+                last_layer_instructions = adapt_compiler.full_circuit[-len(ansatz()):]
 
                 for index in expected_cnots:
                     self.assertEqual(
@@ -153,7 +153,7 @@ class TestAnsatzes(TestCase):
                 adapt_compiler._add_layer(0)
                 adapt_compiler._add_layer(1)
 
-                last_layer_gates = adapt_compiler.full_circuit.data[-len(ansatz()) :]
+                last_layer_gates = adapt_compiler.full_circuit.data[-len(ansatz()):]
 
                 for i, gate in enumerate(last_layer_gates):
                     self.assertEqual(gate[0].name, ansatz().data[i][0].name)

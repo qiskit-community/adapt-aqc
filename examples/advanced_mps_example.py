@@ -18,7 +18,9 @@ logger.setLevel(logging.INFO)
 
 # Generate a ground state of the XXZ model using TenPy
 l = 20
-model_params = dict(S=0.5, L=l, Jx=1.0, Jy=1.0, Jz=5.0, hz=1.0, bc_MPS="finite", conserve="None")
+model_params = dict(
+    S=0.5, L=l, Jx=1.0, Jy=1.0, Jz=5.0, hz=1.0, bc_MPS="finite", conserve="None"
+)
 model = SpinChain(model_params)
 
 psi = MPS.from_product_state(
@@ -36,9 +38,7 @@ qiskit_mps = tenpy_to_qiskit_mps(psi)
 
 # Set compiler to use the general gradient method as laid out in https://arxiv.org/abs/2503.09683
 config = AdaptConfig(
-    method="general_gradient",
-    cost_improvement_num_layers=1e3,
-    rotosolve_frequency=10
+    method="general_gradient", cost_improvement_num_layers=1e3, rotosolve_frequency=10
 )
 
 # Create an instance of Qiskit's MPS simulator with a specified truncation threshold
@@ -53,7 +53,7 @@ adapt_compiler = AdaptCompiler(
     backend=backend,
     adapt_config=config,
     starting_circuit="tenpy_product_state",  # Start compiling from best χ=1 compression of target
-    custom_layer_2q_gate=identity_resolvable() # Use ansatz from https://arxiv.org/abs/2503.09683
+    custom_layer_2q_gate=identity_resolvable(),  # Use ansatz from https://arxiv.org/abs/2503.09683
 )
 
 result = adapt_compiler.compile()

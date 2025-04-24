@@ -17,13 +17,15 @@ deep learning (https://arxiv.org/abs/1511.06807).
 ## add_local_minima_to_cost
 
 **What is it:** \
-If we have identified that ADAPT-AQC is stuck in a local minima, we could save the MPS $|LM\rangle$ at
+If we have identified that ADAPT-AQC is stuck in a local minima, we could save the MPS $|LM\rangle$
+at
 this point. Then, we could explicitly add to the cost function a new term that would be the overlap
 of the trial solution to this MPS. So the cost would then be
 
 $$C = 1 - |\langle 0 | V^\dagger U|0\rangle|^2 + |\langle LM| V^\dagger U|0\rangle|^2$$$
 
-Since the cost is being minimised, this encourages ADAPT-AQC to minimise the overlap between the current
+Since the cost is being minimised, this encourages ADAPT-AQC to minimise the overlap between the
+current
 solution $V^\dagger U|0\rangle$ and the state that was in a local minima $|LM\rangle$.
 
 **What problem it aims to solve:** \
