@@ -1,8 +1,8 @@
 
-# Adaptive approximate quantum compiling (ADAPT-AQC)
+# Adaptive approximate quantum compiling
 
-An open-source implementation of ADAPT-AQC [1], an approximate quantum compiling (AQC) and Matrix Product state (MPS) preparation algorithm.
-As supposed to assuming any particular ansatz structure, ADAPT-AQC adaptively builds
+An open-source implementation of ADAPT-AQC [1], an approximate quantum compiling (AQC) and matrix product state (MPS) preparation algorithm.
+As opposed to assuming any particular ansatz structure, ADAPT-AQC adaptively builds
 an ansatz, adding a new two-qubit unitary every iteration.
 
 ADAPT-AQC is the successor to ISL [2], using much of the same core code, routine and optimiser. The most significant difference
