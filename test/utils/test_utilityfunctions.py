@@ -5,8 +5,8 @@ import numpy as np
 from numpy.testing import assert_array_almost_equal
 from qiskit import QuantumCircuit
 from qiskit.quantum_info import Statevector
-from tenpy import MPS, SpinChain
-from tenpy.models import XXZChain
+from tenpy import MPS, SpinChain, SpinSite, SpinHalfSite
+from tenpy.models import XXZChain, TFIChain
 
 import adaptaqc.utils.circuit_operations as co
 from adaptaqc.backends.python_default_backends import QASM_SIM, SV_SIM
@@ -21,6 +21,8 @@ from adaptaqc.utils.utilityfunctions import (
     qiskit_to_tenpy_mps,
     find_rotation_indices,
     get_distinct_items_and_degeneracies,
+    tenpy_mps_to_statevector,
+    check_flipped_basis_states,
 )
 
 
@@ -275,11 +277,9 @@ class TestTenpyToQiskitMPS(TestCase):
         tenpy_mps = get_random_tenpy_mps(n)
         qiskit_mps = tenpy_to_qiskit_mps(tenpy_mps)
 
-        # NOTE: tenpy uses the opposite notation to qiskit. I.e. the state q0 = |1>, q1 = |0> would
+        # NOTE: tenpy uses big-endian notation. I.e. the state q0 = |1>, q1 = |0> would
         # be |10> = [0, 0, 1, 0] in tenpy but |01> = [0, 1, 0, 0] in qiskit.
-        tenpy_sv = tenpy_mps.get_theta(0, n).to_ndarray().reshape([2] * n)
-        tenpy_sv = np.transpose(tenpy_sv, axes=range(n)[::-1])
-        tenpy_sv = tenpy_sv.flatten()
+        tenpy_sv = tenpy_mps_to_statevector(tenpy_mps)
         qiskit_sv = mpsops.mps_to_vector(qiskit_mps)
 
         np.testing.assert_allclose(tenpy_sv, qiskit_sv)
@@ -287,7 +287,7 @@ class TestTenpyToQiskitMPS(TestCase):
     def test_given_neel_state_then_mps_from_tenpy_and_mps_from_circuit_equal(self):
         n = 3
         # Neel state from tenpy
-        # NOTE: tenpy "down" is the same as qiskit |0>. I.e. [1, 0]
+        # NOTE: tenpy "down" is the same as qiskit |1> (-1 Sz value)
         model = XXZChain(
             {
                 "L": n,
@@ -305,7 +305,7 @@ class TestTenpyToQiskitMPS(TestCase):
 
         # Neel state from QuantumCircuit
         qc = QuantumCircuit(n)
-        qc.x([0, 2])
+        qc.x(1)
         qiskit_mps_from_circuit = mpsops.mps_from_circuit(qc)
 
         overlap = (
@@ -400,7 +400,7 @@ class TestTenpyChi1MPSToCircuit(TestCase):
         mps = MPS.from_product_state(model.lat.mps_sites(), neel_state)
         qc = tenpy_chi_1_mps_to_circuit(mps)
         sv = Statevector(qc).data
-        expected_sv = np.array([0, 0, 0, 0, 0, 1, 0, 0])
+        expected_sv = np.array([0, 0, 1, 0, 0, 0, 0, 0])
 
         np.testing.assert_allclose(sv, expected_sv, atol=1e-10)
 
@@ -408,44 +408,41 @@ class TestTenpyChi1MPSToCircuit(TestCase):
 class TestQiskitToTenpyMPS(TestCase):
     def test_given_qiskit_to_tenpy_mps_then_mps_normalised(self):
         for prep in [True, False]:
-            qc = co.create_random_initial_state_circuit(3)
-            qiskit_mps = mpsops.mps_from_circuit(qc, return_preprocessed=prep)
-            tenpy_mps = qiskit_to_tenpy_mps(qiskit_mps)
+            for return_form in ["SpinSite", "SpinHalfSite"]:
+                qc = co.create_random_initial_state_circuit(3)
+                qiskit_mps = mpsops.mps_from_circuit(qc, return_preprocessed=prep)
+                tenpy_mps = qiskit_to_tenpy_mps(qiskit_mps, return_form=return_form)
 
-            self.assertAlmostEqual(tenpy_mps.norm, 1)
+                self.assertAlmostEqual(tenpy_mps.norm, 1)
 
     def test_given_qiskit_mps_to_tenpy_mps_then_statevectors_equal(self):
         for prep in [True, False]:
-            n = 4
-            qc = co.create_random_initial_state_circuit(n)
-            qiskit_mps = mpsops.mps_from_circuit(qc, return_preprocessed=prep)
-            tenpy_mps = qiskit_to_tenpy_mps(qiskit_mps)
+            for return_form in ["SpinSite", "SpinHalfSite"]:
+                n = 4
+                qc = co.create_random_initial_state_circuit(n)
+                qiskit_mps = mpsops.mps_from_circuit(qc, return_preprocessed=prep)
+                tenpy_mps = qiskit_to_tenpy_mps(qiskit_mps, return_form=return_form)
 
-            # NOTE: tenpy uses the opposite notation to qiskit. I.e. the state q0 = |1>, q1 = |0> would
-            # be |10> = [0, 0, 1, 0] in tenpy but |01> = [0, 1, 0, 0] in qiskit.
-            tenpy_sv = tenpy_mps.get_theta(0, n).to_ndarray().reshape([2] * n)
-            tenpy_sv = np.transpose(tenpy_sv, axes=range(n)[::-1])
-            tenpy_sv = tenpy_sv.flatten()
-            qiskit_sv = mpsops.mps_to_vector(qiskit_mps, already_preprocessed=prep)
+                tenpy_sv = tenpy_mps_to_statevector(tenpy_mps)
+                qiskit_sv = mpsops.mps_to_vector(qiskit_mps, already_preprocessed=prep)
 
-            np.testing.assert_allclose(tenpy_sv, qiskit_sv)
+                np.testing.assert_allclose(tenpy_sv, qiskit_sv)
 
     def test_given_neel_state_then_tenpy_mps_as_expected(self):
         for prep in [True, False]:
-            n = 3
-            qc = QuantumCircuit(n)
-            qc.x([0, 2])
-            qiskit_mps = mpsops.mps_from_circuit(qc, return_preprocessed=prep)
-            tenpy_mps = qiskit_to_tenpy_mps(qiskit_mps)
+            for return_form in ["SpinSite", "SpinHalfSite"]:
+                n = 3
+                qc = QuantumCircuit(n)
+                qc.x([0, 2])
+                qiskit_mps = mpsops.mps_from_circuit(qc, return_preprocessed=prep)
+                tenpy_mps = qiskit_to_tenpy_mps(qiskit_mps, return_form=return_form)
 
-            # Convert to sv
-            tenpy_sv = tenpy_mps.get_theta(0, n).to_ndarray().reshape([2] * n)
-            tenpy_sv = np.transpose(tenpy_sv, axes=range(n)[::-1])
-            tenpy_sv = tenpy_sv.flatten()
+                # Convert to sv
+                tenpy_sv = tenpy_mps_to_statevector(tenpy_mps)
 
-            expected_sv = [0, 0, 0, 0, 0, 1, 0, 0]
+                expected_sv = [0, 0, 0, 0, 0, 1, 0, 0]
 
-            np.testing.assert_allclose(tenpy_sv, expected_sv)
+                np.testing.assert_allclose(tenpy_sv, expected_sv)
 
     def test_converter_functions_are_inverses(self):
         for prep in [True, False]:
@@ -455,27 +452,99 @@ class TestQiskitToTenpyMPS(TestCase):
             qiskit_mps = tenpy_to_qiskit_mps(tenpy_mps)
             if prep:
                 qiskit_mps = mpsops._preprocess_mps(qiskit_mps)
-            tenpy_mps_reconstructed = qiskit_to_tenpy_mps(qiskit_mps)
+            # Here we specifically use return_form="SpinSite", since get_random_tenpy_mps returns an
+            # MPS made from SpinSite. MPS.overlap should not be called for two MPS of different
+            # site-types
+            tenpy_mps_reconstructed = qiskit_to_tenpy_mps(
+                qiskit_mps, return_form="SpinSite"
+            )
 
             fidelity = np.abs(tenpy_mps.overlap(tenpy_mps_reconstructed)) ** 2
             self.assertAlmostEqual(fidelity, 1)
 
             # Qiskit -> Tenpy -> Qiskit
-            qc = co.create_random_initial_state_circuit(n)
-            qiskit_mps = mpsops.mps_from_circuit(qc, return_preprocessed=prep)
-            tenpy_mps = qiskit_to_tenpy_mps(qiskit_mps)
-            qiskit_mps_reconstructed = tenpy_to_qiskit_mps(tenpy_mps)
-            if prep:
-                qiskit_mps_reconstructed = mpsops._preprocess_mps(
-                    qiskit_mps_reconstructed
-                )
-
-            fidelity = (
-                np.abs(
-                    mpsops.mps_dot(
-                        qiskit_mps, qiskit_mps_reconstructed, already_preprocessed=prep
+            for return_form in ["SpinSite", "SpinHalfSite"]:
+                qc = co.create_random_initial_state_circuit(n)
+                qiskit_mps = mpsops.mps_from_circuit(qc, return_preprocessed=prep)
+                tenpy_mps = qiskit_to_tenpy_mps(qiskit_mps, return_form=return_form)
+                qiskit_mps_reconstructed = tenpy_to_qiskit_mps(tenpy_mps)
+                if prep:
+                    qiskit_mps_reconstructed = mpsops._preprocess_mps(
+                        qiskit_mps_reconstructed
                     )
+
+                fidelity = (
+                    np.abs(
+                        mpsops.mps_dot(
+                            qiskit_mps,
+                            qiskit_mps_reconstructed,
+                            already_preprocessed=prep,
+                        )
+                    )
+                    ** 2
                 )
-                ** 2
-            )
-            self.assertAlmostEqual(fidelity, 1)
+                self.assertAlmostEqual(fidelity, 1)
+
+
+class TestTenpyUtils(TestCase):
+    def test_check_flipped_basis_states(self):
+        L = 3
+        product_state = ["up", "down", "up"]
+
+        # XXZChain should have flipped basis states
+        model = XXZChain({"L": L, "conserve": None})
+        mps = MPS.from_product_state(model.lat.mps_sites(), product_state)
+        print(check_flipped_basis_states(mps))
+        assert check_flipped_basis_states(mps) == [True] * L
+
+        # SpinChain should have flipped basis states
+        model = SpinChain({"L": L, "conserve": None})
+        mps = MPS.from_product_state(model.lat.mps_sites(), product_state)
+        print(check_flipped_basis_states(mps))
+        assert check_flipped_basis_states(mps) == [True] * L
+
+        # SpinSite should have flipped basis states
+        sites = [SpinSite(conserve=None)] * L
+        mps = MPS.from_product_state(sites, product_state)
+        print(check_flipped_basis_states(mps))
+        assert check_flipped_basis_states(mps) == [True] * L
+
+        # TFIChain should NOT have flipped basis states
+        model = TFIChain({"L": L, "conserve": None})
+        mps = MPS.from_product_state(model.lat.mps_sites(), product_state)
+        print(check_flipped_basis_states(mps))
+        assert check_flipped_basis_states(mps) == [False] * L
+
+        # SpinHalfSite should NOT have flipped basis states
+        sites = [SpinHalfSite(conserve=None)] * L
+        mps = MPS.from_product_state(sites, product_state)
+        print(check_flipped_basis_states(mps))
+        assert check_flipped_basis_states(mps) == [False] * L
+
+        # A mixture of SpinSite and SpinHalfSite should have a mixture of flipped/not flipped basis
+        # states
+        sites = [
+            SpinHalfSite(conserve=None),
+            SpinHalfSite(conserve=None),
+            SpinSite(conserve=None),
+        ]
+        mps = MPS.from_product_state(sites, product_state)
+        print(check_flipped_basis_states(mps))
+        assert check_flipped_basis_states(mps) == [False, False, True]
+
+    def test_tenpy_mps_to_statevector(self):
+        L = 3
+        product_state = ["up", "up", "down"]
+        expected_sv = [0, 0, 0, 0, 1, 0, 0, 0]
+
+        # (up, up, down) corresponds to Qiskit basis states (0, 0, 1), which is the bitstring: 100
+        model = SpinChain({"L": L, "conserve": None})
+        mps = MPS.from_product_state(model.lat.mps_sites(), product_state)
+        sv = tenpy_mps_to_statevector(mps)
+        np.testing.assert_allclose(sv, expected_sv)
+
+        # The statevector should be independent of the model
+        sites = [SpinHalfSite(conserve=None)] * L
+        mps = MPS.from_product_state(sites, product_state)
+        sv = tenpy_mps_to_statevector(mps)
+        np.testing.assert_allclose(sv, expected_sv)

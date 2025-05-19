@@ -1,4 +1,4 @@
-"""Contains functions """
+"""Contains functions"""
 
 import copy
 import functools
@@ -11,7 +11,7 @@ from qiskit import QuantumCircuit
 from qiskit import transpile
 from qiskit.result import Counts
 from qiskit_aer.backends.compatibility import Statevector
-from tenpy import SpinHalfSite
+from tenpy import SpinHalfSite, SpinSite
 from tenpy.networks.mps import MPS
 
 from adaptaqc.backends.aer_sv_backend import AerSVBackend
@@ -282,14 +282,15 @@ def tenpy_to_qiskit_mps(tenpy_mps):
     num_sites = tenpy_mps.L
     tenpy_mps.canonical_form()
 
+    # Check convention of basis states
+    flip = check_flipped_basis_states(tenpy_mps)
+
     gam = [0] * num_sites
     lam = [0] * (num_sites - 1)
     permutation = None
     for n in range(num_sites):
-        g_n = tenpy_mps.get_B(
-            n, form="G"
-        ).to_ndarray()  # Get the tenpy "B" tensor for site n
-        g_n = np.swapaxes(g_n, 0, 1)  # Swap axes to be consistent with Qiskit MPS
+        # Get the tenpy "B" tensor for site n, with indices in Qiskit MPS order (p, L, R)
+        g_n = tenpy_mps.get_B(n, form="G").itranspose(["p", "vL", "vR"]).to_ndarray()
         if permutation is not None:
             g_n[:] = g_n[
                 :, permutation, :
@@ -303,7 +304,12 @@ def tenpy_to_qiskit_mps(tenpy_mps):
                 g_n[:] = g_n[
                     :, :, permutation
                 ]  # permute right index in the same way the right singular values were permuted
-        gam[n] = (g_n[0], g_n[1])  # Split physical dimension into two parts of a tuple
+
+        # Split physical dimension into two parts of a tuple
+        if flip[n]:
+            gam[n] = (g_n[1], g_n[0])
+        else:
+            gam[n] = (g_n[0], g_n[1])
 
     qiskit_mps = (gam, lam)
 
@@ -314,12 +320,21 @@ def tenpy_chi_1_mps_to_circuit(mps: MPS) -> QuantumCircuit:
     if not np.allclose(mps.chi, 1):
         raise Exception("MPS must have bond dimension 1 for all bonds.")
 
+    flip = check_flipped_basis_states(mps)
+
     qc = QuantumCircuit(mps.L)
     for i in range(mps.L):
-        array = mps.get_B(i, form="B").to_ndarray()
+        # 2 x 1 x 1 array representing the state of site i
+        array = mps.get_B(i, form="B").itranspose(["p", "vL", "vR"]).to_ndarray()
+        # Extract the length-2 vector, with the correct basis-ordering
+        if flip[i]:
+            vec = array[::-1, 0, 0]
+        else:
+            vec = array[:, 0, 0]
+
         # Make unitary with column 0 corresponding to the state of site i
         U = np.zeros((2, 2), dtype=array.dtype)
-        U[:, 0] = array[0, :, 0]
+        U[:, 0] = vec
         U[0, 1] = np.conj(U[1, 0])
         U[1, 1] = -np.conj(U[0, 0])
         qc.unitary(U, i)
@@ -328,13 +343,33 @@ def tenpy_chi_1_mps_to_circuit(mps: MPS) -> QuantumCircuit:
     return qc
 
 
-def qiskit_to_tenpy_mps(qiskit_mps):
+def qiskit_to_tenpy_mps(qiskit_mps, return_form: str = "SpinSite") -> MPS:
+    """
+    Converts a Qiskit MPS to a Tenpy MPS.
+
+    Args:
+        qiskit_mps: The Qiskit MPS.
+        return_form: The type of site to use for the Tenpy MPS.
+    Returns:
+        tenpy_mps: The Tenpy MPS
+    """
     # If not preprocessed, preprocess MPS
     if isinstance(qiskit_mps[0], List):
         qiskit_mps = mpsop._preprocess_mps(qiskit_mps)
 
     N = len(qiskit_mps)
-    sites = [SpinHalfSite(conserve=None)] * N
+
+    if return_form == "SpinSite":
+        sites = [SpinSite(conserve=None)] * N
+        # Flip basis state ordering for SpinSite
+        qiskit_mps = [tensor[::-1, :, :] for tensor in qiskit_mps]
+    elif return_form == "SpinHalfSite":
+        sites = [SpinHalfSite(conserve=None)] * N
+    else:
+        raise ValueError(
+            f"Invalid return_form: {return_form}. Must be SpinSite or SpinHalfSite"
+        )
+
     tenpy_mps = MPS.from_Bflat(sites, qiskit_mps, SVs=None)
 
     return tenpy_mps
@@ -379,3 +414,58 @@ def get_distinct_items_and_degeneracies(items: List) -> Tuple[List, List[int]]:
             degeneracies.append(1)
 
     return (distinct_items, degeneracies)
+
+
+def check_flipped_basis_states(mps: MPS) -> List[bool]:
+    """
+    Given a Tenpy MPS, generate a list where the ith element is False(True) if the ith site of the
+    MPS is(isn't) ordering the basis states with the same convention as Qiskit.
+
+    Args:
+        mps: The Tenpy MPS.
+    Returns:
+        flipped_basis_states: The list of basis conventions.
+    """
+
+    flipped_basis_states = [None] * mps.L
+
+    for i in range(mps.L):
+        sz_matrix = mps.sites[i].get_op("Sz").to_ndarray()
+        if np.array_equal(sz_matrix, [[0.5, 0], [0, -0.5]]):
+            flipped_basis_states[i] = False
+        elif np.array_equal(sz_matrix, [[-0.5, 0], [0, 0.5]]):
+            flipped_basis_states[i] = True
+        else:
+            raise ValueError(f"Invalid Tenpy convention for site {i}")
+
+    return flipped_basis_states
+
+
+def tenpy_mps_to_statevector(mps: MPS) -> np.ndarray:
+    """
+    Convert a Tenpy MPS to a little-endian statevector
+
+    Args:
+        mps: The MPS.
+    Returns:
+        sv: The statevector.
+    """
+
+    # Get the 2 x 2 x ... tensor representing the state
+    sv = mps.get_theta(0, mps.L).to_ndarray().reshape([2] * mps.L)
+
+    # Flip the basis ordering for any sites using the opposite convention to Qiskit
+    flip = check_flipped_basis_states(mps)
+    for i in range(mps.L):
+        if flip[i]:
+            sv = np.flip(sv, axis=i)
+        else:
+            continue
+
+    # Convert from big-endian to little-endian ordering
+    sv = np.transpose(sv, axes=range(mps.L)[::-1])
+
+    # Convert to 2^N dimensional vector
+    sv = sv.flatten()
+
+    return sv

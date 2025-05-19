@@ -869,7 +869,7 @@ class TestAdapt(TestCase):
                 "bc_MPS": "finite",
             }
         )
-        neel_state = ["up", "down", "up"]
+        neel_state = ["down", "up", "down"]
         psi = MPS.from_product_state(
             model.lat.mps_sites(), neel_state, bc=model.lat.bc_MPS
         )
