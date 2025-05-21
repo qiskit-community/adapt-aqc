@@ -3,14 +3,15 @@ Example script for running ADAPT-AQC recompilation using more advanced options
 """
 
 import logging
+import matplotlib.pyplot as plt
 
 from tenpy import SpinChain, MPS
 from tenpy.algorithms import dmrg
 
 from adaptaqc.backends.aer_mps_backend import AerMPSBackend, mps_sim_with_args
 from adaptaqc.compilers import AdaptCompiler, AdaptConfig
-from utils.ansatzes import identity_resolvable
-from utils.utilityfunctions import tenpy_to_qiskit_mps
+from adaptaqc.utils.ansatzes import identity_resolvable
+from adaptaqc.utils.utilityfunctions import tenpy_to_qiskit_mps
 
 logging.basicConfig()
 logger = logging.getLogger("adaptaqc")
@@ -61,4 +62,5 @@ approx_circuit = result.circuit
 print(f"Overlap between circuits is {result.overlap}")
 
 # Draw the circuit that prepares the target random MPS
-approx_circuit.draw(output="mpl", fold=-1).show()
+approx_circuit.draw(output="mpl", fold=-1)
+plt.show()

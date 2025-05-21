@@ -14,7 +14,7 @@ from adaptaqc.utils.ansatzes import (
     heisenberg,
 )
 from adaptaqc.utils.constants import DEFAULT_SUFFICIENT_COST
-from compilers.adapt.adapt_compiler import AdaptCompiler
+from adaptaqc.compilers.adapt.adapt_compiler import AdaptCompiler
 
 
 class TestAnsatzes(TestCase):
