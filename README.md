@@ -20,7 +20,7 @@ This repository can be easily installed using `pip`. You have two options:
 Use a stable version based on the last commit to `master`
 
 ```
-pip install git+ssh://git@github.com/bjader/adapt-aqc.git
+pip install git+ssh://git@github.com/qiskit-community/adapt-aqc.git
 ```
 
 Use an editable local version (after already cloning this repository)
